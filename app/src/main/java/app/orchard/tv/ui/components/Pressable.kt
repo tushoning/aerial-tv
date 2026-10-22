@@ -90,7 +90,6 @@ fun Pressable(
     )
     Box(
         modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale }
             .focusRequester(requester)
             .onFocusChanged {
                 if (it.isFocused && !state.focused) Sounds.focusMoved()
@@ -139,6 +138,10 @@ fun Pressable(
                     else -> false
                 }
             }
-            .focusable(enabled),
+            .focusable(enabled)
+            // After the focusable: the bounds a scroll container brings into view are then the
+            // card's own, not the 8% larger ones of the focus animation, which made a sheet or
+            // list shift a few pixels with every move of focus and settle back.
+            .graphicsLayer { scaleX = scale; scaleY = scale },
     ) { content(state) }
 }
