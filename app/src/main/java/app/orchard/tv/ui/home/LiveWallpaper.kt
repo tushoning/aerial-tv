@@ -174,7 +174,8 @@ fun LiveWallpaper(
     var glassSample by remember { mutableStateOf<GlassSample?>(null) }
     LaunchedEffect(live.film, play, showing) {
         val id = live.film?.id ?: return@LaunchedEffect
-        if (!play) return@LaunchedEffect
+        // Where PixelCopy reads the film (TCL MT5879), its frame is at hand without the file.
+        if (!play || pixelCopy == true) return@LaunchedEffect
         reader.open(id)
         // The first soon, for a film stopped moments after it moved.
         var wait = 800L
@@ -220,7 +221,7 @@ fun LiveWallpaper(
                     glassReady(live)
                 }
                 glassSample = null
-                var frame = if (pixelCopyFails) null else surface?.let { capture(it) }
+                var frame = if (pixelCopy == false) null else surface?.let { capture(it) }
                 if (frame == null && film != null) {
                     if (!live.stopped) reader.frame(film, at, 320, 180, exact = false)?.let {
                         Wallpapers.useLiveFrost(it)
@@ -281,10 +282,9 @@ fun LiveWallpaper(
  * at the first key press, issue #256).
  */
 private suspend fun capture(view: SurfaceView): Bitmap? {
-    val bitmap0 = captureOnce(view)
-    // The same TV gives the same answer; later stops go straight to the film's file.
-    if (bitmap0 == null) pixelCopyFails = true
-    return bitmap0
+    // The same TV gives the same answer: where it fails, later stops go straight to the film's
+    // file; where it works, the file is not needed at all.
+    return captureOnce(view).also { pixelCopy = it != null }
 }
 
 /**
@@ -297,8 +297,8 @@ private suspend fun glassReady(live: LiveFilm) {
     live.stopped = true
 }
 
-/** PixelCopy came back unreadable once in this process: not worth the wait again. */
-private var pixelCopyFails = false
+/** Whether PixelCopy read the film in this process; null until it has been tried. */
+private var pixelCopy: Boolean? = null
 
 /** How often a small key frame is taken for the glass while the film moves. */
 private const val GLASS_EVERY_MS = 2_500L

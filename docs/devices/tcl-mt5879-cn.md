@@ -95,6 +95,7 @@ TCL 手机 App 有一个「把手机里的 APK 推到电视」的功能。电视
 - `install.sh` 会把 `secure screensaver_components` 换成 `app.orchard.tv/app.orchard.tv.dream.AerialDream`；`restore.sh` 会换回 `screensaver_default_component`。
 - 手动测试：`adb shell am start -n com.android.systemui/.Somnambulator`。
 - 1.14 及以前，按键结束屏保时 Aerial 会崩溃：Android 11 起屏保跑在 Activity 里，窗口先被移除（生命周期变成 DESTROYED），然后才调用 `onDreamingStopped`，往回设成 CREATED 会抛异常。崩溃后无障碍服务处于「已启用但没绑定」，守护失效，按 HOME 就进了 TCL 桌面。1.15 修复了崩溃，并在复活时也检查一次「已启用但没绑定」。
+- 主屏幕的航拍壁纸（4K SDR，SurfaceView）PixelCopy 能读到，`screencap` 也截得到（2026-10-23）。
 - **截图截不到视频画面**（视频走独立的硬件图层，截出来是黑的），但字幕和时钟能截到。地名字幕出现，说明视频已经在渲染。
 
 ## 其他
