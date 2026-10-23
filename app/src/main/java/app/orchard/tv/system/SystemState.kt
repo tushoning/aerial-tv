@@ -37,7 +37,7 @@ data class VolumeStatus(val level: Int = 0, val max: Int = 100, val muted: Boole
     val fraction: Float get() = if (max == 0) 0f else level / max.toFloat()
 }
 
-enum class SourceKind { Hdmi, DisplayPort, Tuner, Av, Other }
+enum class SourceKind { Hdmi, DisplayPort, Tuner, Av, Usb, Other }
 
 data class TvSource(
     val id: String,
@@ -289,7 +289,33 @@ object SystemProbe {
     fun sources(context: Context): List<TvSource> = frameworkSources(context)
         .ifEmpty { KonkaSources.load(context) }
         .ifEmpty { tclSources(context) }
-        .ifEmpty { whaleySources(context) }
+        .ifEmpty { whaleySources(context) } + listOfNotNull(usbSource(context))
+
+    /**
+     * The TV's own player for USB drives, offered as one more input: owners switch the TV on to
+     * watch what is on a drive, and look for it with the HDMI ports. Xiaomi's 高清播放器 (verified on
+     * MiTV-MFTR0) and TCL's 媒体中心 (MT5879) both list the drives plugged in on their first page.
+     */
+    private fun usbSource(context: Context): TvSource? {
+        val player = USB_PLAYERS.firstOrNull { runCatching { context.packageManager.getActivityInfo(it, 0) }.isSuccess } ?: return null
+        return TvSource(
+            id = USB_SOURCE_ID,
+            label = "USB",
+            kind = SourceKind.Usb,
+            // Whether a drive is in is not followed: the list is read once with the apps.
+            connected = false,
+            deviceName = null,
+            intent = Intent(Intent.ACTION_MAIN).setComponent(player)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED),
+        )
+    }
+
+    const val USB_SOURCE_ID = "usb"
+
+    private val USB_PLAYERS = listOf(
+        ComponentName("com.xiaomi.mitv.mediaexplorer", "com.xiaomi.mitv.mediaexplorer.NewScraperMainEntryActivity"),
+        ComponentName("com.tcl.ui_mediaCenter", "com.tcl.ui_mediaCenter.main.MainActivity"),
+    )
 
     private fun frameworkSources(context: Context): List<TvSource> {
         val tim = context.getSystemService<TvInputManager>() ?: return emptyList()
@@ -417,7 +443,7 @@ object SystemProbe {
             } else {
                 Intent("com.xiaomi.mitv.tvplayer.ATV_PLAY").setComponent(ComponentName(XIAOMI_PLAYER, "$XIAOMI_PLAYER.AtvActivity"))
             }
-            SourceKind.Other -> null
+            SourceKind.Usb, SourceKind.Other -> null
         }
     }
 

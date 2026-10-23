@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.heightIn
@@ -62,6 +65,7 @@ import app.orchard.tv.ui.components.Pressable
 import app.orchard.tv.ui.components.consumeTaps
 import app.orchard.tv.ui.components.dismissOnTap
 import app.orchard.tv.ui.components.liquidGlass
+import app.orchard.tv.settings.AerialSettings
 import app.orchard.tv.ui.theme.Glyph
 import app.orchard.tv.ui.theme.GlyphIcon
 import app.orchard.tv.ui.theme.Motion
@@ -111,7 +115,11 @@ fun MenuRow(
             GlyphIcon(glyph, fg, 18.dp)
             BasicText(text, style = Type.Body.copy(color = fg), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             if (trailing != null) {
-                BasicText(trailing, style = Type.Callout.copy(color = if (state.focused) Palette.OnFocus.copy(alpha = 0.6f) else Palette.SecondaryLabel))
+                BasicText(
+                    trailing,
+                    style = Type.Callout.copy(color = if (state.focused) Palette.OnFocus.copy(alpha = 0.6f) else Palette.SecondaryLabel),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp),
+                )
             }
         }
     }
@@ -137,6 +145,8 @@ fun AppMenu(
     onUninstall: (String) -> Unit,
     onUnpin: (String) -> Unit,
     onResetIcon: (String) -> Unit,
+    /** Opens [AppEntry.key] when the TV is switched on, or stops opening it. */
+    onBootTarget: (String) -> Unit,
     /** What is plugged into a pinned input, by its input id; null puts the input's own tile back. */
     onSourceDevice: (String, SourceDevice?) -> Unit,
     /** Into folder id, or a new folder when null. */
@@ -153,7 +163,7 @@ fun AppMenu(
     val density = LocalDensity.current
     val screenH = LocalWindowInfo.current.containerSize.height.toFloat()
     // Open below the tile when there is room for the whole menu, otherwise above it.
-    val below = shownAnchor.bottom + with(density) { 250.dp.toPx() } <= screenH
+    val below = shownAnchor.bottom + with(density) { 296.dp.toPx() } <= screenH
     var page by remember(shownApp.key, visible) { mutableStateOf(MenuPage.Main) }
     val folder = shownApp.folder
     val holder = folders.firstOrNull { shownApp.key in it.apps }
@@ -230,6 +240,13 @@ fun AppMenu(
                                 }
                                 MenuRow(Glyph.Info, stringResource(R.string.menu_info), { onInfo(shownApp.key) })
                             }
+                            // What the TV starts on, for homes that switch it on to watch television.
+                            val boots = shownApp.source?.let { it.id == AerialSettings.bootSource } ?: (shownApp.key == AerialSettings.bootApp)
+                            MenuRow(
+                                if (boots) Glyph.Check else Glyph.Power,
+                                stringResource(if (boots) R.string.menu_boot_off else R.string.menu_boot_on),
+                                { onBootTarget(shownApp.key) },
+                            )
                             if (shownApp.removable) {
                                 MenuRow(Glyph.Trash, stringResource(R.string.menu_uninstall), { onUninstall(shownApp.key) }, destructive = true)
                             }
@@ -368,6 +385,33 @@ fun HiddenAppsSheet(
                 }
                 }
             }
+        }
+    }
+}
+
+/**
+ * A line at the top of the screen that confirms a choice and goes away by itself (HomeViewModel
+ * .notify): glass, like the menus, falling in from the top edge.
+ */
+@Composable
+fun NoticeBanner(text: String?, modifier: Modifier = Modifier) {
+    val shown = rememberLatest(text) ?: return
+    AnimatedVisibility(
+        visible = text != null,
+        modifier = modifier,
+        enter = fadeIn(tween(200)) + slideInVertically(tween(320, easing = Motion.EaseOut)) { -it / 2 },
+        exit = fadeOut(tween(200)) + slideOutVertically(tween(240, easing = Motion.EaseOut)) { -it / 3 },
+    ) {
+        Row(
+            Modifier
+                .widthIn(max = 640.dp)
+                .liquidGlass(22.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            GlyphIcon(Glyph.Power, Palette.Label, 16.dp)
+            BasicText(shown, style = Type.Callout.copy(color = Palette.Label), maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }

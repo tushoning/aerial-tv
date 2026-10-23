@@ -16,6 +16,7 @@ import app.orchard.tv.apps.AppEntry
 import app.orchard.tv.apps.CustomIcons
 import app.orchard.tv.apps.SourceLooks
 import app.orchard.tv.apps.FOLDER_KEY_PREFIX
+import app.orchard.tv.apps.SOURCE_KEY_PREFIX
 import app.orchard.tv.apps.LayoutStore
 import app.orchard.tv.apps.TileArt
 import app.orchard.tv.apps.TileArtFactory
@@ -212,6 +213,41 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { CustomIcons.clear(key) }
             CustomIcons.changed()
+        }
+    }
+
+    /** A line at the top of Home that goes away by itself, confirming a choice made out of sight. */
+    var notice by mutableStateOf<String?>(null); private set
+    private var noticeJob: Job? = null
+
+    fun notify(text: String) {
+        notice = text
+        noticeJob?.cancel()
+        noticeJob = viewModelScope.launch {
+            delay(4000)
+            notice = null
+        }
+    }
+
+    /** What the TV opens when switched on, named as Home names it; null for nothing. */
+    fun bootTargetLabel(): String? {
+        AerialSettings.bootApp?.let { pkg -> return entry(pkg)?.label ?: hiddenApps.firstOrNull { it.key == pkg }?.label ?: pkg }
+        val id = AerialSettings.bootSource ?: return null
+        return entry(SOURCE_KEY_PREFIX + id)?.label ?: sources.firstOrNull { it.id == id }?.label
+    }
+
+    /**
+     * Opens [pkg] or the input [sourceId] when the TV is switched on, or nothing with both null,
+     * and says so: the choice is made in a menu, and what it replaced is otherwise gone unseen.
+     */
+    fun chooseBootTarget(pkg: String? = null, sourceId: String? = null) {
+        val before = bootTargetLabel()
+        if (pkg != null) AerialSettings.chooseBootApp(pkg) else AerialSettings.chooseBootSource(sourceId)
+        val after = bootTargetLabel()
+        when {
+            after == null -> before?.let { notify(context.getString(R.string.notice_boot_off, it)) }
+            before != null && before != after -> notify(context.getString(R.string.notice_boot_switch, after, before))
+            else -> notify(context.getString(R.string.notice_boot_on, after))
         }
     }
 

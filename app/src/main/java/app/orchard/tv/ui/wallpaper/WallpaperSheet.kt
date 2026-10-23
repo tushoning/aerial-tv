@@ -161,6 +161,12 @@ fun WallpaperSheet(
                             listOf(true to R.string.st_home_one_row, false to R.string.st_home_standard),
                             AerialSettings.oneRowHome, AerialSettings::chooseOneRowHome, first = true,
                         )
+                        // Two rows show the second row whole; only one row has a peek to hide.
+                        if (AerialSettings.oneRowHome) Choices(
+                            R.string.st_peek, stringResource(R.string.st_peek_hint), note,
+                            listOf(true to R.string.st_peek_show, false to R.string.st_peek_hide),
+                            AerialSettings.peekNextRow, AerialSettings::choosePeekNextRow,
+                        )
                         Choices(
                             R.string.st_plate, stringResource(R.string.st_plate_hint), note,
                             listOf(true to R.string.st_plate_glass, false to R.string.st_plate_none),

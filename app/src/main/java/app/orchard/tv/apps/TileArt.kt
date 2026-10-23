@@ -121,7 +121,7 @@ object TileArtFactory {
      * A TV input's tile, in the spirit of an app icon: a white mark over a gradient, the input's
      * name under it and [sub] (the port under a chosen name, or the HDMI-CEC device name) as a
      * second line. The connector's glyph over a color that tells the kind apart (HDMI blue, DP
-     * violet, tuner teal, AV amber), or with a [device] chosen from the tile's menu, that device's
+     * violet, tuner teal, AV amber, USB rose), or with a [device] chosen from the tile's menu, that device's
      * colours and mark. A null [label] shows the mark alone, larger: for a chosen device, whose
      * mark says what it is.
      */
@@ -131,11 +131,13 @@ object TileArtFactory {
             app.orchard.tv.system.SourceKind.DisplayPort -> 0xFF6E5BD8.toInt() to 0xFF3A2D86.toInt()
             app.orchard.tv.system.SourceKind.Tuner -> 0xFF1FA88E.toInt() to 0xFF0E5C55.toInt()
             app.orchard.tv.system.SourceKind.Av -> 0xFFE0912F.toInt() to 0xFF9A4F12.toInt()
+            app.orchard.tv.system.SourceKind.Usb -> 0xFFD8457A.toInt() to 0xFF861E47.toInt()
             app.orchard.tv.system.SourceKind.Other -> 0xFF5E6470.toInt() to 0xFF30343C.toInt()
         }
         val data = device?.mark ?: when (kind) {
             app.orchard.tv.system.SourceKind.Hdmi, app.orchard.tv.system.SourceKind.DisplayPort -> app.orchard.tv.ui.theme.GlyphPaths.HDMI
             app.orchard.tv.system.SourceKind.Tuner -> app.orchard.tv.ui.theme.GlyphPaths.ANTENNA
+            app.orchard.tv.system.SourceKind.Usb -> app.orchard.tv.ui.theme.GlyphPaths.USB
             else -> app.orchard.tv.ui.theme.GlyphPaths.COMPONENT
         }
         val path = androidx.core.graphics.PathParser.createPathFromPathData(data)

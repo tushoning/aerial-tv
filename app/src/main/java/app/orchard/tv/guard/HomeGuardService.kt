@@ -183,7 +183,7 @@ class HomeGuardService : AccessibilityService() {
 
     private fun hasBootSource(): Boolean = runCatching {
         AerialSettings.init(this)
-        AerialSettings.bootSource != null
+        AerialSettings.hasBootTarget
     }.getOrDefault(false)
 
     private fun justUpdated(): Boolean = runCatching {

@@ -55,10 +55,19 @@ object AerialSettings {
     var bootSource by mutableStateOf<String?>(null); private set
 
     /**
+     * An app to open when the TV is switched on instead of an input, by package name: a live TV
+     * app that plays the last channel. Only one of this and [bootSource] is set.
+     */
+    var bootApp by mutableStateOf<String?>(null); private set
+
+    /**
      * Only the top row on Home, low on the screen, so the wallpaper (a family photo) shows above it,
      * as tvOS does under a full-screen top shelf. The rest of the grid is one press down.
      */
     var oneRowHome by mutableStateOf(true); private set
+
+    /** In one-row mode, the top of the second row peeking under the first; off hides it until you go down. */
+    var peekNextRow by mutableStateOf(true); private set
 
     /** Interface sounds (system/Sounds), as tvOS plays them on every press. */
     var uiSounds by mutableStateOf(UiSounds.Tv); private set
@@ -72,7 +81,7 @@ object AerialSettings {
     /** The date and weather over a big clock above the top row, instead of one small line in the corner. */
     var largeClock by mutableStateOf(false); private set
 
-    /** Every app's name under its tile, not only the focused one's (issue #28). */
+    /** Every app's name under its tile, not only the focused one's (issue #28), the top row's on the glass plate too. */
     var showAllNames by mutableStateOf(false); private set
 
     /** Back on Home's top row starts the screensaver, as on tvOS; off for homes where it gets pressed by accident (issue #94). */
@@ -107,9 +116,11 @@ object AerialSettings {
         focusStyle = FocusStyle.of(prefs.getString("focus_style", null))
         pinnedSources = prefs.getStringSet("pinned_sources", null)?.toSet() ?: emptySet()
         bootSource = prefs.getString("boot_source", null)
+        bootApp = prefs.getString("boot_app", null)
         pinHash = prefs.getString("pin_hash", null)
         pinSet = pinHash != null
         oneRowHome = prefs.getBoolean("one_row_home", true)
+        peekNextRow = prefs.getBoolean("peek_next_row", true)
         clockRight = prefs.getBoolean("clock_right", false)
         largeClock = prefs.getBoolean("large_clock", false)
         homePlate = prefs.getBoolean("home_plate", true)
@@ -127,8 +138,18 @@ object AerialSettings {
 
     fun chooseBootSource(id: String?) {
         bootSource = id
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("boot_source", id) }
+        bootApp = null
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("boot_source", id).remove("boot_app") }
     }
+
+    fun chooseBootApp(pkg: String?) {
+        bootApp = pkg
+        bootSource = null
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("boot_app", pkg).remove("boot_source") }
+    }
+
+    /** Something opens when the TV is switched on. */
+    val hasBootTarget: Boolean get() = bootSource != null || bootApp != null
 
     val locked: Boolean get() = pinSet && SystemClock.elapsedRealtime() > unlockedUntil
 
@@ -154,6 +175,11 @@ object AerialSettings {
     fun chooseOneRowHome(on: Boolean) {
         oneRowHome = on
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean("one_row_home", on) }
+    }
+
+    fun choosePeekNextRow(on: Boolean) {
+        peekNextRow = on
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean("peek_next_row", on) }
     }
 
     fun chooseUiSounds(kind: UiSounds) {

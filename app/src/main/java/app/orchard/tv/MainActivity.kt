@@ -198,24 +198,29 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Opens the input the owner wants the TV to start on, if any. The list of inputs loads with
-     * the apps, so wait for it a moment. Several routes may fire for one wake; the first wins.
+     * Opens the input or app the owner wants the TV to start on, if any. Both list with the apps,
+     * so wait for them a moment. Several routes may fire for one wake; the first wins.
      */
     private fun openBootSource(reason: String) {
-        val id = AerialSettings.bootSource ?: return
+        val id = AerialSettings.bootSource
+        val pkg = AerialSettings.bootApp
+        if (id == null && pkg == null) return
         if (SystemClock.elapsedRealtime() - bootSourceOpenedAt < 15_000) return
         bootSourceOpenedAt = SystemClock.elapsedRealtime()
         lifecycleScope.launch {
             // Inputs can take a while to list right after a wake (Xiaomi MiTV-MTEQ0, issue #111).
-            val source = withTimeoutOrNull(30_000) {
-                snapshotFlow { vm.sources.firstOrNull { it.id == id } }.filterNotNull().first()
+            val intent = withTimeoutOrNull(30_000) {
+                snapshotFlow {
+                    if (id != null) vm.sources.firstOrNull { it.id == id }?.let { it.label to it.intent }
+                    else vm.entry(pkg!!)?.let { it.label to it.launchIntent() }
+                }.filterNotNull().first()
             } ?: run {
-                android.util.Log.w("Aerial", "$reason: input $id not listed; not opening it")
+                android.util.Log.w("Aerial", "$reason: ${id ?: pkg} not listed; not opening it")
                 return@launch
             }
-            android.util.Log.i("Aerial", "$reason: opening ${source.label}, the input the TV starts on")
+            android.util.Log.i("Aerial", "$reason: opening ${intent.first}, what the TV starts on")
             openedAppSinceHome = true
-            open(source.intent)
+            open(intent.second)
         }
     }
 

@@ -226,6 +226,15 @@ private fun MainPage(vm: HomeViewModel, now: LocalDateTime, takeFocus: Boolean, 
             stringResource(R.string.cc_personalize),
             onClick = { vm.overlay = Overlay.Wallpaper },
         )
+        // What the TV opens when switched on: easy to forget, and puzzling when it happens.
+        vm.bootTargetLabel()?.let { name ->
+            MenuRow(
+                Glyph.Power,
+                stringResource(R.string.cc_boot),
+                onClick = { vm.overlay = Overlay.ControlCenter(CcPage.InputSettings) },
+                trailing = "$name ›",
+            )
+        }
         Updates.available?.let { latest ->
             MenuRow(
                 Glyph.Info,
@@ -521,6 +530,7 @@ private fun InputsPage(vm: HomeViewModel, takeFocus: Boolean, onOpen: (android.c
                     SourceKind.Hdmi, SourceKind.DisplayPort -> Glyph.Hdmi
                     SourceKind.Tuner -> Glyph.Antenna
                     SourceKind.Av -> Glyph.Av
+                    SourceKind.Usb -> Glyph.Usb
                     SourceKind.Other -> Glyph.Input
                 },
                 text = source.label,
@@ -576,16 +586,25 @@ private fun InputSettingsPage(vm: HomeViewModel, takeFocus: Boolean) {
         BasicText(stringResource(R.string.cc_inputs_boot), style = Type.Callout, modifier = Modifier.padding(start = 14.dp, bottom = 6.dp))
         ChoiceRow(
             text = stringResource(R.string.cc_inputs_boot_none),
-            selected = vm.sources.none { it.id == AerialSettings.bootSource },
+            selected = !AerialSettings.hasBootTarget,
             focusRequester = null,
-            onClick = { AerialSettings.chooseBootSource(null) },
+            onClick = { vm.chooseBootTarget() },
         )
+        // An app is chosen from its tile's menu; here it only shows, and "nothing" clears it.
+        AerialSettings.bootApp?.let { pkg ->
+            ChoiceRow(
+                text = vm.entry(pkg)?.label ?: pkg,
+                selected = true,
+                focusRequester = null,
+                onClick = {},
+            )
+        }
         vm.sources.forEach { source ->
             ChoiceRow(
                 text = name(source),
                 selected = source.id == AerialSettings.bootSource,
                 focusRequester = null,
-                onClick = { AerialSettings.chooseBootSource(source.id) },
+                onClick = { vm.chooseBootTarget(sourceId = source.id) },
             )
         }
         BasicText(

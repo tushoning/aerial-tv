@@ -125,7 +125,7 @@
     <string name="st_names">App 名称</string>
     <string name="st_names_focused">只显示选中的</string>
     <string name="st_names_all">全部显示</string>
-    <string name="st_names_hint">每个 App 下面都显示名称，或者像 Apple TV 一样只显示选中的。</string>
+    <string name="st_names_hint">每个 App 下面都显示名称，或者像 Apple TV 一样只显示选中的。全部显示时，第一排的名称也显示在玻璃底板里。</string>
     <string name="ss_kind">类型</string>
     <string name="wp_weather_city">位置</string>
     <string name="st_home_standard">双排</string>
@@ -154,7 +154,7 @@
     <string name="cc_inputs_pin">显示在主屏幕（可多选）</string>
     <string name="cc_inputs_boot">开机时打开（选一个）</string>
     <string name="cc_inputs_boot_none">不打开，停在 Aerial</string>
-    <string name="cc_inputs_boot_hint">电视开机或从待机唤醒时，直接切到这个信号源。按主页键仍会回到 Aerial。</string>
+    <string name="cc_inputs_boot_hint">电视开机或从待机唤醒时，直接切到这个信号源。按主页键仍会回到 Aerial。想开机直接打开某个 App（比如直播 App），在主屏幕上长按它，选「开机时打开」。</string>
     <string name="cc_inputs_pin_hint">选中的信号源会作为磁贴出现在主屏幕最前面，按一下直接切换过去。长按磁贴可以移动或移除。</string>
     <string name="menu_unpin_source">从主屏幕移除</string>
     <string name="menu_source_device">接入的设备</string>
@@ -200,4 +200,14 @@
     <string name="weather_snow">雪</string>
     <string name="weather_thunder">雷雨</string>
     <string name="weather_high_low">最高 %1$d°  最低 %2$d°</string>
+    <string name="st_peek">第二排</string>
+    <string name="st_peek_show">露出一点</string>
+    <string name="st_peek_hide">不露出</string>
+    <string name="st_peek_hint">单排时，第一排下面露出第二排的上沿，提示下面还有 App。选「不露出」时，按下键才出现。</string>
+    <string name="menu_boot_on">开机时打开</string>
+    <string name="menu_boot_off">开机时不再打开</string>
+    <string name="cc_boot">开机时打开</string>
+    <string name="notice_boot_on">开机时会打开「%1$s」</string>
+    <string name="notice_boot_switch">开机时改为打开「%1$s」，不再打开「%2$s」</string>
+    <string name="notice_boot_off">开机时不再打开「%1$s」</string>
 </resources>
