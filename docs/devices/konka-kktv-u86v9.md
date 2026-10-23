@@ -12,6 +12,18 @@
 - 实测 ADB 入口：活动启动器 → `com.konka.kkfactory.FactoryHome` → **软件调试功能 → 打开adbd**。开启后可连接网络 ADB，**adb root权限保持关闭**；不修改面板、校准、复位或升级参数。
 - 后续建议（未实现）：提供遥控器适配的活动启动器版本，支持焦点、方向键、确认和返回，减少鼠标依赖；本补丁不包含活动启动器改造。
 
+## 应用内更新
+
+2026-10-23 用官方 standard 版实测 1.40 → 1.41：控制中心「下载并安装」下载 APK，进入康佳原生安装器，确认安装后点「立即运行」可打开 Aerial。UID、首次安装时间和原有配置保留；无需卸载重装。首次侧载时的「无法运行此应用」没有在这次更新中重现。
+
+本机没有可打开的「安装未知应用」设置页，安装授权最初为默认值，1.40 因而在下载前报错。连接 ADB 后，为 Aerial 补齐这项授权即可走通上述流程（`tools/install.sh` 已包含）：
+
+```bash
+adb shell appops set app.orchard.tv REQUEST_INSTALL_PACKAGES allow
+```
+
+该授权保留供后续更新使用，安装仍需在系统安装器中确认。撤销时将 `allow` 换为 `default`，`tools/restore.sh` 也会复原。1.41 已有「授权设置页不存在时继续交给安装器」的兜底，但本机没有验证撤销授权后能否直接安装，不能据此省略授权步骤。
+
 ## HOME 与一次完整重启
 
 - HOME 解析仍为 `com.konka.livelauncher/.TrueLauncher`，设置默认桌面返回 Success 不代表接管成功。Aerial 现有 HomeGuardService 绑定后，用户确认实体 HOME 键返回 Aerial。
