@@ -128,6 +128,8 @@ Run these in PowerShell, with the adb from step 1. Everything inside `adb shell 
    ```
    If the previous value is `null` or empty, write `app.orchard.tv/app.orchard.tv.guard.HomeGuardService` alone. In PowerShell, write any `$` in the previous value as `` `$ ``.
 
+   On some firmwares the `settings` command hangs and never returns (Tencent Aurora Box 6 / Q5043: cut off after 120 s). Skip this item there and check `adb shell dumpsys accessibility` for Aerial under `Enabled services` instead: once granted, Aerial turns Home Guard on itself.
+
 ### TCL (when adb can't install)
 
 TCL installs only through the TV's own 多屏互动 (screen sharing) service, and only the guard build. The macOS / Linux one-liner does this by itself. On Windows it needs Python 3 (`python --version`; if missing, ask the user to install Python first):

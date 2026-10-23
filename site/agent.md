@@ -129,6 +129,8 @@ curl -fsSL https://aerial.qust.me/install.sh | KEEP_ADB=1 TV=<IP> bash
    ```
    原来的值是 `null` 或空时，只写 `app.orchard.tv/app.orchard.tv.guard.HomeGuardService`。在 PowerShell 里，原来的值中如果有 `$`，要写成 `` `$ ``。
 
+   有的固件上 `settings` 命令会卡住不返回（腾讯极光盒子 6 / Q5043，等 120 秒后断开）：那就跳过这一步，改用 `adb shell dumpsys accessibility` 看 `Enabled services` 里有没有 Aerial，Aerial 拿到授权后会自己打开守护。
+
 ### TCL 安装（adb 装不上时）
 
 TCL 只能通过电视自带的「多屏互动」安装，要用 guard 版。macOS / Linux 的一行命令会自动处理，Windows 上需要 Python 3（`python --version`；没有就让用户先装 Python）：

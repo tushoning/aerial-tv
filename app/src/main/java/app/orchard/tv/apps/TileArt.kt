@@ -65,7 +65,9 @@ enum class SystemTile(top: Long, bottom: Long, val glyph: Glyph) {
     Security(0xFF3ED97A, 0xFF138A47, Glyph.Shield),
     Browser(0xFF64D2FF, 0xFF0A7BEA, Glyph.Globe),
     /** The TV's own launcher, where it has no entry of its own (AppCatalog.stockLaunchers). */
-    Home(0xFF7D7AFF, 0xFF3634A3, Glyph.Home);
+    Home(0xFF7D7AFF, 0xFF3634A3, Glyph.Home),
+    /** The stock launcher's children's mode (AppCatalog.shortcuts). */
+    Kids(0xFFFF8FB1, 0xFFE0457B, Glyph.Kids);
 
     val top = top.toInt()
     val bottom = bottom.toInt()

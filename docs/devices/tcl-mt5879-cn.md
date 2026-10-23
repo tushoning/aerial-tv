@@ -68,6 +68,7 @@ TCL 手机 App 有一个「把手机里的 APK 推到电视」的功能。电视
 ## HOME 与守护
 
 - 和小米一样，靠桌面守护接管。待机唤醒后会自动回到 Aerial（实测）。
+- 同样是 cyberui、多屏互动装 guard 版的 TCL tc8000_ay30a2（Amlogic，Android 11）：守护运行时，遥控器关机后再也唤不醒，只能拔电；关掉守护就正常（#371，报告人做了对照实验）。怀疑是守护的按键过滤让唤醒的电源键经过了 Aerial 的进程。1.41 起屏幕关闭时不过滤按键，亮屏后再开，等报告人复测。
 - **升级 App 后，守护服务处于「已启用但没绑定」状态**。`GuardSetup.rebindIfStalled` 会先移除、1.5 秒后再加回，触发重新绑定（两次写入挨得太近会被系统合并，不起作用）。
 - TCL 自己有两个无障碍服务（`com.tcl.walleve`，「小T助手」），改 `enabled_accessibility_services` 时一定要保留。
 - 待机时网络 ADB 会断，但 adbd 不会被关；唤醒后能直接重连。
@@ -80,7 +81,8 @@ TCL 手机 App 有一个「把手机里的 APK 推到电视」的功能。电视
 
 ## 音量与亮度
 
-- 音量：App 调用 `adjustStreamVolume` 只会改 Android 记录的数值（`system volume_music_speaker`），不会写入功放。真正写硬件的是 SystemUI 里的 `tsdkNative.setVolumeForDevice`，而它只在显示音量条时才执行。所以 Aerial 在 TCL 上调音量要带 `AudioManager.FLAG_SHOW_UI`（会同时弹出 TCL 的音量条）。
+- 音量：写功放的是 SystemUI 里的 `tsdkNative.setVolumeForDevice`。1.40 以前以为它只在显示音量条时才执行，所以控制中心的滑块带 `AudioManager.FLAG_SHOW_UI`，TCL 的音量条会同时弹出来（#288）。2026-10-23 在这台电视上复测：不带这个标志调音量，SystemUI 照样调用 `setVolumeForDevice`（`value = 27`，`ret=0`），也不弹音量条；TCL 75V2（m7221）的报告人测的也一样。1.41 起控制中心的滑块不带标志，只有守护代替按住的音量键连续调时还带（和按键本身一样弹 TCL 的音量条）。
+- 亮度：TCL 的画质 SDK `com.tcl.tvmanager.TTvPictureManager` 在这台电视的 boot classpath 里（`/product/framework/com.tcl.tvmanager.jar`），但 `getGraphicBacklight()` 在屏幕亮着时返回 0，不是真正的背光，所以这台电视仍然打开 TCL 的图像面板。75V2 上它返回实际值，1.41 起那里控制中心有亮度滑块（#363）。
 - 亮度：标准的 `screen_brightness` 被忽略，背光走 TCL 私有的 `tvos.tv.picture.TPictureManager` / `com.tcl.tv.pq.TvBacklightManager`。控制中心的「亮度」改为打开 TCL 的侧边设置面板：`startService(Intent("com.tcl.settings.SHOW_WINDOW").setPackage("com.tcl.settings"))`，打开后默认就在「图像」页，第一项是亮度。
 
 ## 信号源

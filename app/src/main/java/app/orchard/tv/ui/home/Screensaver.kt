@@ -210,7 +210,10 @@ private fun Labels(caption: String?, now: LocalDateTime, showTime: Boolean = tru
         if (time > 0f) BasicText(
             timeText(now),
             style = SaverClockStyle,
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = SaverClockTop, end = SaverClockEnd).graphicsLayer { alpha = time },
+            modifier = Modifier
+                .align(if (AerialSettings.clockRight) Alignment.TopEnd else Alignment.TopStart)
+                .padding(top = SaverClockTop, start = SaverClockSide, end = SaverClockSide)
+                .graphicsLayer { alpha = time },
         )
         AnimatedContent(
             targetState = caption.orEmpty(),
@@ -227,10 +230,14 @@ private fun Labels(caption: String?, now: LocalDateTime, showTime: Boolean = tru
     }
 }
 
-/** The screensaver's time, top right; Home's clock moves here when the screensaver carries on its film. */
+/**
+ * The screensaver's time, top left or right as Home's clock is (Personalize): Home's clock moves
+ * here when the screensaver carries on its film, and from the left it crossed the whole screen to
+ * the right, a long slide for a moment that should be quiet (issue #357).
+ */
 internal val SaverClockStyle = Type.LargeTitle.copy(fontSize = Type.LargeTitle.fontSize * 1.3f, color = Color.White.copy(alpha = 0.92f))
 internal val SaverClockTop = 40.dp
-internal val SaverClockEnd = 56.dp
+internal val SaverClockSide = 56.dp
 
 /**
  * Before Android 7.0 network_security_config is ignored, so Apple Root CA is never trusted and

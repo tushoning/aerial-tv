@@ -158,9 +158,14 @@ object Updates {
             // Xiaomi MiTV-MFTR0 has this page; TCL MT5879 does not (tools/install.sh grants it there).
             val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}"))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            install = if (runCatching { context.startActivity(settings) }.isSuccess) Install.NeedsPermission
-            else Install.Failed(Failure.Blocked)
-            return
+            if (runCatching { context.startActivity(settings) }.isSuccess) {
+                install = Install.NeedsPermission
+                return
+            }
+            // No page to allow it on (Xiaomi MiTV-MFTP0, Android 9, has only Xiaomi's own settings:
+            // "this TV does not let apps install apps", issue #284). Firmware installers often let
+            // it through or ask themselves, so the download goes ahead and the installer decides.
+            Log.i(TAG, "not allowed to install and no page to allow it on; trying the installer anyway")
         }
         install = Install.Downloading(0f)
         scope.launch {

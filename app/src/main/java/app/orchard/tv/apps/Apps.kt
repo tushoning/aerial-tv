@@ -28,10 +28,12 @@ data class AppEntry(
     val source: TvSource? = null,
     /** Set for a folder's tile; [packageName] is then the folder's key. */
     val folder: Folder? = null,
+    /** Set for a place inside a firmware app (AppCatalog.shortcuts); [packageName] is then its key. */
+    val shortcut: Intent? = null,
 ) {
     val key: String get() = packageName
 
-    fun launchIntent(): Intent = source?.let { Intent(it.intent) } ?: Intent(Intent.ACTION_MAIN)
+    fun launchIntent(): Intent = source?.let { Intent(it.intent) } ?: shortcut?.let { Intent(it) } ?: Intent(Intent.ACTION_MAIN)
         .addCategory(if (leanback) Intent.CATEGORY_LEANBACK_LAUNCHER else Intent.CATEGORY_LAUNCHER)
         .setComponent(component)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
@@ -184,11 +186,37 @@ object AppCatalog {
                 val home = info.packageName in stockHomes
                 async { runCatching { entry(pm, info, leanback, byCategory, home) }.getOrNull()?.let { if (home) it.copy(label = homeLabel) else it } }
             }.awaitAll().filterNotNull()
-        }.also {
+        }.plus(shortcuts(context, pm)).also {
             loaded = it
             TileDiskCache.keepOnly(it.mapTo(HashSet()) { app -> app.packageName })
         }
     }
+
+    /**
+     * Places inside firmware apps worth a tile of their own. Xiaomi's children's mode lives in
+     * PatchWall, which owners otherwise never open: it is where the children's channel is, and the
+     * reason to go back to PatchWall at all in a home with Aerial (issue #332). Started directly
+     * (KidsHomeActivity on MiTV-MFTR0), it is not PatchWall's home screen, so Home Guard leaves it
+     * in front; Home comes back to Aerial.
+     */
+    private fun shortcuts(context: Context, pm: PackageManager): List<AppEntry> {
+        val kids = Intent("android.intent.action.ENTER_KIDS_MODE").setPackage("com.mitv.tvhome")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val info = runCatching { pm.resolveActivity(kids, 0)?.activityInfo }.getOrNull()?.takeIf { it.exported } ?: return emptyList()
+        return listOf(
+            AppEntry(
+                packageName = KIDS_KEY,
+                label = context.getString(R.string.tile_kids),
+                component = ComponentName(info.packageName, info.name),
+                leanback = false,
+                removable = false,
+                art = TileArtFactory.forSystem(SystemTile.Kids),
+                shortcut = kids,
+            ),
+        )
+    }
+
+    private const val KIDS_KEY = "shortcut:kids"
 
     /**
      * The TV's own launcher, which some firmwares declare only as a Home: TCL's com.tcl.cyberui

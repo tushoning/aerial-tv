@@ -11,6 +11,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -35,11 +36,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.orchard.tv.R
 import app.orchard.tv.settings.AerialSettings
@@ -59,7 +63,8 @@ private const val PIN_LENGTH = 4
 
 /**
  * The parental PIN (issue #10): four digits, from the remote's number keys or the keypad on screen
- * (most remotes here have no number keys). [PinMode.Create] asks twice and stores it.
+ * (most remotes here have no number keys), or four arrow keys (AerialSettings.pinArrows).
+ * [PinMode.Create] asks which kind, then asks twice and stores it.
  */
 @Composable
 fun PinPad(visible: Boolean, mode: PinMode?, onDone: () -> Unit, onCancel: () -> Unit) {
@@ -83,10 +88,20 @@ private fun PinPanel(mode: PinMode, onDone: () -> Unit, onCancel: () -> Unit) {
     var entered by remember { mutableStateOf("") }
     var first by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<Int?>(null) }
+    // Null while a new PIN's kind is still to be chosen.
+    var arrows by remember { mutableStateOf(if (mode == PinMode.Unlock) AerialSettings.pinArrows else null) }
     val one = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
+    val choice = remember { FocusRequester() }
+    val pad = remember { FocusRequester() }
+    LaunchedEffect(arrows) {
         withFrameNanos { }
-        runCatching { one.requestFocus() }
+        runCatching {
+            when (arrows) {
+                null -> choice.requestFocus()
+                true -> pad.requestFocus()
+                false -> one.requestFocus()
+            }
+        }
     }
 
     fun complete(pin: String) {
@@ -94,7 +109,7 @@ private fun PinPanel(mode: PinMode, onDone: () -> Unit, onCancel: () -> Unit) {
             PinMode.Unlock -> if (AerialSettings.unlock(pin)) onDone() else error = R.string.pin_wrong
             PinMode.Create -> when (val earlier = first) {
                 null -> { first = pin; error = null }
-                pin -> { AerialSettings.choosePin(pin); onDone() }
+                pin -> { AerialSettings.choosePin(pin, arrows = arrows == true); onDone() }
                 else -> { first = null; error = R.string.pin_mismatch }
             }
         }
@@ -114,6 +129,12 @@ private fun PinPanel(mode: PinMode, onDone: () -> Unit, onCancel: () -> Unit) {
         first == null -> R.string.pin_create
         else -> R.string.pin_confirm
     }
+    val hint = when {
+        arrows == null -> R.string.pin_kind_hint
+        arrows == true -> if (mode == PinMode.Create) R.string.pin_arrows_create_hint else R.string.pin_arrows_hint
+        mode == PinMode.Create -> R.string.pin_create_hint
+        else -> R.string.pin_enter_hint
+    }
 
     Box(
         Modifier
@@ -121,8 +142,16 @@ private fun PinPanel(mode: PinMode, onDone: () -> Unit, onCancel: () -> Unit) {
             .dismissOnTap(onCancel)
             .background(Color.Black.copy(alpha = 0.45f))
             .onPreviewKeyEvent { e ->
-                if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 val code = e.nativeKeyEvent.keyCode
+                if (arrows == true) {
+                    // Every arrow is an entry, never a move; OK does nothing. Ups go too, so no
+                    // control below sees a key it did not see go down.
+                    val symbol = ARROWS[code]
+                    if (symbol == null && code != NativeKeyEvent.KEYCODE_DPAD_CENTER && code != NativeKeyEvent.KEYCODE_ENTER) return@onPreviewKeyEvent false
+                    if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0 && symbol != null) type(symbol)
+                    return@onPreviewKeyEvent true
+                }
+                if (e.type != KeyEventType.KeyDown || arrows == null) return@onPreviewKeyEvent false
                 when (code) {
                     in NativeKeyEvent.KEYCODE_0..NativeKeyEvent.KEYCODE_9 -> { type('0' + (code - NativeKeyEvent.KEYCODE_0)); true }
                     NativeKeyEvent.KEYCODE_DEL -> { erase(); true }
@@ -141,11 +170,28 @@ private fun PinPanel(mode: PinMode, onDone: () -> Unit, onCancel: () -> Unit) {
             BasicText(stringResource(title), style = Type.Title)
             Spacer(Modifier.height(6.dp))
             BasicText(
-                stringResource(error ?: if (mode == PinMode.Create) R.string.pin_create_hint else R.string.pin_enter_hint),
-                style = Type.Caption.copy(color = if (error != null) Palette.Red else Palette.SecondaryLabel),
+                stringResource(error ?: hint),
+                style = Type.Caption.copy(color = if (error != null) Palette.Red else Palette.SecondaryLabel, textAlign = TextAlign.Center),
+                modifier = Modifier.widthIn(max = 340.dp),
             )
+            if (arrows == null) {
+                Spacer(Modifier.height(22.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PinKey(onClick = { arrows = false }, focusRequester = choice, width = 150.dp) { fg ->
+                        BasicText(stringResource(R.string.pin_kind_digits), style = Type.Headline.copy(color = fg))
+                    }
+                    PinKey(onClick = { arrows = true }, width = 150.dp) { fg ->
+                        BasicText(stringResource(R.string.pin_kind_arrows), style = Type.Headline.copy(color = fg))
+                    }
+                }
+                return@Column
+            }
             Spacer(Modifier.height(18.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // Focus sits on the dots while arrows are typed, so the keys reach the panel.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = if (arrows == true) Modifier.focusRequester(pad).focusable() else Modifier,
+            ) {
                 repeat(PIN_LENGTH) { i ->
                     Box(
                         Modifier.size(14.dp).clip(CircleShape)
@@ -154,6 +200,7 @@ private fun PinPanel(mode: PinMode, onDone: () -> Unit, onCancel: () -> Unit) {
                     )
                 }
             }
+            if (arrows == true) return@Column
             Spacer(Modifier.height(22.dp))
             val keys = listOf("123", "456", "789", " 0<")
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -175,11 +222,19 @@ private fun PinPanel(mode: PinMode, onDone: () -> Unit, onCancel: () -> Unit) {
     }
 }
 
+/** How an arrow key is kept in an arrow PIN. */
+private val ARROWS = mapOf(
+    NativeKeyEvent.KEYCODE_DPAD_UP to 'U',
+    NativeKeyEvent.KEYCODE_DPAD_DOWN to 'D',
+    NativeKeyEvent.KEYCODE_DPAD_LEFT to 'L',
+    NativeKeyEvent.KEYCODE_DPAD_RIGHT to 'R',
+)
+
 @Composable
-private fun PinKey(onClick: () -> Unit, focusRequester: FocusRequester? = null, content: @Composable (Color) -> Unit) {
+private fun PinKey(onClick: () -> Unit, focusRequester: FocusRequester? = null, width: Dp = 64.dp, content: @Composable (Color) -> Unit) {
     Pressable(onClick = onClick, focusRequester = focusRequester, focusedScale = 1.08f) { state ->
         val bg by animateColorAsState(if (state.focused) Palette.Focus else Palette.Fill, tween(140, easing = Motion.EaseOut), label = "pin-key")
-        Box(Modifier.size(64.dp, 48.dp).clip(RoundedCornerShape(12.dp)).background(bg), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(width, 48.dp).clip(RoundedCornerShape(12.dp)).background(bg), contentAlignment = Alignment.Center) {
             content(if (state.focused) Palette.OnFocus else Palette.Label)
         }
     }

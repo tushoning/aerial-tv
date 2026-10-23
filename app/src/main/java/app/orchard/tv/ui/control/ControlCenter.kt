@@ -219,7 +219,7 @@ private fun MainPage(vm: HomeViewModel, now: LocalDateTime, takeFocus: Boolean, 
                 stringResource(R.string.cc_network),
             ) {
                 vm.whenUnlocked {
-                    val pages = SystemProbe.networkSettingsIntents(context)
+                    val pages = SystemProbe.networkSettingsIntents(context, ethernet = vm.network.kind == NetKind.Ethernet)
                     LaunchFallback.arm(pages.drop(1))
                     onOpen(pages.first())
                 }

@@ -88,28 +88,25 @@ object SystemProbe {
     private var legacyMuted = false
 
     /**
-     * TCL's firmware only pushes a volume change to the amplifier from its own volume UI, which
-     * the system shows only for FLAG_SHOW_UI; without it the number changes and the sound does not.
-     * Not on TCL's m7221 (75V2, Android 8): there the amplifier follows either way and the flag only
-     * puts TCL's volume bar over Control Center's slider (issue #288, measured by the reporter).
+     * Control Center's slider asks for no volume UI: it is its own, and with FLAG_SHOW_UI TCL's
+     * volume bar came up beside it (issue #288). TCL's SystemUI writes the amplifier on every
+     * volume change, shown or not: tsdkNative.setVolumeForDevice ran for a change without the flag
+     * on MT5879 (Android 11, 1.41), as on the reporter's m7221 (Android 8). Up to 1.40 the flag was
+     * there for MT5879, where it had seemed that only a shown bar reached the amplifier.
+     * [fromKey]: the guard repeating a held volume key (HomeGuardService.takeVolumeKey), which
+     * shows TCL's bar as the key itself does.
      */
-    private fun volumeFlags(context: Context) =
-        if (isInstalled(context, "com.tcl.settings") && boardPlatform != "m7221") AudioManager.FLAG_SHOW_UI else 0
-
-    private val boardPlatform: String by lazy {
-        runCatching {
-            Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, "ro.board.platform") as String
-        }.getOrDefault("")
-    }
+    private fun volumeFlags(context: Context, fromKey: Boolean) =
+        if (fromKey && isInstalled(context, "com.tcl.settings")) AudioManager.FLAG_SHOW_UI else 0
 
     /**
      * TCL tcl_m7642 (雷鸟 65S515D, Android 9) has adjustStreamVolume note the change in battery stats,
      * which needs a system permission: it threw and Control Center crashed at the first step (issue
      * #15). Setting the level is the way left there.
      */
-    fun adjustVolume(context: Context, direction: Int) {
+    fun adjustVolume(context: Context, direction: Int, fromKey: Boolean = false) {
         val am = context.getSystemService<AudioManager>() ?: return
-        val flags = volumeFlags(context)
+        val flags = volumeFlags(context, fromKey)
         try {
             am.adjustStreamVolume(
                 AudioManager.STREAM_MUSIC,
@@ -128,7 +125,7 @@ object SystemProbe {
         val am = context.getSystemService<AudioManager>() ?: return
         if (Build.VERSION.SDK_INT >= 23) {
             // See adjustVolume: no other way to mute there.
-            runCatching { am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, volumeFlags(context)) }
+            runCatching { am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, volumeFlags(context, fromKey = false)) }
         } else {
             legacyMuted = !legacyMuted
             @Suppress("DEPRECATION")
@@ -197,14 +194,18 @@ object SystemProbe {
      * The network page and, after it, the ones to try if it closes at once. Xiaomi MiTV-ANSP0
      * (Android 9) starts MitvWifiActivity and its MitvActivityManagerService destroys it 0.2 s later,
      * while TV Settings' own network page opens fine (issue #331; MiTV-MFTP0 "flashes", #335).
-     * XGIMI's settings service first where it has one (see xgimiSettingsIntent).
+     * XGIMI's settings service first where it has one (see xgimiSettingsIntent). On a wired
+     * connection Xiaomi's Ethernet page comes first: the Wi-Fi page with Wi-Fi off is what a
+     * MiTV-MFTP0 (Android 9) viewer saw "crash" (issue #369); MiTV-MFTR0 has the page too.
      */
-    fun networkSettingsIntents(context: Context): List<Intent> =
-        listOfNotNull(xgimiSettingsIntent(context, XGIMI_NETWORK_PAGE)) + networkSettingsActivityIntents(context)
+    fun networkSettingsIntents(context: Context, ethernet: Boolean = false): List<Intent> =
+        listOfNotNull(xgimiSettingsIntent(context, XGIMI_NETWORK_PAGE)) + networkSettingsActivityIntents(context, ethernet)
 
-    private fun networkSettingsActivityIntents(context: Context): List<Intent> =
-        allResolvable(
+    private fun networkSettingsActivityIntents(context: Context, ethernet: Boolean = false): List<Intent> {
+        val wired = listOfNotNull(Intent("com.xiaomi.mitv.settings.ETHERNET_SETTINGS").setPackage("com.xiaomi.mitv.settings").takeIf { ethernet })
+        return allResolvable(
             context,
+            *wired.toTypedArray(),
             Intent("com.xiaomi.mitv.settings.WIFI_SETTINGS").setComponent(ComponentName("com.xiaomi.mitv.settings", "com.xiaomi.mitv.settings.wifi.MitvWifiActivity")),
             Intent(Intent.ACTION_MAIN).setComponent(ComponentName("com.android.tv.settings", "com.android.tv.settings.connectivity.NetworkActivity")),
             Intent(Settings.ACTION_WIFI_SETTINGS),
@@ -216,6 +217,7 @@ object SystemProbe {
             Intent(Intent.ACTION_MAIN).setComponent(ComponentName("com.tcl.settings", "com.tcl.settings.ui.MainActivity")),
             WHALEY_SETTINGS,
         )
+    }
 
     private val XGIMI_SETTINGS = ComponentName("com.android.newsettings", "com.xgimi.newsettings.SettingService")
     private const val XGIMI_NETWORK_PAGE = "Settings://com.xgimi.settings.net/wifi_misckey"
@@ -397,10 +399,14 @@ object SystemProbe {
                 }
                 val label = runCatching { info.loadLabel(context).toString() }.getOrNull()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val state = runCatching { tim.getInputState(info.id) }.getOrDefault(TvInputManager.INPUT_STATE_DISCONNECTED)
+                // CEC devices register as child inputs of the port they are plugged into. Opening
+                // the device's input rather than the port's has the TV select the device over CEC,
+                // which wakes it from standby as picking it in the TV's own list does; the port's
+                // only switches the picture (Sony BRAVIA XR90 with an Apple TV and a PS5, issue #259).
+                val cec = infos.firstOrNull { it.parentId == info.id }
                 val intent = (if (xiaomi) xiaomiRoute(info, kind, label, profile) else null)
-                    ?: genericRoute(info, kind)
-                // CEC devices register as child inputs of the port they are plugged into.
-                val device = infos.firstOrNull { it.parentId == info.id }
+                    ?: genericRoute(cec ?: info, kind)
+                val device = cec
                     ?.let { runCatching { it.loadLabel(context).toString() }.getOrNull() }
                     ?.takeIf { it.isNotBlank() && !GENERIC_CEC_NAME.matches(it) }
                 TvSource(

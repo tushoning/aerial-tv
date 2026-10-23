@@ -1,5 +1,6 @@
 package app.orchard.tv.ui.wallpaper
 
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -215,6 +216,12 @@ fun WallpaperSheet(
                             note,
                             listOf(UiSounds.Tv to R.string.st_sounds_tv, UiSounds.Aerial to R.string.st_sounds_aerial, UiSounds.Off to R.string.st_off),
                             AerialSettings.uiSounds, { AerialSettings.chooseUiSounds(it); Sounds.prepare() },
+                        )
+                        // Only Android 12 and later can blur live; the others have the frost only.
+                        if (Build.VERSION.SDK_INT >= 31) Choices(
+                            R.string.st_blur, stringResource(R.string.st_blur_hint), note,
+                            listOf(false to R.string.st_blur_frost, true to R.string.st_blur_live),
+                            AerialSettings.liveBlur, AerialSettings::chooseLiveBlur,
                         )
                     }
 

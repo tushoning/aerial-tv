@@ -415,7 +415,9 @@ private const val DECODE_TIMEOUT_MS = 10_000L
 
 /**
  * Why a copied frame is not the film, or null if it looks like one: black; one flat colour; or
- * green, which is what video with its colour planes left at zero reads as (red and blue clip to 0).
+ * green, which is what video with its colour planes left at zero reads as: red and blue clip to 0,
+ * except that red comes back in the brightest parts (Y above 180), which a test for red under 12
+ * missed on bright films. Leaves and grass stay well short of 60 between green and the others.
  */
 private fun unreadable(b: Bitmap): String? {
     var lit = 0
@@ -428,7 +430,7 @@ private fun unreadable(b: Bitmap): String? {
         val g = c shr 8 and 0xFF
         val bl = c and 0xFF
         if (r + g + bl > 24) lit++
-        if (r < 12 && bl < 12 && g > 32) green++
+        if (r < 48 && bl < 24 && g > r + 60 && g > bl + 60) green++
         val luma = (r * 3 + g * 6 + bl) / 10
         lo = minOf(lo, luma)
         hi = maxOf(hi, luma)

@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
  *   ... --ez own_screensaver true   (keep Aerial as the system screensaver; see GuardSetup)
  *   ... --ez clear_pin true         (turn the parental PIN off, for an owner who forgot it)
  *   ... --ez large_clock true --ez clock_right false --ez one_row_home true
+ *       --ez peek_next_row false --ez home_plate true --ez show_all_names false
  *                                   (Home's layout, as in Personalize; for screenshots of each)
  *   ... --ez check_update true      (look for a new version now, not within three hours)
  *   ... --ez update_test true       ("Download and Install" takes files/update-test.apk instead,
@@ -39,11 +40,17 @@ class ConfigReceiver : BroadcastReceiver() {
             AerialSettings.init(context)
             AerialSettings.choosePin(null)
         }
-        if (intent.hasExtra("large_clock") || intent.hasExtra("clock_right") || intent.hasExtra("one_row_home")) {
+        val layout = mapOf<String, (Boolean) -> Unit>(
+            "large_clock" to AerialSettings::chooseLargeClock,
+            "clock_right" to AerialSettings::chooseClockRight,
+            "one_row_home" to AerialSettings::chooseOneRowHome,
+            "peek_next_row" to AerialSettings::choosePeekNextRow,
+            "home_plate" to AerialSettings::chooseHomePlate,
+            "show_all_names" to AerialSettings::chooseShowAllNames,
+        ).filterKeys { intent.hasExtra(it) }
+        if (layout.isNotEmpty()) {
             AerialSettings.init(context)
-            if (intent.hasExtra("large_clock")) AerialSettings.chooseLargeClock(intent.getBooleanExtra("large_clock", false))
-            if (intent.hasExtra("clock_right")) AerialSettings.chooseClockRight(intent.getBooleanExtra("clock_right", false))
-            if (intent.hasExtra("one_row_home")) AerialSettings.chooseOneRowHome(intent.getBooleanExtra("one_row_home", false))
+            layout.forEach { (key, choose) -> choose(intent.getBooleanExtra(key, false)) }
         }
         // ... --ez diag true / --ez mode_switch false / --ez soft_layer true   (see DiagLog;
         //                                 the last two apply the next time Home starts)

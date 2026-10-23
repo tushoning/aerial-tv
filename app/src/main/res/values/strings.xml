@@ -141,6 +141,10 @@
     <string name="st_plate_none">None</string>
     <string name="st_sounds">Sounds</string>
     <string name="st_sounds_hint">A sound as focus moves, and on select and Back, as on Apple TV.</string>
+    <string name="st_blur">Behind Panels</string>
+    <string name="st_blur_hint">How Home looks behind Control Center and folders. Live blur looks most like Apple TV, but slows older TVs.</string>
+    <string name="st_blur_frost">Frosted</string>
+    <string name="st_blur_live">Live Blur</string>
     <string name="st_sounds_tv_hint">The TV\'s own key sounds, as in its menus. Silent if key sounds are off in the TV\'s settings: choose Aerial then.</string>
     <string name="st_sounds_tv">TV</string>
     <string name="st_sounds_aerial">Aerial</string>
@@ -196,6 +200,11 @@
     <string name="pin_confirm">Enter It Again</string>
     <string name="pin_wrong">Wrong PIN. Try again.</string>
     <string name="pin_mismatch">The two PINs differ. Choose one again.</string>
+    <string name="pin_kind_hint">Digits come from the number keys or the keypad. Arrows are four presses of the arrow keys, and a child watching sees nothing to copy.</string>
+    <string name="pin_kind_digits">Four Digits</string>
+    <string name="pin_kind_arrows">Four Arrows</string>
+    <string name="pin_arrows_hint">Press the arrow keys four times: up, down, left or right.</string>
+    <string name="pin_arrows_create_hint">Press the arrow keys four times. Keep the order somewhere safe: if it is forgotten, only a computer over ADB can clear it.</string>
     <string name="weather_clear">Clear</string>
     <string name="weather_partly_cloudy">Partly Cloudy</string>
     <string name="weather_cloudy">Cloudy</string>
@@ -215,4 +224,5 @@
     <string name="notice_boot_switch">%1$s will open when the TV turns on, instead of %2$s</string>
     <string name="notice_boot_off">%1$s will no longer open when the TV turns on</string>
     <string name="tile_stock_home">TV Home</string>
+    <string name="tile_kids">Kids</string>
 </resources>

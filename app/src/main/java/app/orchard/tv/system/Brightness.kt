@@ -12,7 +12,8 @@ import androidx.core.content.ContextCompat
  *
  * - Xiaomi (MediaTek, China firmware): Settings.Global "picture_backlight", 0–100, applied by the
  *   firmware's TV menu service as soon as it changes. Writing it needs WRITE_SECURE_SETTINGS.
- * - TCL: its own TV service only; Control Center opens TCL's picture panel.
+ * - TCL: TTvPictureManager in TCL's framework (see TclPicture); where it is missing, Control
+ *   Center opens TCL's picture panel.
  * - Sony BRAVIA: the screen brightness setting changes but the backlight does not (no backlight in
  *   the display config); Control Center opens Sony's picture settings, which DISPLAY_SETTINGS
  *   resolves to. Reported on a BRAVIA VH1, Android 12 (GitHub issue #2).
@@ -49,6 +50,7 @@ object Brightness {
     /** Current level as 0..1, or null when Aerial cannot change it on this TV. */
     fun level(context: Context): Float? {
         val r = context.contentResolver
+        if (isTcl(context)) TclPicture.backlight(context)?.let { return it / 100f }
         return if (usesXiaomiBacklight(context)) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return null
             Settings.Global.getInt(r, XIAOMI_BACKLIGHT, 50) / 100f
@@ -74,7 +76,9 @@ object Brightness {
         val next = (if (direction > 0) (percent / 5 + 1) * 5 else ((percent + 4) / 5 - 1) * 5).coerceIn(1, 100)
         val r = context.contentResolver
         runCatching {
-            if (usesXiaomiBacklight(context)) {
+            if (isTcl(context)) {
+                TclPicture.setBacklight(context, next)
+            } else if (usesXiaomiBacklight(context)) {
                 Settings.Global.putInt(r, XIAOMI_BACKLIGHT, next)
             } else {
                 Settings.System.putInt(r, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
@@ -82,5 +86,37 @@ object Brightness {
             }
         }
         return level(context)
+    }
+}
+
+/**
+ * TCL's picture SDK, com.tcl.tvmanager.TTvPictureManager, on the boot class path and open to any
+ * app: no permission, root or system signature (issue #363, measured on a TCL 75V2, m7221,
+ * Android 8). MT5879 (Android 11) has the class too but answers 0; see [backlight]. The graphic
+ * backlight is the one for the TV's own screen, where Control Center is; the video one
+ * (getBacklight) is for HDMI and tuner pictures, which the owner may have set apart in TCL's
+ * panel, so it is left alone. Scale 0–100, as TCL's slider. Looked up on every call, not once:
+ * just after boot the SDK may not answer yet, and a TV taken for one without it would keep no
+ * slider all day.
+ */
+private object TclPicture {
+    private fun manager(context: Context): Any? = runCatching {
+        Class.forName("com.tcl.tvmanager.TTvPictureManager")
+            .getMethod("getInstance", Context::class.java)
+            .invoke(null, context.applicationContext)
+    }.getOrNull()
+
+    fun backlight(context: Context): Int? {
+        val pm = manager(context) ?: return null
+        return runCatching { pm.javaClass.getMethod("getGraphicBacklight").invoke(pm) as Int }
+            // MT5879 (Android 11) answers 0 with the screen lit: there the graphic backlight is
+            // not what drives the panel, and a slider would start from nothing and set it to 5.
+            // A real 0 is a black screen, where nobody sees Control Center to use the slider.
+            .getOrNull()?.takeIf { it in 1..100 }
+    }
+
+    fun setBacklight(context: Context, percent: Int) {
+        val pm = manager(context) ?: return
+        pm.javaClass.getMethod("setGraphicBacklight", Int::class.javaPrimitiveType).invoke(pm, percent.coerceIn(1, 100))
     }
 }

@@ -118,12 +118,23 @@ class HomeGuardService : AccessibilityService() {
 
     private val screenOn = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            screenOff = intent.action == Intent.ACTION_SCREEN_OFF
+            updateKeyFilter()
+            if (screenOff) return
             // Firmwares put their own launcher back in front while the TV is in standby, and no
             // window change follows on wake. Look once things have settled after the screen lights.
             screenOnAt = SystemClock.elapsedRealtime()
             takeOverOnceSettled("screen on", woke = true)
         }
     }
+
+    /**
+     * In standby the guard filters no keys, so the power key that wakes the TV goes to the system
+     * alone rather than through Aerial's process, which the firmware may have frozen by then. A TCL
+     * tc8000_ay30a2 (Android 11) with the guard running never came back from standby and had to be
+     * unplugged; without the guard it woke every time (issue #371). Back on at SCREEN_ON.
+     */
+    private var screenOff = false
 
     /**
      * The Home key where keys are not filtered (see updateKeyFilter): the system closes its dialogs
@@ -159,9 +170,10 @@ class HomeGuardService : AccessibilityService() {
             registerReceiver(userUnlocked, IntentFilter(Intent.ACTION_USER_UNLOCKED))
         }
         refreshStockHomes()
+        screenOff = getSystemService<PowerManager>()?.isInteractive == false
         updateKeyFilter()
         volumeSeen = volumeNow()
-        registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON))
+        registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_SCREEN_OFF) })
         @Suppress("DEPRECATION")
         ContextCompat.registerReceiver(this, homeKey, IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS), ContextCompat.RECEIVER_NOT_EXPORTED)
         contentResolver.registerContentObserver(Settings.Global.getUriFor(Settings.Global.ADB_ENABLED), false, adbObserver)
@@ -295,7 +307,7 @@ class HomeGuardService : AccessibilityService() {
     private fun updateKeyFilter() {
         val info = serviceInfo ?: return
         val flag = AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
-        val wanted = !keysPassThrough && Build.VERSION.SDK_INT <= Build.VERSION_CODES.R
+        val wanted = !keysPassThrough && !screenOff && Build.VERSION.SDK_INT <= Build.VERSION_CODES.R
         val want = if (wanted && !isDefaultHome()) info.flags or flag else info.flags and flag.inv()
         if (want == info.flags) return
         info.flags = want
@@ -400,7 +412,7 @@ class HomeGuardService : AccessibilityService() {
     private var volumeRepeatDirection = 0
     private val volumeRepeat: Runnable = object : Runnable {
         override fun run() {
-            SystemProbe.adjustVolume(this@HomeGuardService, volumeRepeatDirection)
+            SystemProbe.adjustVolume(this@HomeGuardService, volumeRepeatDirection, fromKey = true)
             handler.postDelayed(this, ViewConfiguration.getKeyRepeatDelay().toLong())
         }
     }

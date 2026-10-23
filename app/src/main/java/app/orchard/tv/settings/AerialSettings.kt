@@ -46,6 +46,13 @@ object AerialSettings {
 
     var focusStyle by mutableStateOf(FocusStyle.HighContrast); private set
 
+    /**
+     * Home blurred live behind Control Center and folders (Android 12+), rather than the frosted
+     * wallpaper fading over it. The live blur redoes a full-screen blur on every frame anything
+     * under it moves: 20–77 ms of GPU a frame on Xiaomi MiTV-MFTR0, about 15 fps (issue #354).
+     */
+    var liveBlur by mutableStateOf(false); private set
+
     /** TV inputs pinned to Home as tiles, by TvInputInfo id. */
     var pinnedSources by mutableStateOf<Set<String>>(emptySet()); private set
 
@@ -93,6 +100,12 @@ object AerialSettings {
      * Kept as a SHA-256 hash. One right entry holds for a while, until Home is pressed.
      */
     var pinSet by mutableStateOf(false); private set
+
+    /**
+     * The PIN is four presses of the arrow keys rather than four digits: quicker on a remote with
+     * no number keys, and a child watching sees nothing on screen to copy (issue #368).
+     */
+    var pinArrows by mutableStateOf(false); private set
     private var pinHash: String? = null
     private var unlockedUntil = 0L
     private const val UNLOCK_MS = 10 * 60 * 1000L
@@ -118,11 +131,13 @@ object AerialSettings {
         app = context.applicationContext
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         focusStyle = FocusStyle.of(prefs.getString("focus_style", null))
+        liveBlur = prefs.getBoolean("live_blur", false)
         pinnedSources = prefs.getStringSet("pinned_sources", null)?.toSet() ?: emptySet()
         bootSource = prefs.getString("boot_source", null)
         bootApp = prefs.getString("boot_app", null)
         pinHash = prefs.getString("pin_hash", null)
         pinSet = pinHash != null
+        pinArrows = prefs.getBoolean("pin_arrows", false)
         oneRowHome = prefs.getBoolean("one_row_home", true)
         peekNextRow = prefs.getBoolean("peek_next_row", true)
         clockRight = prefs.getBoolean("clock_right", false)
@@ -165,12 +180,13 @@ object AerialSettings {
 
     fun relock() { unlockedUntil = 0L }
 
-    /** Sets the PIN, or turns it off with null. */
-    fun choosePin(pin: String?) {
+    /** Sets the PIN, digits or [arrows] (U, D, L, R), or turns it off with null. */
+    fun choosePin(pin: String?, arrows: Boolean = false) {
         pinHash = pin?.let(::hash)
         pinSet = pinHash != null
+        pinArrows = pin != null && arrows
         unlockedUntil = if (pin != null) SystemClock.elapsedRealtime() + UNLOCK_MS else 0L
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("pin_hash", pinHash) }
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("pin_hash", pinHash); putBoolean("pin_arrows", pinArrows) }
     }
 
     private fun hash(pin: String): String =
@@ -236,5 +252,10 @@ object AerialSettings {
     fun chooseFocusStyle(style: FocusStyle) {
         focusStyle = style
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("focus_style", style.key) }
+    }
+
+    fun chooseLiveBlur(on: Boolean) {
+        liveBlur = on
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean("live_blur", on) }
     }
 }

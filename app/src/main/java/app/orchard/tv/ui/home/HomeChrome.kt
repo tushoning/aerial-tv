@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import app.orchard.tv.R
+import app.orchard.tv.settings.AerialSettings
 import app.orchard.tv.wallpaper.Images
 import app.orchard.tv.system.NetKind
 import app.orchard.tv.system.NetworkStatus
@@ -320,6 +321,25 @@ private fun bakePlate(glass: ImageBitmap, screen: Size, plate: Rect, radius: Flo
     return out.frozen().asImageBitmap()
 }
 
+/**
+ * What Home shows behind Control Center and folders unless AerialSettings.liveBlur: the grid's
+ * frosted background fading over it [progress] of the way, one full-screen draw of a small
+ * picture; in "Follow App" mode, which has no frosted picture, a dark veil.
+ */
+@Composable
+fun PanelBackdrop(frosted: ImageBitmap?, progress: () -> Float) {
+    val dark = remember(frosted) { frosted?.let { darkened(it, GRID_SHADE) } }
+    Canvas(Modifier.fillMaxSize()) {
+        val a = progress()
+        if (a < 0.01f) return@Canvas
+        if (dark == null) {
+            drawRect(Color.Black, alpha = 0.55f * a)
+            return@Canvas
+        }
+        drawImage(dark, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()), filterQuality = FilterQuality.Low, alpha = a)
+    }
+}
+
 /** A small picture darkened ahead of time, so the grid's background costs no tint per frame. */
 private fun darkened(src: ImageBitmap, alpha: Float): ImageBitmap {
     val out = src.asAndroidBitmap().copy(android.graphics.Bitmap.Config.ARGB_8888, true)
@@ -389,7 +409,8 @@ private fun Modifier.toSaverClock(progress: () -> Float, fontSize: TextUnit, cap
             scaleX = k
             scaleY = k
             val targetCapTop = SaverClockTop.toPx() + SaverClockStyle.fontSize.toPx() * CAP_TOP
-            translationX = p * (rootW - SaverClockEnd.toPx() - box.width * s - box.left)
+            val targetLeft = if (AerialSettings.clockRight) rootW - SaverClockSide.toPx() - box.width * s else SaverClockSide.toPx()
+            translationX = p * (targetLeft - box.left)
             translationY = p * (targetCapTop - s * capTop.toPx() - box.top)
         }
 }

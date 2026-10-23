@@ -140,6 +140,10 @@
     <string name="st_plate_none">不显示</string>
     <string name="st_sounds">按键声音</string>
     <string name="st_sounds_hint">移动焦点、确认、返回时发出声音，像 Apple TV 一样。</string>
+    <string name="st_blur">面板背后</string>
+    <string name="st_blur_hint">打开控制中心和文件夹时主屏幕的样子。实时模糊最像 Apple TV，但会让较慢的电视卡顿。</string>
+    <string name="st_blur_frost">磨砂</string>
+    <string name="st_blur_live">实时模糊</string>
     <string name="st_sounds_tv_hint">用电视系统自带的按键音，和电视菜单里一样。电视设置里关了按键音时不会响，这时请选「Aerial」。</string>
     <string name="st_sounds_tv">电视</string>
     <string name="st_sounds_aerial">Aerial</string>
@@ -195,6 +199,11 @@
     <string name="pin_confirm">再输入一次</string>
     <string name="pin_wrong">密码不对，请重试。</string>
     <string name="pin_mismatch">两次输入的不一样，请重新设置。</string>
+    <string name="pin_kind_hint">数字密码用遥控器的数字键或屏幕键盘输入；方向键密码按 4 下方向键，当着孩子输入也看不出来。</string>
+    <string name="pin_kind_digits">4 位数字</string>
+    <string name="pin_kind_arrows">4 个方向键</string>
+    <string name="pin_arrows_hint">依次按 4 下方向键（上、下、左、右都可以）。</string>
+    <string name="pin_arrows_create_hint">依次按 4 下方向键。请记好顺序：忘了只能用电脑通过 ADB 清除。</string>
     <string name="weather_clear">晴</string>
     <string name="weather_partly_cloudy">多云</string>
     <string name="weather_cloudy">阴</string>
@@ -214,4 +223,5 @@
     <string name="notice_boot_switch">开机时改为打开「%1$s」，不再打开「%2$s」</string>
     <string name="notice_boot_off">开机时不再打开「%1$s」</string>
     <string name="tile_stock_home">原桌面</string>
+    <string name="tile_kids">儿童</string>
 </resources>

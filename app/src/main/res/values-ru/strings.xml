@@ -133,6 +133,10 @@
     <string name="st_plate_none">Нет</string>
     <string name="st_sounds">Звуки</string>
     <string name="st_sounds_hint">Звук при перемещении фокуса, выборе и нажатии «Назад», как на Apple TV.</string>
+    <string name="st_blur">За панелями</string>
+    <string name="st_blur_hint">Как выглядит главный экран за Пунктом управления и папками. Живое размытие больше всего похоже на Apple TV, но замедляет старые телевизоры.</string>
+    <string name="st_blur_frost">Матовое</string>
+    <string name="st_blur_live">Живое размытие</string>
     <string name="st_sounds_tv_hint">Собственные звуки клавиш телевизора, как в его меню. Если они выключены в настройках телевизора, звука не будет: тогда выберите Aerial.</string>
     <string name="st_sounds_tv">ТВ</string>
     <string name="st_sounds_aerial">Aerial</string>
@@ -188,6 +192,11 @@
     <string name="pin_confirm">Введите ещё раз</string>
     <string name="pin_wrong">Неверный PIN-код. Попробуйте ещё раз.</string>
     <string name="pin_mismatch">PIN-коды не совпадают. Выберите заново.</string>
+    <string name="pin_kind_hint">Цифры вводятся цифровыми клавишами или с клавиатуры на экране. Стрелки — это четыре нажатия клавиш со стрелками, и ребёнок рядом ничего не увидит.</string>
+    <string name="pin_kind_digits">Четыре цифры</string>
+    <string name="pin_kind_arrows">Четыре стрелки</string>
+    <string name="pin_arrows_hint">Нажмите клавиши со стрелками четыре раза: вверх, вниз, влево или вправо.</string>
+    <string name="pin_arrows_create_hint">Нажмите клавиши со стрелками четыре раза. Сохраните порядок в надёжном месте: если он забыт, сбросить его можно только с компьютера по ADB.</string>
     <string name="weather_clear">Ясно</string>
     <string name="weather_partly_cloudy">Переменная облачность</string>
     <string name="weather_cloudy">Облачно</string>
@@ -207,4 +216,5 @@
     <string name="notice_boot_switch">%1$s откроется при включении телевизора вместо %2$s</string>
     <string name="notice_boot_off">%1$s больше не будет открываться при включении телевизора</string>
     <string name="tile_stock_home">Главный экран ТВ</string>
+    <string name="tile_kids">Детям</string>
 </resources>

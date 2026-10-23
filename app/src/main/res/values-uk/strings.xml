@@ -133,6 +133,10 @@
     <string name="st_plate_none">Немає</string>
     <string name="st_sounds">Звуки</string>
     <string name="st_sounds_hint">Звук під час переміщення фокуса, вибору та натискання «Назад», як на Apple TV.</string>
+    <string name="st_blur">За панелями</string>
+    <string name="st_blur_hint">Як виглядає головний екран за Пунктом керування й папками. Живе розмиття найбільше схоже на Apple TV, але сповільнює старі телевізори.</string>
+    <string name="st_blur_frost">Матове</string>
+    <string name="st_blur_live">Живе розмиття</string>
     <string name="st_sounds_tv_hint">Власні звуки клавіш телевізора, як у його меню. Якщо їх вимкнено в налаштуваннях телевізора, звуку не буде: тоді виберіть Aerial.</string>
     <string name="st_sounds_tv">ТВ</string>
     <string name="st_sounds_aerial">Aerial</string>
@@ -188,6 +192,11 @@
     <string name="pin_confirm">Введіть ще раз</string>
     <string name="pin_wrong">Неправильний PIN-код. Спробуйте ще раз.</string>
     <string name="pin_mismatch">PIN-коди не збігаються. Виберіть знову.</string>
+    <string name="pin_kind_hint">Цифри вводяться цифровими клавішами або з клавіатури на екрані. Стрілки — це чотири натискання клавіш зі стрілками, і дитина поруч нічого не побачить.</string>
+    <string name="pin_kind_digits">Чотири цифри</string>
+    <string name="pin_kind_arrows">Чотири стрілки</string>
+    <string name="pin_arrows_hint">Натисніть клавіші зі стрілками чотири рази: вгору, вниз, ліворуч або праворуч.</string>
+    <string name="pin_arrows_create_hint">Натисніть клавіші зі стрілками чотири рази. Збережіть порядок у надійному місці: якщо його забуто, скинути його можна лише з комп’ютера через ADB.</string>
     <string name="weather_clear">Ясно</string>
     <string name="weather_partly_cloudy">Мінлива хмарність</string>
     <string name="weather_cloudy">Хмарно</string>
@@ -207,4 +216,5 @@
     <string name="notice_boot_switch">%1$s відкриється під час увімкнення телевізора замість %2$s</string>
     <string name="notice_boot_off">%1$s більше не відкриватиметься під час увімкнення телевізора</string>
     <string name="tile_stock_home">Головний екран ТБ</string>
+    <string name="tile_kids">Дітям</string>
 </resources>
