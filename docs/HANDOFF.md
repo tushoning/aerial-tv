@@ -5,6 +5,7 @@
 ## 现状（2026-10-23）
 
 - **1.42（未发布）**：户主在小米 MFTR0 上报的几个问题。① 在 Aerial 里按主页键会闪一下小米桌面：Android 12+ 改为 Aerial 在前台时过滤按键（原桌面和其他 App 里仍不过滤，#293 不受影响），户主用真遥控器确认不闪了；同一次主页键的两次窗口事件只拉一次 Aerial。② 硬重启后先显示小米桌面十几秒：设了「开机时打开」时，守护进程一启动就接管，开机 App 直接用它自己的入口打开，屏幕亮起到打开 App 从 13–15 秒变为 7.2 秒。③ 屏保「跳回小米自带的」：户主这台设的是「从不」，小米自己的 8 分钟屏保照样出来；现在选「从不」且永不关屏时 Aerial 在前台保持常亮，户主确认不再出现。④ 开机打开 App「又被拉回」：日志里是有人在 App 里按了主页键，没改。详见 `docs/devices/xiaomi-mitv-mftr0.md`。
+- 同一版（PR #392，zyt0339）：大眼橙 X7 投影仪上 Apple TV 的 HDMI 主页键（`guard/CecHome.kt`），**默认关闭**，用 `ConfigReceiver --es cec_home_input '*'` 打开。打开后在 HDMI 播放器里单按主页键给 Apple TV 发 CEC「Root Menu」，长按或双击回到 Aerial。只用 Amlogic 的 `/dev/cec`（可写时），不改驱动和 SELinux。贡献者在 X7 上用 `sendevent` 验证过单按、长按、双击；**实体遥控器、待机唤醒、只靠 CEC 识别（没在磁贴里选 Apple TV）都没验证**，我们手里没有 X7。详见 [devices/obe-x7.md](devices/obe-x7.md)。
 - **1.41（versionCode 44），2026-10-23 发布**（[v1.41](https://github.com/pengchujin/aerial-tv/releases/tag/v1.41)）：逐条看了户主回复过的 issue 后的一轮修复。
   - 控制中心背后改成磨砂图淡入（#354）。实时模糊（Android 12+，`BlurEffect`）只要底下有东西在动就整屏重算：小米 MFTR0 上控制中心打开时 GPU 每帧 20–77 ms；改成磨砂图后静止时 0 帧，移动焦点时 GPU 9–15 ms，磨砂盖满后不画主屏幕。个性化里新增「面板背后：磨砂 / 实时模糊」（只在 Android 12+ 显示，默认磨砂）。还剩每次打开第一帧约 160–260 ms（组合 + 布局），没查。
   - 玻璃底板始终是一整行宽，App 少时靠左（#284）；航拍壁纸的绿帧检测放宽（亮处红色不为 0）。

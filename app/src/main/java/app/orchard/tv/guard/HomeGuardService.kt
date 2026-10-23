@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.media.AudioManager
+import android.media.tv.TvInputManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -182,6 +183,36 @@ class HomeGuardService : AccessibilityService() {
         takeOverOnceSettled("started shortly after boot", woke = true)
     }
 
+    // The opt-in CEC Home (CecHome) depends on the input in front, which can change without a new
+    // window from the player. Watched only while it is configured, and only its own setting key.
+    private val cecInputObserver = object : ContentObserver(handler) {
+        override fun onChange(selfChange: Boolean) = updateKeyFilter()
+    }
+    private val cecInputCallback = object : TvInputManager.TvInputCallback() {
+        override fun onInputAdded(inputId: String) = updateKeyFilter()
+        override fun onInputRemoved(inputId: String) = updateKeyFilter()
+        override fun onInputUpdated(inputId: String) = updateKeyFilter()
+        override fun onInputStateChanged(inputId: String, state: Int) = updateKeyFilter()
+    }
+    private var cecWatching = false
+    /** Keys are filtered only for CecHome: everything but its Home goes on untouched. */
+    private var filteringForCecOnly = false
+
+    private fun watchCecInput() {
+        if (cecWatching) {
+            runCatching { contentResolver.unregisterContentObserver(cecInputObserver) }
+            runCatching { getSystemService<TvInputManager>()?.unregisterCallback(cecInputCallback) }
+            cecWatching = false
+        }
+        val key = CecHome.inputSettingKey(this) ?: return
+        runCatching {
+            contentResolver.registerContentObserver(Settings.System.getUriFor(key), false, cecInputObserver)
+            contentResolver.registerContentObserver(Settings.Global.getUriFor(key), false, cecInputObserver)
+            getSystemService<TvInputManager>()?.registerCallback(cecInputCallback, handler)
+            cecWatching = true
+        }.onFailure { Log.w(TAG, "could not watch the current input", it) }
+    }
+
     override fun onServiceConnected() {
         instance = this
         // Register before querying homes or checking the state so an unlock cannot be missed.
@@ -191,6 +222,7 @@ class HomeGuardService : AccessibilityService() {
         refreshStockHomes()
         screenOff = getSystemService<PowerManager>()?.isInteractive == false
         updateKeyFilter()
+        watchCecInput()
         volumeSeen = volumeNow()
         registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_SCREEN_OFF) })
         @Suppress("DEPRECATION")
@@ -302,6 +334,10 @@ class HomeGuardService : AccessibilityService() {
             runCatching { unregisterReceiver(userUnlocked) }
         }
         runCatching { contentResolver.unregisterContentObserver(adbObserver) }
+        if (cecWatching) {
+            runCatching { contentResolver.unregisterContentObserver(cecInputObserver) }
+            runCatching { getSystemService<TvInputManager>()?.unregisterCallback(cecInputCallback) }
+        }
         handler.removeCallbacksAndMessages(null)
         if (instance === this) instance = null
         super.onDestroy()
@@ -323,8 +359,9 @@ class HomeGuardService : AccessibilityService() {
      * press (Xiaomi S Pro mini-LED 2026, issue #293). With Aerial itself in front they filter
      * again (1.42): Home there showed PatchWall for a moment first.
      *
-     * Never while Aerial is the default Home: onKeyEvent leaves Home to the system then, so the
-     * filter only costs. On Xiaomi MiTV-ASTP0 (Android 9) it crashed the system: every filtered
+     * With the opt-in X7 CEC transport, filter only while its configured HDMI input is in front,
+     * even when Aerial is the default Home. Otherwise leave a default Home's keys to the system;
+     * the filter only costs. On Xiaomi MiTV-ASTP0 (Android 9) it crashed the system: every filtered
      * volume key reached Xiaomi's MitvFreezer with no window, which threw in system_server and
      * restarted the TV (issue #249).
      */
@@ -337,7 +374,10 @@ class HomeGuardService : AccessibilityService() {
         // repeating keys were in the stock launcher, and in other apps Home goes as above.
         val aerialInFront = lastWindow?.first == packageName
         val wanted = !keysPassThrough && !screenOff && (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R || aerialInFront)
-        val want = if (wanted && !isDefaultHome()) info.flags or flag else info.flags and flag.inv()
+        val homeWanted = wanted && !isDefaultHome()
+        val cecWanted = !screenOff && CecHome.active(this, lastWindow?.first)
+        filteringForCecOnly = cecWanted && !homeWanted
+        val want = if (homeWanted || cecWanted) info.flags or flag else info.flags and flag.inv()
         if (want == info.flags) return
         info.flags = want
         serviceInfo = info
@@ -356,10 +396,11 @@ class HomeGuardService : AccessibilityService() {
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (!GuardSetup.isUserUnlocked(this)) return false
-        if (event.keyCode in VOLUME_KEYS) return takeVolumeKey(event)
+        if (event.keyCode in VOLUME_KEYS) return if (filteringForCecOnly) false else takeVolumeKey(event)
         // Any key that is done: whatever it did to the volume (Control Center's slider) is in.
         if (event.action == KeyEvent.ACTION_UP) volumeSeen = volumeNow()
         if (event.keyCode != KeyEvent.KEYCODE_HOME) return false
+        if (takeCecHome(event)) return true
         if (isDefaultHome()) return false
         // Held, Home is the firmware's task center, which taking the key hid (Xiaomi, issue #185):
         // open the recent apps instead, and leave Home alone when the key comes up. Timed here:
@@ -384,6 +425,51 @@ class HomeGuardService : AccessibilityService() {
                 Log.i(TAG, "Home key taken before the system saw it")
                 lastHomeUpAt = event.eventTime
                 goHome()
+            }
+        }
+        return true
+    }
+
+    private var cecHomeDown = false
+    private var cecHomeDouble = false
+    private var cecHomeHeld = false
+    private val cecHomeHold = Runnable {
+        if (cecHomeDown && CecHome.active(this, lastWindow?.first)) {
+            cecHomeHeld = true
+            lastCecHomeUp = Long.MIN_VALUE / 2
+            Log.i(TAG, "HDMI Home held; returning to Aerial")
+            goHome()
+        }
+    }
+    private var lastCecHomeUp = Long.MIN_VALUE / 2
+
+    private fun takeCecHome(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            if (!CecHome.active(this, lastWindow?.first)) return false
+            cecHomeDown = true
+            cecHomeHeld = false
+            cecHomeDouble = event.eventTime - lastCecHomeUp in 0 until DOUBLE_HOME_MS
+            handler.removeCallbacks(cecHomeHold)
+            if (!cecHomeDouble) {
+                // A single press is Home on the Apple TV, sent on key-down: never wait for the
+                // key-up or the double-press window. Held or pressed twice, Home is Aerial's.
+                Log.i(TAG, "HDMI Home down; sending CEC Home")
+                CecHome.send(this, lastWindow?.first)
+                handler.postDelayed(cecHomeHold, ViewConfiguration.getLongPressTimeout().toLong())
+            }
+        }
+        if (!cecHomeDown) return false
+        if (event.action == KeyEvent.ACTION_UP) {
+            handler.removeCallbacks(cecHomeHold)
+            cecHomeDown = false
+            if (!event.isCanceled && !cecHomeHeld) {
+                if (cecHomeDouble) {
+                    lastCecHomeUp = Long.MIN_VALUE / 2
+                    Log.i(TAG, "HDMI Home pressed twice; returning to Aerial")
+                    goHome()
+                } else {
+                    lastCecHomeUp = event.eventTime
+                }
             }
         }
         return true
@@ -465,7 +551,13 @@ class HomeGuardService : AccessibilityService() {
         // TCL's voice assistant (com.tcl.walleve) does at boot on TCL 75S365C, and taking it for
         // an app the viewer chose kept the guard from taking over (PR #45).
         val before = lastWindow?.first
-        if (isActivity(pkg, cls)) lastWindow = pkg to cls
+        if (isActivity(pkg, cls)) {
+            lastWindow = pkg to cls
+            if (!CecHome.active(this, pkg)) {
+                lastCecHomeUp = Long.MIN_VALUE / 2
+                handler.removeCallbacks(cecHomeHold)
+            }
+        }
         if (!GuardSetup.isUserUnlocked(this)) return
         val allowed = SystemClock.uptimeMillis() < allowStockUntil
         if (pkg in stockHomes) {
@@ -630,6 +722,8 @@ class HomeGuardService : AccessibilityService() {
         private var instance: HomeGuardService? = null
 
         val isRunning: Boolean get() = instance != null
+
+        fun refreshCecHome() { instance?.run { watchCecInput(); updateKeyFilter() } }
 
         /** Looks once more at boot completion; false if the guard is not running. */
         fun onBootCompleted(): Boolean {

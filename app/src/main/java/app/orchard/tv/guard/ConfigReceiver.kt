@@ -69,6 +69,15 @@ class ConfigReceiver : BroadcastReceiver() {
         }
         if (intent.hasExtra("keep_adb")) GuardSetup.setKeepAdb(context, intent.getBooleanExtra("keep_adb", false))
         if (intent.hasExtra("own_screensaver")) GuardSetup.setOwnScreensaver(context, intent.getBooleanExtra("own_screensaver", false))
+        // Opt-in for an input ("*" = any recognized Apple TV input). Empty input disables.
+        // Optional player and current-input setting key allow testing other firmware routes.
+        val cecKeys = listOf("cec_home_input", "cec_home_player", "cec_home_input_setting").filter { intent.hasExtra(it) }
+        if (cecKeys.isNotEmpty()) {
+            val edit = context.getSharedPreferences("system", Context.MODE_PRIVATE).edit()
+            for (key in cecKeys) edit.putString(key, intent.getStringExtra(key)?.takeIf { it.isNotBlank() })
+            edit.commit()
+            HomeGuardService.refreshCecHome()
+        }
         GuardSetup.ensureEnabled(context)
         resultData = "keep_adb=${GuardSetup.keepAdb(context)}"
     }
