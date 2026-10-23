@@ -67,6 +67,7 @@ object Wallpapers {
     const val AUTO = "auto"
     const val ROTATE_PHOTOS = "photos:rotate"
     const val LIVE = "aerial:live"
+    private const val FOLLOW = "follow"
     private const val DEFAULT_FALLBACK = "grad:aurora"
 
     /** The built-ins Personalize offers, one or two of each family; the rest stay for whoever chose them. */
@@ -84,7 +85,19 @@ object Wallpapers {
 
     var items by mutableStateOf<List<Wallpaper>>(emptyList()); private set
     var selectedId by mutableStateOf(LATEST_DAILY); private set
-    var screensaver by mutableStateOf(ScreensaverMode.Aerial); private set
+    /** The screensaver the owner chose; null while it follows the wallpaper ([screensaver]). */
+    private var chosenScreensaver by mutableStateOf<ScreensaverMode?>(ScreensaverMode.Aerial)
+
+    /**
+     * The screensaver in effect. Until one is chosen it follows the wallpaper: aerial films with the
+     * aerial wallpaper (and in "Follow App", which has no picture), photos with a picture, starting
+     * from that picture.
+     */
+    val screensaver: ScreensaverMode
+        get() = chosenScreensaver ?: if (selectedId == LIVE || selectedId == AUTO) ScreensaverMode.Aerial else ScreensaverMode.Photos
+
+    /** No screensaver chosen: it follows the wallpaper. */
+    val screensaverFollows: Boolean get() = chosenScreensaver == null
 
     /** The home backdrop for the selection, shading baked in; null while loading or in Auto. */
     var backdrop by mutableStateOf<ImageBitmap?>(null); private set
@@ -113,7 +126,12 @@ object Wallpapers {
         selectedId = (prefs.getString("selected", LATEST_DAILY) ?: LATEST_DAILY)
             // A built-in wallpaper from before the Mac-style set: its nearest one now.
             .let { if (it.startsWith("grad:")) "grad:" + Gradients.currentKey(it.removePrefix("grad:")) else it }
-        screensaver = ScreensaverMode.of(prefs.getString("screensaver", null))
+        chosenScreensaver = when (val key = prefs.getString("screensaver", null)) {
+            null -> firstScreensaver()
+            // "wallpaper" was a fourth kind in test builds of 1.38, for what following now is.
+            FOLLOW, "wallpaper" -> null
+            else -> ScreensaverMode.of(key)
+        }
         rebuildList()
         loadBaked()
         rebuildBackdrop()
@@ -141,8 +159,25 @@ object Wallpapers {
         rebuildBackdrop()
     }
 
+    /**
+     * A new install's screensaver follows the wallpaper. One that was already in use when that came
+     * (1.38) keeps what it showed, aerial films, until the owner chooses. Kept either way, so it
+     * does not change with a later update.
+     */
+    private fun firstScreensaver(): ScreensaverMode? {
+        val fresh = runCatching {
+            app.packageManager.getPackageInfo(app.packageName, 0).let { it.firstInstallTime == it.lastUpdateTime }
+        }.getOrDefault(false)
+        prefs.edit { putString("screensaver", if (fresh) FOLLOW else ScreensaverMode.Aerial.key) }
+        return if (fresh) null else ScreensaverMode.Aerial
+    }
+
+    /** The wallpaper's picture, when the photo screensaver starts from it: a picture wallpaper, not the aerial one. */
+    fun screensaverPicture(): Wallpaper? =
+        if (screensaver != ScreensaverMode.Photos || selectedId == LIVE || selectedId == AUTO) null else resolve()
+
     fun chooseScreensaver(mode: ScreensaverMode) {
-        screensaver = mode
+        chosenScreensaver = mode
         prefs.edit { putString("screensaver", mode.key) }
     }
 

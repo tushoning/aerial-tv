@@ -81,7 +81,12 @@ import app.orchard.tv.ui.theme.Motion
 import app.orchard.tv.ui.theme.Type
 import androidx.compose.runtime.snapshotFlow
 import app.orchard.tv.system.DiagLog
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
@@ -196,8 +201,7 @@ fun HomeScreen(
     // to the screensaver's own films.
     var filmFailed by remember(vm.screensaverVisible) { mutableStateOf(false) }
     val filmSaverChosen = remember(vm.screensaverVisible) {
-        vm.screensaverVisible && Wallpapers.selectedId == Wallpapers.LIVE &&
-            Wallpapers.screensaver == ScreensaverMode.Aerial &&
+        vm.screensaverVisible && Wallpapers.selectedId == Wallpapers.LIVE && Wallpapers.screensaver == ScreensaverMode.Aerial &&
             (filmCover.value > 0.5f || focusedRow == 0 && overlay == Overlay.None && moving == null)
     }
     val filmSaver = filmSaverChosen && !filmFailed
@@ -214,11 +218,48 @@ fun HomeScreen(
         if (liveFilm.stopped) 1f else 0f,
         tween(if (liveFilm.stopped) 250 else 900, easing = Motion.EaseOut), label = "film-stopped",
     )
+    // A photo screensaver over a picture wallpaper carries the picture on the same way: its shading
+    // lifts and it slowly draws in from just as Home shows it (HomeBackground), and the photos move
+    // on from it.
+    val stillSaver = remember(vm.screensaverVisible) {
+        if (vm.screensaverVisible && focusedRow == 0 && overlay == Overlay.None && moving == null && Wallpapers.backdrop != null) {
+            Wallpapers.screensaverPicture()
+        } else null
+    }
+    val stillCarry = remember(stillSaver) { stillSaver?.let { SaverCarry.Still(it) } }
+    var saverImage by remember { mutableStateOf<ImageBitmap?>(null) }
+    val saverReveal = remember { Animatable(0f) }
+    val saverPush = remember { Animatable(0f) }
+    LaunchedEffect(stillSaver) {
+        if (stillSaver != null) {
+            saverPush.snapTo(0f)
+            saverImage = withContext(Dispatchers.Default) {
+                Wallpapers.picture(stillSaver, Wallpapers.screenW, Wallpapers.screenH)?.asImageBitmap()
+            } ?: return@LaunchedEffect
+            coroutineScope {
+                val pushing = if (reduced) null else launch { drawIn(saverPush) }
+                launch { saverReveal.animateTo(1f, tween(1800, easing = Motion.EaseInOut)) }
+                // Covered by the next photo: nothing of it shows, so it stops drawing.
+                snapshotFlow { stillCarry?.covered == true }.first { it }
+                pushing?.cancel()
+                saverReveal.snapTo(0f)
+                saverPush.snapTo(0f)
+            }
+        } else if (saverImage != null) {
+            // Back to Home: the picture settles back as the shading returns.
+            coroutineScope {
+                launch { saverPush.animateTo(0f, tween(380, easing = Motion.EaseOut)) }
+                saverReveal.animateTo(0f, tween(380, easing = Motion.EaseOut))
+            }
+            saverImage = null
+        }
+    }
+    val carrying = filmSaver || stillSaver != null
     val toSaver = remember { Animatable(0f) }
-    LaunchedEffect(filmSaver) {
+    LaunchedEffect(carrying) {
         when {
-            reduced -> toSaver.snapTo(if (filmSaver) 1f else 0f)
-            filmSaver -> toSaver.animateTo(1f, tween(2000, easing = Motion.EaseInOut))
+            reduced -> toSaver.snapTo(if (carrying) 1f else 0f)
+            carrying -> toSaver.animateTo(1f, tween(2000, easing = Motion.EaseInOut))
             // A key woke it: Home comes straight back.
             else -> toSaver.animateTo(0f, tween(380, easing = Motion.EaseOut))
         }
@@ -421,6 +462,10 @@ fun HomeScreen(
                 collapse = collapsePx,
                 cover = { filmCover.value },
                 filmStopped = { filmStopped },
+                toSaver = { toSaver.value },
+                saverImage = saverImage,
+                saverReveal = { saverReveal.value },
+                saverPush = { saverPush.value },
             )
 
             Box(Modifier.fillMaxSize().offset { IntOffset(0, -scroll.value.roundToInt()) }) {
@@ -716,6 +761,11 @@ fun HomeScreen(
 
         NoticeBanner(vm.notice, Modifier.align(Alignment.TopCenter).padding(top = 24.dp))
 
-        Screensaver(visible = vm.screensaverVisible, apps = apps, now = now, skips = vm.screensaverSkips, film = liveFilm.takeIf { filmSaver })
+        Screensaver(visible = vm.screensaverVisible, apps = apps, now = now, skips = vm.screensaverSkips, carry = when {
+                filmSaver -> SaverCarry.Film(liveFilm)
+                stillCarry != null -> stillCarry
+                else -> null
+            },
+        )
     }
 }

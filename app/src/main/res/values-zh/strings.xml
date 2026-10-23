@@ -92,6 +92,7 @@
     <string name="wp_photo_note">你的照片。用手机扫右边的二维码可以继续添加。</string>
     <string name="wp_auto_note">取所选 App 图片里的颜色做背景。</string>
     <string name="wp_screensaver">屏幕保护程序</string>
+    <string name="ss_follow_hint">还没选过，跟随壁纸：航拍壁纸配航拍，其他壁纸配照片，并从这张壁纸开始。选一个就固定下来。</string>
     <string name="ss_aerial">航拍</string>
     <string name="ss_photos">照片</string>
     <string name="ss_clock">时钟</string>

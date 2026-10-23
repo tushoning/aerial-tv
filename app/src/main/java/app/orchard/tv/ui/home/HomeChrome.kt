@@ -137,6 +137,12 @@ fun HomeBackground(
      * its glass with the rest of Home, the same plate it keeps once the picture is in.
      */
     filmStopped: () -> Float = { 0f },
+    /** How far Home has given way to the screensaver carrying its wallpaper on: the plate goes. */
+    toSaver: () -> Float = { 0f },
+    /** The wallpaper's picture unshaded, shown [saverReveal] of the way and [saverPush] into its draw-in. */
+    saverImage: ImageBitmap? = null,
+    saverReveal: () -> Float = { 0f },
+    saverPush: () -> Float = { 0f },
 ) {
     Box(Modifier.fillMaxSize()) {
         // Over a paused film, under the pictures: the shading its picture will have. The picture
@@ -149,7 +155,11 @@ fun HomeBackground(
             drawRect(Brush.horizontalGradient(0f to Color.Black.copy(alpha = Images.SHADE_LEFT), 1f to Color.Transparent, endX = size.width / 2), alpha = stopped)
         }
         Pictures(backdrop, frosted, scroll, collapse, cover)
-        Plate(frosted ?: backdrop, plate, scroll, collapse, cover, filmStopped)
+        if (saverImage != null) Canvas(Modifier.fillMaxSize()) {
+            val a = saverReveal()
+            if (a > 0.01f) drawDrawingIn(saverImage, saverPush(), a)
+        }
+        Plate(frosted ?: backdrop, plate, scroll, collapse, cover, filmStopped, toSaver)
     }
 }
 
@@ -192,13 +202,13 @@ private fun Pictures(backdrop: ImageBitmap?, frosted: ImageBitmap?, scroll: () -
  * it: two plates fading against each other let what is behind show through halfway.
  */
 @Composable
-private fun Plate(glass: ImageBitmap?, plate: Rect?, scroll: () -> Float, collapse: Float, cover: () -> Float, filmStopped: () -> Float) {
+private fun Plate(glass: ImageBitmap?, plate: Rect?, scroll: () -> Float, collapse: Float, cover: () -> Float, filmStopped: () -> Float, toSaver: () -> Float) {
     var shown by remember { mutableStateOf(glass) }
     var under by remember { mutableStateOf<ImageBitmap?>(null) }
     val swap = remember { Animatable(1f) }
     fun visibility(): Float {
         val rest = 1f - smooth(((scroll() / collapse).coerceIn(0f, 1f) / 0.55f).coerceIn(0f, 1f))
-        return rest * (1f - cover() * (1f - filmStopped()))
+        return rest * (1f - cover() * (1f - filmStopped())) * (1f - toSaver())
     }
     LaunchedEffect(glass) {
         if (glass === shown) return@LaunchedEffect

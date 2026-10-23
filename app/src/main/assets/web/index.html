@@ -273,7 +273,9 @@ function render() {
   renderApps();
   document.querySelectorAll('#ss button').forEach(b =>
     b.setAttribute('aria-pressed', b.dataset.mode === state.screensaver ? 'true' : 'false'));
-  $('#ssHint').textContent = hints[state.screensaver] || '';
+  $('#ssHint').textContent = state.screensaverFollows
+    ? '还没选过，跟随壁纸：航拍壁纸配航拍，其他壁纸配照片，并从这张壁纸开始。选一个就固定下来。'
+    : (hints[state.screensaver] || '');
   document.querySelectorAll('#focus button').forEach(b =>
     b.setAttribute('aria-pressed', b.dataset.style === state.focusStyle ? 'true' : 'false'));
   $('#focusHint').textContent = state.focusStyle === 'standard'

@@ -83,12 +83,15 @@ import kotlin.random.Random
  * If the films cannot be reached, Aerial falls back to Photos. Left and right step to the previous
  * or next film or photo, as on Apple TV; see [ScreensaverSkips].
  *
- * With [film], the aerial wallpaper's film was already moving behind Home and simply carries on:
- * Home fades away around it (HomeScreen, whose clock becomes the screensaver's) and only the place
- * names are added here.
+ * Until one is chosen the kind follows the wallpaper (Wallpapers.screensaver): aerial films with the
+ * aerial wallpaper, photos with a picture, starting from that picture.
+ *
+ * With [carry], Home's own wallpaper carries on as the screensaver: the aerial wallpaper's film
+ * already moving behind Home, or its picture beginning to draw in there, before the photos move on
+ * from it. Home fades away around it (HomeScreen, whose clock becomes the screensaver's).
  */
 @Composable
-fun Screensaver(visible: Boolean, apps: List<AppEntry>, now: LocalDateTime, skips: ScreensaverSkips, film: LiveFilm? = null) {
+fun Screensaver(visible: Boolean, apps: List<AppEntry>, now: LocalDateTime, skips: ScreensaverSkips, carry: SaverCarry? = null) {
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(tween(1200, easing = Motion.EaseOut)),
@@ -98,18 +101,18 @@ fun Screensaver(visible: Boolean, apps: List<AppEntry>, now: LocalDateTime, skip
     ) {
         // Follows Home while up (the film may fail and hand over to the screensaver's own), and
         // stays as it was through the fade out, so leaving does not start a player.
-        val held = remember { mutableStateOf(film) }
-        if (visible) held.value = film
-        val carried = held.value
-        if (carried != null) {
-            FilmLabels(carried, now, skips.steps)
-            return@AnimatedVisibility
+        val held = remember { mutableStateOf(carry) }
+        if (visible) held.value = carry
+        when (val carried = held.value) {
+            is SaverCarry.Film -> { FilmLabels(carried.film, now, skips.steps); return@AnimatedVisibility }
+            is SaverCarry.Still -> { PhotoSaver(now, skips.steps, carried.wallpaper, carried); return@AnimatedVisibility }
+            null -> Unit
         }
         var aerialFailed by remember { mutableStateOf(false) }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             when (Wallpapers.screensaver) {
                 ScreensaverMode.Aerial -> if (aerialFailed) PhotoSaver(now, skips.steps) else AerialSaver(now, skips.steps, onUnavailable = { aerialFailed = true })
-                ScreensaverMode.Photos -> PhotoSaver(now, skips.steps)
+                ScreensaverMode.Photos -> PhotoSaver(now, skips.steps, remember { Wallpapers.screensaverPicture() })
                 ScreensaverMode.Clock -> ClockSaver(apps, now)
             }
         }
@@ -137,6 +140,48 @@ class ScreensaverSkips {
     }
 }
 
+/** What of Home's wallpaper carries on as the screensaver. */
+sealed interface SaverCarry {
+    /** The aerial wallpaper's film, moving on behind Home. */
+    class Film(val film: LiveFilm) : SaverCarry
+
+    /** The wallpaper's picture, drawing in behind Home (HomeBackground) as the photos' first. */
+    class Still(val wallpaper: app.orchard.tv.wallpaper.Wallpaper) : SaverCarry {
+        /** The photos have moved on over it: Home's picture can stop. */
+        var covered by mutableStateOf(false)
+    }
+}
+
+/** What a wallpaper's picture is, for the screensaver: where it was taken, else its name. */
+fun stillCaption(wp: app.orchard.tv.wallpaper.Wallpaper): String? = wp.caption?.takeIf { it.isNotBlank() } ?: wp.title
+
+/** How long one slow push in (or back out) of a still wallpaper takes. */
+private const val DRAW_IN_MS = 60_000
+
+/** Pushes in and back out, slowly, for as long as the screensaver is up; from 0, the picture as Home has it. */
+suspend fun drawIn(push: Animatable<Float, *>) {
+    while (true) {
+        push.animateTo(1f, tween(DRAW_IN_MS, easing = LinearEasing))
+        push.animateTo(0f, tween(DRAW_IN_MS, easing = LinearEasing))
+    }
+}
+
+/** [image] over the whole screen, [push] (0 to 1) of the way into its slow draw-in: larger by 8%, drifting right. */
+fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDrawingIn(image: ImageBitmap, push: Float, alpha: Float = 1f) {
+    val s = 1f + 0.08f * push
+    val w = size.width * s
+    val h = size.height * s
+    val left = (size.width - w) / 2f + 24.dp.toPx() * push
+    val top = (size.height - h) / 2f
+    drawImage(
+        image,
+        dstOffset = androidx.compose.ui.unit.IntOffset(left.roundToInt(), top.roundToInt()),
+        dstSize = IntSize(w.roundToInt(), h.roundToInt()),
+        alpha = alpha,
+        filterQuality = FilterQuality.Low,
+    )
+}
+
 /** The place names over the wallpaper's film, which goes on playing; left and right step through films. */
 @Composable
 private fun FilmLabels(film: LiveFilm, now: LocalDateTime, steps: SharedFlow<Int>) {
@@ -154,16 +199,18 @@ private fun FilmLabels(film: LiveFilm, now: LocalDateTime, steps: SharedFlow<Int
 /** Place name bottom-left, time top-right: how tvOS labels its screensaver. */
 @Composable
 private fun Labels(caption: String?, now: LocalDateTime, showTime: Boolean = true) {
+    // Fades in where Home's own clock has moved to, as the photos cover it.
+    val time by animateFloatAsState(if (showTime) 1f else 0f, tween(2000), label = "time")
     Box(Modifier.fillMaxSize()) {
         Canvas(Modifier.fillMaxSize()) {
             // Just enough shade under the text to read it over bright sky or snow.
             drawRect(Brush.verticalGradient(0.7f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.45f)))
             drawRect(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.3f), 0.18f to Color.Transparent))
         }
-        if (showTime) BasicText(
+        if (time > 0f) BasicText(
             timeText(now),
             style = SaverClockStyle,
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = SaverClockTop, end = SaverClockEnd),
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = SaverClockTop, end = SaverClockEnd).graphicsLayer { alpha = time },
         )
         AnimatedContent(
             targetState = caption.orEmpty(),
@@ -337,13 +384,21 @@ private const val STALL_MS = 8_000L
 private val DECODER_ERRORS = PlaybackException.ERROR_CODE_DECODER_INIT_FAILED..PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
 
 @Composable
-private fun PhotoSaver(now: LocalDateTime, steps: SharedFlow<Int>) {
+private fun PhotoSaver(
+    now: LocalDateTime,
+    steps: SharedFlow<Int>,
+    /** The wallpaper's picture, shown first. */
+    first: app.orchard.tv.wallpaper.Wallpaper? = null,
+    /** Home already shows [first], drawing in: the photos take over from the second. */
+    carried: SaverCarry.Still? = null,
+) {
     val reduced = LocalReducedMotion.current
     val pool = remember(Wallpapers.items) {
         // The owner's own photos when there are any, else the daily ones (issue #27).
         val pictures = Wallpapers.items.filter { it.kind == WallpaperKind.Photo }
             .ifEmpty { Wallpapers.items.filter { it.kind == WallpaperKind.Daily } }
-        (pictures.ifEmpty { Wallpapers.items.filter { it.kind == WallpaperKind.Builtin } }).shuffled()
+        val rest = (pictures.ifEmpty { Wallpapers.items.filter { it.kind == WallpaperKind.Builtin } }).shuffled()
+        if (first == null) rest else listOf(first) + rest.filter { it.id != first.id }
     }
     var slide by remember { mutableIntStateOf(0) }
     var image by remember { mutableStateOf<Pair<Int, ImageBitmap>?>(null) }
@@ -351,11 +406,20 @@ private fun PhotoSaver(now: LocalDateTime, steps: SharedFlow<Int>) {
     // Restarts on every slide, so a step from the remote also restarts the 18 s wait.
     LaunchedEffect(pool, slide) {
         if (pool.isEmpty()) return@LaunchedEffect
-        val wp = pool[slide.mod(pool.size)]
-        val bmp = withContext(Dispatchers.Default) { Wallpapers.picture(wp, Wallpapers.screenW, Wallpapers.screenH)?.asImageBitmap() }
-        if (bmp != null) image = slide to bmp
+        if (carried == null || slide != 0) {
+            val wp = pool[slide.mod(pool.size)]
+            val bmp = withContext(Dispatchers.Default) { Wallpapers.picture(wp, Wallpapers.screenW, Wallpapers.screenH)?.asImageBitmap() }
+            if (bmp != null) image = slide to bmp
+        }
         delay(18_000)
         slide++
+    }
+    // Once a photo has crossfaded in over Home's picture, Home can stop drawing it.
+    LaunchedEffect(image != null) {
+        if (carried != null && image != null) {
+            delay(2_100)
+            carried.covered = true
+        }
     }
     LaunchedEffect(steps) {
         steps.collect { slide += it }
@@ -379,7 +443,7 @@ private fun PhotoSaver(now: LocalDateTime, steps: SharedFlow<Int>) {
         }
     }
     val wp = pool.getOrNull((image?.first ?: 0).mod(pool.size.coerceAtLeast(1)))
-    Labels(wp?.caption?.takeIf { it.isNotBlank() } ?: wp?.title, now)
+    Labels(wp?.let(::stillCaption), now, showTime = carried == null || image != null)
 }
 
 /** A large clock that moves once a minute over the wallpaper or the apps' light. */

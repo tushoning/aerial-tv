@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import app.orchard.tv.MainActivity
 import app.orchard.tv.system.MissingClipboard
 import app.orchard.tv.ui.theme.canvasDensity
 import app.orchard.tv.weather.Weather
@@ -73,7 +74,10 @@ class AerialDream : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (skips.onKey(event)) return true
-        if (event.action == KeyEvent.ACTION_DOWN) finish()
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            MainActivity.dreamWokeAt = event.eventTime
+            finish()
+        }
         return true
     }
 

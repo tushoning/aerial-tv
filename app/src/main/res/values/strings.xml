@@ -93,6 +93,7 @@
     <string name="wp_photo_note">Your photo. Scan the code on the right to send more from your phone.</string>
     <string name="wp_auto_note">Light taken from the selected app\'s artwork.</string>
     <string name="wp_screensaver">Screensaver</string>
+    <string name="ss_follow_hint">Not chosen yet, so it follows the wallpaper: aerial films with the aerial wallpaper, photos with a picture, starting from that picture. Choose one to keep it.</string>
     <string name="ss_aerial">Aerial</string>
     <string name="ss_photos">Photos</string>
     <string name="ss_clock">Clock</string>

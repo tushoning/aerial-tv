@@ -120,6 +120,7 @@ class PhoneServer private constructor(private val context: Context, private val 
             .put("latestDaily", Wallpapers.LATEST_DAILY)
             .put("rotatePhotos", Wallpapers.ROTATE_PHOTOS)
             .put("screensaver", Wallpapers.screensaver.key)
+            .put("screensaverFollows", Wallpapers.screensaverFollows)
             .put("focusStyle", AerialSettings.focusStyle.key)
             .put("wallpapers", list)
             .put("apps", JSONArray().apply {
