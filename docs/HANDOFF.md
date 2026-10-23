@@ -4,6 +4,17 @@
 
 ## 现状（2026-10-23）
 
+- **1.41（versionCode 44），2026-10-23 发布**（[v1.41](https://github.com/pengchujin/aerial-tv/releases/tag/v1.41)）：逐条看了户主回复过的 issue 后的一轮修复。还没查清的：开机打开 App「第一次成功、第二次不行」（户主报告，小米上复现时电视待机后 ADB 断开）；户主说点小米桌面磁贴进不去，MFTR0 上用 1.41 没复现。
+  - 控制中心背后改成磨砂图淡入（#354）。实时模糊（Android 12+，`BlurEffect`）只要底下有东西在动就整屏重算：小米 MFTR0 上控制中心打开时 GPU 每帧 20–77 ms；改成磨砂图后静止时 0 帧，移动焦点时 GPU 9–15 ms，磨砂盖满后不画主屏幕。个性化里新增「面板背后：磨砂 / 实时模糊」（只在 Android 12+ 显示，默认磨砂）。还剩每次打开第一帧约 160–260 ms（组合 + 布局），没查。
+  - 玻璃底板始终是一整行宽，App 少时靠左（#284）；航拍壁纸的绿帧检测放宽（亮处红色不为 0）。
+  - 家长密码可以选「4 个方向键」（#368），输入时方向键只记录不移动，Android 8 模拟器上验证了设置、错误、正确三种情况。
+  - 小米：有线网络时「网络」先开以太网页（#369）；PatchWall 的儿童模式作为「儿童」磁贴（#332，`android.intent.action.ENTER_KIDS_MODE`，MFTR0 上打开、主页键返回都验证过）；无法打开「安装未知应用」设置页时也照样下载并交给安装程序（#284）。
+  - TCL：控制中心滑块不再带 `FLAG_SHOW_UI`（#288，MT5879 上验证功放跟着变、不弹 TCL 音量条）；`TTvPictureManager` 的图形背光做亮度滑块（#363，只在读数 1–100 时用，MT5879 读出 0 所以不变，75V2 未验证）；屏幕关闭时守护不过滤按键（#371，没有在真机上做待机测试）。
+  - 信号源有 CEC 设备时打开设备的子输入，让电视通过 CEC 唤醒设备（#259，索尼，未验证）。
+  - 屏保时钟跟随个性化的左右位置，退出屏保时主屏幕淡回 650 ms（#357）。
+  - Android 8.0 上 `OnBackAnimationCallback` 的 `NoClassDefFoundError` 日志：只是 info 级，进程不会因此退出（模拟器复现），加了 keep 规则后日志消失（#303）。极米上切 App 后进程消失多半是极米自己的后台清理。
+  - `ConfigReceiver` 新增 `peek_next_row`、`home_plate`、`show_all_names`。
+  - 新增机型笔记 `docs/devices/skyworth-coocaa.md`、`tencent-aurora-box.md`，`hisense-vidaa.md` 补了 #285、#323；`site/agent.md` 第 8 步补了 `settings` 卡死的固件。
 - 同一版（1.39）：发版前的检查。#258 原来在拿到 Bing 列表之前就删掉每日精选缓存，而且没有 `market` 文件也算市场变了：升级后第一次如果没联网，选好的每日一图会显示不出来，中文用户也会白白重下 8 张。现在没有文件就当作 `zh-CN`，等新市场的列表拿到再删。lint 找出两个 1.38 以前就有的 Android 5 问题：`GuardSetup.noteRevival` 用了 6.0 才有的 `getSystemService(Class)`（复活时会崩），以及建账号还要 `AUTHENTICATE_ACCOUNTS`（maxSdk 22）。在 Android 5.0 模拟器（`aerial21`）上验证过：账号建出来了；守护被关掉后同步框架把它开回来，没有崩溃。小米 MFTR0（standard）和 TCL MT5879（guard，多屏互动推送）都装了，守护绑定正常，主页键能回到 Aerial（TCL 上用多屏互动注入的 HOME 要等 5 秒，因为不经过按键过滤，真遥控器不受影响）。完整 lint 剩 10 个错误，都是 1.38 以前就有的。
 - 同一版（1.39）：多语言。合并了社区的俄语、乌克兰语、哈萨克语翻译（#246–#248）、手机页多语言和右上角语言切换（#252：手机语言不在五种之内时默认英文，以前一律中文）、非中文电视的每日精选用英文说明（#258：`mkt=en-US`，切换时清掉按日期命名的缓存图）。补了三份译文缺的 16 条（1.38 新加的文字）和手机页漏翻的「跟随壁纸」提示；手机页 `.row` 盖掉 `hidden` 导致诊断框一直显示的问题也修了。控制中心的日期改用 `java.text.SimpleDateFormat`（ICU）：经过 desugar 的 java.time 给出的是月份独立形式，俄语成了「23 октябрь」，现在是「23 октября」。小米 MFTR0 上用 `cmd locale set-app-locales app.orchard.tv --locales ru-RU` 看过控制中心、个性化（包括新补的「Никогда」）和日期，测完已恢复成跟随系统，中文日期不变。手机页只用 node 校验了翻译表（五种语言各 81 条），没在手机上打开。译文没有母语者审过。
 - **1.40（versionCode 43），2026-10-23 发布**（[v1.40](https://github.com/pengchujin/aerial-tv/releases/tag/v1.40)）：原桌面磁贴（#110、#98）。只声明了 HOME、没有启动器入口的原桌面（TCL 的 `com.tcl.cyberui`，名称「T-UI」，图标是默认机器人）现在也作为磁贴列出来，名称「原桌面」，用 Aerial 自己画的主页图标（`SystemTile.Home`）。守护在运行时用它识别出的原桌面，否则用 priority ≥ 0 的其他 HOME。已有入口的（小米 PatchWall）不变。打开时走 `HomeGuardService.openStockLauncher`。TCL MT5879（guard）上验证过：磁贴出现在网格末尾，点开停在 T-UI，9 秒内不被拉回；按主页键（多屏互动注入）回到 Aerial。小米 MFTR0 上没有多出磁贴。
