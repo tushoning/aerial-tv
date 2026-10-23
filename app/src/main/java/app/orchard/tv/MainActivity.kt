@@ -528,7 +528,7 @@ class MainActivity : ComponentActivity() {
 
     private fun open(intent: Intent) {
         try {
-            startActivity(settingsLaunchIntent(this, intent))
+            SystemProbe.startSettingsIntent(this, intent)
         } catch (e: Exception) {
             LaunchFallback.next()?.let { return open(it) }
             Toast.makeText(this, R.string.unavailable, Toast.LENGTH_SHORT).show()
