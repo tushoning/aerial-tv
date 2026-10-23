@@ -280,6 +280,22 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * What Control Center shows that changes while it is open with nothing to tell us: whether Home
+     * Guard is bound (it binds a few seconds after Aerial starts, and the panel kept showing "not the
+     * default home screen" until it was opened again) and the brightness, if something else sets it.
+     * The volume and the network have broadcasts of their own (refreshSystem, refreshNetwork), and the
+     * input list is not rebuilt here. Assigning equal values redraws nothing.
+     */
+    fun refreshPanel() {
+        viewModelScope.launch {
+            val ctx = context
+            val (home, level) = withContext(Dispatchers.Default) { SystemProbe.homeStatus(ctx) to Brightness.level(ctx) }
+            homeStatus = home
+            brightness = level
+        }
+    }
+
     fun refreshNetwork() { network = SystemProbe.network(context) }
 
     fun adjustVolume(direction: Int) {

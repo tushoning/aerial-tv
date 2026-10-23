@@ -39,6 +39,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.lifecycleScope
 import app.orchard.tv.apps.AppEntry
 import app.orchard.tv.apps.CustomIcons
@@ -60,6 +61,8 @@ import app.orchard.tv.system.LaunchFallback
 import app.orchard.tv.system.settingsLaunchIntent
 import app.orchard.tv.update.Updates
 import app.orchard.tv.weather.Weather
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -162,6 +165,18 @@ class MainActivity : ComponentActivity() {
         }
 
         ContextCompat.registerReceiver(this, screenOnReceiver, IntentFilter(Intent.ACTION_SCREEN_ON), ContextCompat.RECEIVER_NOT_EXPORTED)
+        // Control Center shows things that change while it is open (Home Guard binds a few seconds
+        // after Aerial starts): look again every few seconds, only while it is open and Aerial is on screen.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                snapshotFlow { vm.overlay is Overlay.ControlCenter }.collectLatest { open ->
+                    while (open) {
+                        delay(PANEL_REFRESH_MS)
+                        vm.refreshPanel()
+                    }
+                }
+            }
+        }
         if (savedInstanceState == null && firstStartSinceBoot()) openBootSource("boot")
         if (intent.getBooleanExtra(EXTRA_WOKE, false)) openBootSource("brought back on wake")
     }
@@ -528,6 +543,9 @@ class MainActivity : ComponentActivity() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
 
         const val SCREENSAVER_HOLD_MS = 4 * 60 * 60 * 1000L
+
+        /** How often an open Control Center looks again at what it shows. */
+        private const val PANEL_REFRESH_MS = 3_000L
 
         /** `adb shell am start -a app.orchard.tv.PREVIEW_SCREENSAVER -n app.orchard.tv/.MainActivity` */
         const val ACTION_PREVIEW_SCREENSAVER = "app.orchard.tv.PREVIEW_SCREENSAVER"
