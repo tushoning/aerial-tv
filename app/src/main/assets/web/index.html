@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -27,9 +27,10 @@
     padding: env(safe-area-inset-top) 16px calc(32px + env(safe-area-inset-bottom));
     max-width: 720px; margin-inline: auto;
   }
-  header { padding: 28px 4px 8px; }
+  header { padding: 28px 4px 8px; position: relative; }
   header h1 { font-size: 34px; font-weight: 700; letter-spacing: -.02em; margin: 0; }
   header p { margin: 4px 0 0; color: var(--secondary); font-size: 15px; }
+  .lang { position: absolute; top: 24px; right: 4px; max-width: 46%; appearance: auto; border: 0; border-radius: 999px; background: var(--fill); color: var(--tint); font: inherit; font-size: 14px; font-weight: 600; padding: 7px 10px; cursor: pointer; }
   h2 { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: .02em; color: var(--secondary); margin: 28px 4px 8px; }
   .group { background: var(--card); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
   .segmented { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--fill); border-radius: 10px; padding: 2px; gap: 2px; }
@@ -107,53 +108,54 @@
 <body>
 <header>
   <h1>Aerial</h1>
-  <p>{{DEVICE}} · 个性化</p>
+  <p>{{DEVICE}} · <span data-i18n="personalize"></span></p>
+  <select class="lang" id="lang" data-i18n-aria-label="language"></select>
 </header>
 
-<h2>屏幕保护程序</h2>
-<div class="segmented" id="ss" role="group" aria-label="屏保">
-  <button data-mode="aerial">航拍</button>
-  <button data-mode="photos">照片</button>
-  <button data-mode="clock">时钟</button>
+<h2 data-i18n="screensaver"></h2>
+<div class="segmented" id="ss" role="group" data-i18n-aria-label="screensaver_short">
+  <button data-mode="aerial" data-i18n="ss_aerial"></button>
+  <button data-mode="photos" data-i18n="ss_photos"></button>
+  <button data-mode="clock" data-i18n="ss_clock"></button>
 </div>
 <p class="hint" id="ssHint"></p>
 
-<h2>焦点样式</h2>
-<div class="segmented two" id="focus" role="group" aria-label="焦点样式">
-  <button data-style="high_contrast">高对比度</button>
-  <button data-style="standard">标准</button>
+<h2 data-i18n="focus"></h2>
+<div class="segmented two" id="focus" role="group" data-i18n-aria-label="focus">
+  <button data-style="high_contrast" data-i18n="focus_high"></button>
+  <button data-style="standard" data-i18n="focus_standard"></button>
 </div>
 <p class="hint" id="focusHint"></p>
 
-<h2>天气</h2>
+<h2 data-i18n="weather"></h2>
 <div class="group wx"><b id="wxNow">—</b><span id="wxPlace"></span></div>
 <form class="city" id="cityForm">
-  <input id="city" type="text" placeholder="输入城市，例如 杭州" enterkeyhint="done" autocomplete="off">
-  <button id="cityBtn">设置</button>
+  <input id="city" type="text" data-i18n-placeholder="city_ph" enterkeyhint="done" autocomplete="off">
+  <button id="cityBtn" data-i18n="set"></button>
 </form>
 <p class="hint" id="wxHint"></p>
 
-<h2>从手机添加</h2>
+<h2 data-i18n="add_h"></h2>
 <label class="upload" id="uploadBtn">
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
-  <span id="uploadLabel">选择照片，设为电视壁纸</span>
+  <span id="uploadLabel" data-i18n="upload_label"></span>
   <input id="file" type="file" accept="image/*" multiple hidden>
 </label>
 
 <div id="sections"></div>
 
-<h2>App 图标</h2>
-<p class="hint" style="margin-top:0;margin-bottom:12px">点一个 App，从手机选一张图片换掉它在电视上的图标。图片会裁成 16:9；横图效果最好。固定到主屏幕的信号源（HDMI 等）也在这里，点右上角的 ✎ 给它起名字，比如「客厅 Apple TV」。</p>
+<h2 data-i18n="icons_h"></h2>
+<p class="hint" style="margin-top:0;margin-bottom:12px" data-i18n="icons_hint"></p>
 <div class="grid" id="apps"></div>
 <input id="iconFile" type="file" accept="image/*" hidden>
 
-<h2>反馈问题</h2>
-<p class="hint" style="margin-top:0;margin-bottom:12px">这台电视上 Aerial 有问题，或者想让 Aerial 适配它：复制诊断信息，贴进 GitHub 的「机型适配」反馈里。里面是机型、系统版本、桌面接管状态、信号源和 Aerial 的日志，不含账号、Wi-Fi 名称、IP 地址和照片。</p>
-<button class="upload" id="diagBtn">显示诊断信息</button>
+<h2 data-i18n="feedback_h"></h2>
+<p class="hint" style="margin-top:0;margin-bottom:12px" data-i18n="feedback_hint"></p>
+<button class="upload" id="diagBtn" data-i18n="diag_show"></button>
 <textarea class="diag" id="diag" readonly hidden></textarea>
 <div class="row" id="diagActions" hidden>
-  <button class="upload" id="diagCopy">复制</button>
-  <a class="upload plain" href="https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml" target="_blank" rel="noopener">去 GitHub 反馈</a>
+  <button class="upload" id="diagCopy" data-i18n="diag_copy"></button>
+  <a class="upload plain" href="https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml" target="_blank" rel="noopener" data-i18n="diag_github"></a>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -162,17 +164,465 @@ const base = location.pathname.replace(/\/?$/, '/');
 const $ = s => document.querySelector(s);
 let state = null;
 
+// The language: ?lang=ru in the address, else the one picked with the button at the top right (kept on
+// the phone), else the first of the phone's preferred languages that has a table, else English. Keys are in KEYS, one array of texts per language.
+const KEYS = ["personalize", "screensaver", "screensaver_short", "ss_aerial", "ss_photos", "ss_clock", "focus", "focus_high", "focus_standard", "weather", "city_ph", "set", "add_h", "upload_label", "icons_h", "icons_hint", "feedback_h", "feedback_hint", "diag_show", "diag_copy", "diag_github", "hint_aerial", "hint_photos", "hint_clock", "g_live", "g_live_sub", "g_daily", "g_daily_sub", "g_photo", "g_builtin", "g_auto", "toast_wallpaper", "aria_delete", "confirm_delete", "wx_clear", "wx_partlycloudy", "wx_cloudy", "wx_fog", "wx_rain", "wx_snow", "wx_thunder", "wx_chosen", "wx_auto_btn", "toast_auto", "wx_guessed", "wx_none", "tag_source", "tag_custom", "aria_rename", "prompt_rename", "toast_renamed", "toast_name_reset", "toast_rename_fail", "aria_reset_icon", "confirm_reset_icon", "toast_icon_reset", "focus_hint_standard", "focus_hint_high", "daily_title", "daily_caption", "rotate_title", "rotate_caption", "empty_photos", "add_second", "toast_tv_updated", "sending_n", "toast_added", "toast_no_photos", "toast_send_fail", "toast_city_set", "toast_city_nf", "toast_set_fail", "toast_sending_icon", "toast_icon_set", "toast_icon_bad", "diag_collecting", "toast_diag_fail", "toast_copied", "toast_copy_manual", "language"];
+const TEXTS = {
+ "zh": [
+  "个性化",
+  "屏幕保护程序",
+  "屏保",
+  "航拍",
+  "照片",
+  "时钟",
+  "焦点样式",
+  "高对比度",
+  "标准",
+  "天气",
+  "输入城市，例如 杭州",
+  "设置",
+  "从手机添加",
+  "选择照片，设为电视壁纸",
+  "App 图标",
+  "点一个 App，从手机选一张图片换掉它在电视上的图标。图片会裁成 16:9；横图效果最好。固定到主屏幕的信号源（HDMI 等）也在这里，点右上角的 ✎ 给它起名字，比如「客厅 Apple TV」。",
+  "反馈问题",
+  "这台电视上 Aerial 有问题，或者想让 Aerial 适配它：复制诊断信息，贴进 GitHub 的「机型适配」反馈里。里面是机型、系统版本、桌面接管状态、信号源和 Aerial 的日志，不含账号、Wi-Fi 名称、IP 地址和照片。",
+  "显示诊断信息",
+  "复制",
+  "去 GitHub 反馈",
+  "播放 Apple TV 航拍影片，画面会标出所在的地点。",
+  "轮播每日精选和你的照片。",
+  "大号时钟，配合当前壁纸。",
+  "航拍",
+  "停在主屏幕 10 秒后，壁纸播放 Apple TV 的航拍；按任意键停在当前画面",
+  "每日精选",
+  "每天自动更新的风景摄影",
+  "我的照片",
+  "内置",
+  "更多",
+  "已设为电视壁纸",
+  "删除",
+  "删除这张照片？",
+  "晴",
+  "多云",
+  "阴",
+  "雾",
+  "雨",
+  "雪",
+  "雷雨",
+  "显示 {place} 的天气。",
+  "改回按网络自动定位",
+  "已改回自动定位",
+  "按网络自动定位：{place}。用了代理时常会定错，不对的话输入你所在的城市。",
+  "还没有定位到。输入你所在的城市。",
+  "信号源",
+  "自定义图标",
+  "起名字",
+  "给「{port}」起个名字（留空恢复默认）",
+  "电视上已改名",
+  "已恢复默认名字",
+  "改名失败，请重试",
+  "恢复默认图标",
+  "恢复「{label}」的默认图标？",
+  "已恢复默认图标",
+  "与 Apple TV 默认一致：选中的 App 只放大浮起。",
+  "选中的 App 外面加一圈白色描边，离得远也看得清。",
+  "每日自动更新",
+  "总是使用当天的照片",
+  "每天换一张",
+  "每天自动换成下一张照片",
+  "还没有照片。用上面的按钮从手机添加。",
+  "再加一张照片，就可以选「每天换一张」。",
+  "电视上已更新",
+  "正在发送 {n} 张…",
+  "已添加 {n} 张，最后一张已设为壁纸",
+  "没有可用的照片",
+  "发送失败，请重试",
+  "已设为 {place}",
+  "没有找到「{name}」",
+  "设置失败，请重试",
+  "正在发送「{label}」的图标…",
+  "电视上已更换",
+  "这张图片用不了",
+  "正在收集…",
+  "没有取到，请重试",
+  "已复制",
+  "请长按文本框全选后复制",
+  "语言"
+ ],
+ "en": [
+  "Personalize",
+  "Screensaver",
+  "Screensaver",
+  "Aerial",
+  "Photos",
+  "Clock",
+  "Focus Style",
+  "High Contrast",
+  "Standard",
+  "Weather",
+  "Enter a city, e.g. London",
+  "Set",
+  "Add from Phone",
+  "Choose photos to use as TV wallpaper",
+  "App Icons",
+  "Tap an app and pick a picture from your phone to replace its icon on the TV. The picture is cropped to 16:9; wide pictures work best. Inputs pinned to Home (HDMI and the like) are here too: tap ✎ at the top right to name one, for example “Living Room Apple TV”.",
+  "Report a Problem",
+  "Something is wrong with Aerial on this TV, or you want Aerial to support it: copy the diagnostics and paste them into a GitHub “Device” issue. They hold the model, the system version, the Home takeover status, the inputs and Aerial’s log, and no accounts, Wi-Fi names, IP addresses or photos.",
+  "Show Diagnostics",
+  "Copy",
+  "Report on GitHub",
+  "Plays Apple TV’s aerial films, with the place named on screen.",
+  "Cycles through the daily photos and yours.",
+  "A big clock over the current wallpaper.",
+  "Aerial",
+  "After 10 seconds on Home, the wallpaper plays Apple TV’s aerial films; press any key to stop on the current frame",
+  "Daily Photos",
+  "Landscape photography, updated every day",
+  "My Photos",
+  "Built-in",
+  "More",
+  "Set as the TV wallpaper",
+  "Delete",
+  "Delete this photo?",
+  "Clear",
+  "Partly cloudy",
+  "Cloudy",
+  "Fog",
+  "Rain",
+  "Snow",
+  "Thunderstorm",
+  "Showing the weather for {place}.",
+  "Go back to locating by network",
+  "Back to locating by network",
+  "Located from the network: {place}. A proxy often throws it off; if it is wrong, enter your city.",
+  "Not located yet. Enter your city.",
+  "Input",
+  "Custom icon",
+  "Rename",
+  "Name “{port}” (leave empty to restore the default)",
+  "Renamed on the TV",
+  "Default name restored",
+  "Could not rename, try again",
+  "Restore default icon",
+  "Restore the default icon of “{label}”?",
+  "Default icon restored",
+  "As on Apple TV: the selected app only lifts.",
+  "A white frame around the selected app, easy to see from across the room.",
+  "Always Today’s",
+  "Always uses today’s photo",
+  "One a Day",
+  "Switches to the next photo every day",
+  "No photos yet. Add some from your phone with the button above.",
+  "Add one more photo to choose “One a Day”.",
+  "Updated on the TV",
+  "Sending {n}…",
+  "Added {n}; the last one is now the wallpaper",
+  "No usable photos",
+  "Could not send, try again",
+  "Set to {place}",
+  "Could not find “{name}”",
+  "Could not set it, try again",
+  "Sending the icon for “{label}”…",
+  "Changed on the TV",
+  "That picture cannot be used",
+  "Collecting…",
+  "Could not get it, try again",
+  "Copied",
+  "Long-press the text box, select all and copy",
+  "Language"
+ ],
+ "ru": [
+  "Персонализация",
+  "Заставка",
+  "Заставка",
+  "Аэросъёмка",
+  "Фото",
+  "Часы",
+  "Стиль фокуса",
+  "Высокий контраст",
+  "Стандартный",
+  "Погода",
+  "Введите город, например Москва",
+  "Задать",
+  "Добавить с телефона",
+  "Выберите фото для обоев телевизора",
+  "Значки приложений",
+  "Нажмите на приложение и выберите на телефоне картинку, чтобы заменить его значок на телевизоре. Картинка обрезается до 16:9; лучше всего подходят широкие. Здесь же источники, закреплённые на главном экране (HDMI и подобные): нажмите ✎ в правом верхнем углу, чтобы назвать источник, например «Apple TV в гостиной».",
+  "Сообщить о проблеме",
+  "С Aerial на этом телевизоре что-то не так, или вы хотите, чтобы Aerial его поддерживал: скопируйте диагностику и вставьте её в обращение GitHub о моделях. В ней модель, версия системы, статус перехвата главного экрана, источники и журнал Aerial, без учётных записей, названий Wi-Fi, IP-адресов и фото.",
+  "Показать диагностику",
+  "Копировать",
+  "Сообщить на GitHub",
+  "Воспроизводит аэросъёмку Apple TV, на экране указано место.",
+  "Сменяются фото дня и ваши фото.",
+  "Большие часы поверх текущих обоев.",
+  "Аэросъёмка",
+  "После 10 секунд на главном экране обои воспроизводят аэросъёмку Apple TV; нажмите любую кнопку, чтобы остановиться на текущем кадре",
+  "Фото дня",
+  "Пейзажная фотография, обновляется каждый день",
+  "Мои фото",
+  "Встроенные",
+  "Ещё",
+  "Установлено как обои телевизора",
+  "Удалить",
+  "Удалить это фото?",
+  "Ясно",
+  "Переменная облачность",
+  "Облачно",
+  "Туман",
+  "Дождь",
+  "Снег",
+  "Гроза",
+  "Показана погода для: {place}.",
+  "Вернуться к определению по сети",
+  "Снова определяется по сети",
+  "Определено по сети: {place}. Прокси часто сбивает определение; если неверно, введите свой город.",
+  "Пока не определено. Введите свой город.",
+  "Источник",
+  "Свой значок",
+  "Переименовать",
+  "Назовите «{port}» (оставьте пустым, чтобы вернуть название по умолчанию)",
+  "Переименовано на телевизоре",
+  "Название по умолчанию восстановлено",
+  "Не удалось переименовать, повторите",
+  "Вернуть значок по умолчанию",
+  "Вернуть значок «{label}» по умолчанию?",
+  "Значок по умолчанию возвращён",
+  "Как на Apple TV: выбранное приложение лишь приподнимается.",
+  "Белая рамка вокруг выбранного приложения, хорошо заметная с другого конца комнаты.",
+  "Всегда сегодняшнее",
+  "Всегда сегодняшнее фото",
+  "Одно в день",
+  "Каждый день сменяется следующим фото",
+  "Фото пока нет. Добавьте их с телефона кнопкой выше.",
+  "Добавьте ещё одно фото, чтобы выбрать «Одно в день».",
+  "Обновлено на телевизоре",
+  "Отправка: {n}…",
+  "Добавлено: {n}; последнее стало обоями",
+  "Нет подходящих фото",
+  "Не удалось отправить, повторите",
+  "Установлено: {place}",
+  "Не удалось найти «{name}»",
+  "Не удалось задать, повторите",
+  "Отправка значка для «{label}»…",
+  "Изменено на телевизоре",
+  "Эту картинку использовать нельзя",
+  "Сбор данных…",
+  "Не удалось получить, повторите",
+  "Скопировано",
+  "Удерживайте текстовое поле, выделите всё и скопируйте",
+  "Язык"
+ ],
+ "uk": [
+  "Персоналізація",
+  "Заставка",
+  "Заставка",
+  "Аерозйомка",
+  "Фото",
+  "Годинник",
+  "Стиль фокуса",
+  "Високий контраст",
+  "Стандартний",
+  "Погода",
+  "Введіть місто, наприклад Київ",
+  "Задати",
+  "Додати з телефона",
+  "Виберіть фото для шпалер телевізора",
+  "Значки застосунків",
+  "Натисніть на застосунок і виберіть на телефоні зображення, щоб замінити його значок на телевізорі. Зображення обрізається до 16:9; найкраще підходять широкі. Тут же джерела, закріплені на головному екрані (HDMI тощо): натисніть ✎ у правому верхньому куті, щоб назвати джерело, наприклад «Apple TV у вітальні».",
+  "Повідомити про проблему",
+  "З Aerial на цьому телевізорі щось не так, або ви хочете, щоб Aerial його підтримував: скопіюйте діагностику й вставте її в звернення GitHub про моделі. У ній модель, версія системи, статус перехоплення головного екрана, джерела та журнал Aerial, без облікових записів, назв Wi-Fi, IP-адрес і фото.",
+  "Показати діагностику",
+  "Копіювати",
+  "Повідомити на GitHub",
+  "Відтворює аерозйомку Apple TV, на екрані вказано місце.",
+  "Змінюються фото дня та ваші фото.",
+  "Великий годинник поверх поточних шпалер.",
+  "Аерозйомка",
+  "Після 10 секунд на головному екрані шпалери відтворюють аерозйомку Apple TV; натисніть будь-яку кнопку, щоб зупинитися на поточному кадрі",
+  "Фото дня",
+  "Пейзажна фотографія, оновлюється щодня",
+  "Мої фото",
+  "Вбудовані",
+  "Ще",
+  "Встановлено як шпалери телевізора",
+  "Видалити",
+  "Видалити це фото?",
+  "Ясно",
+  "Мінлива хмарність",
+  "Хмарно",
+  "Туман",
+  "Дощ",
+  "Сніг",
+  "Гроза",
+  "Показано погоду для: {place}.",
+  "Повернутися до визначення за мережею",
+  "Знову визначається за мережею",
+  "Визначено за мережею: {place}. Проксі часто збиває визначення; якщо хибно, введіть своє місто.",
+  "Ще не визначено. Введіть своє місто.",
+  "Джерело",
+  "Власний значок",
+  "Перейменувати",
+  "Назвіть «{port}» (залиште порожнім, щоб повернути назву за замовчуванням)",
+  "Перейменовано на телевізорі",
+  "Назву за замовчуванням відновлено",
+  "Не вдалося перейменувати, повторіть",
+  "Повернути значок за замовчуванням",
+  "Повернути значок «{label}» за замовчуванням?",
+  "Значок за замовчуванням повернуто",
+  "Як на Apple TV: вибраний застосунок лише трохи підіймається.",
+  "Біла рамка навколо вибраного застосунку, добре помітна з іншого кінця кімнати.",
+  "Завжди сьогоднішнє",
+  "Завжди сьогоднішнє фото",
+  "Одне на день",
+  "Щодня змінюється наступним фото",
+  "Фото ще немає. Додайте їх з телефона кнопкою вище.",
+  "Додайте ще одне фото, щоб вибрати «Одне на день».",
+  "Оновлено на телевізорі",
+  "Надсилання: {n}…",
+  "Додано: {n}; останнє стало шпалерами",
+  "Немає придатних фото",
+  "Не вдалося надіслати, повторіть",
+  "Встановлено: {place}",
+  "Не вдалося знайти «{name}»",
+  "Не вдалося задати, повторіть",
+  "Надсилання значка для «{label}»…",
+  "Змінено на телевізорі",
+  "Це зображення використати не можна",
+  "Збирання даних…",
+  "Не вдалося отримати, повторіть",
+  "Скопійовано",
+  "Утримуйте текстове поле, виділіть усе й скопіюйте",
+  "Мова"
+ ],
+ "kk": [
+  "Жекелендіру",
+  "Экран қорғаушы",
+  "Экран қорғаушы",
+  "Аэрожиын",
+  "Фотолар",
+  "Сағат",
+  "Фокус стилі",
+  "Жоғары контраст",
+  "Стандартты",
+  "Ауа райы",
+  "Қаланы енгізіңіз, мысалы Алматы",
+  "Орнату",
+  "Телефоннан қосу",
+  "Теледидар түсқағазы үшін фото таңдаңыз",
+  "Қолданба белгішелері",
+  "Қолданбаны түртіп, телефоннан сурет таңдаңыз, сонда оның теледидардағы белгішесі ауысады. Сурет 16:9 өлшеміне қиылады; ең жақсы нәтижені кең суреттер береді. Басты экранға бекітілген көздер (HDMI және т.б.) де осында: атау беру үшін жоғарғы оң жақтағы ✎ түймесін басыңыз, мысалы «Қонақ бөлмедегі Apple TV».",
+  "Мәселе туралы хабарлау",
+  "Осы теледидардағы Aerial-де ақау бар немесе Aerial-дің оны қолдағанын қалайсыз: диагностиканы көшіріп, GitHub-тағы құрылғы туралы өтінішке қойыңыз. Онда модель, жүйе нұсқасы, басты экранды басып алу күйі, көздер және Aerial журналы бар, есептік жазбалар, Wi-Fi атаулары, IP мекенжайлар және фотолар жоқ.",
+  "Диагностиканы көрсету",
+  "Көшіру",
+  "GitHub-та хабарлау",
+  "Apple TV аэрожиынын ойнатады, экранда орын көрсетіледі.",
+  "Күннің фотолары мен өз фотоларыңыз кезектеседі.",
+  "Ағымдағы түсқағаз үстіндегі үлкен сағат.",
+  "Аэрожиын",
+  "Басты экранда 10 секунд тұрғаннан кейін түсқағаз Apple TV аэрожиынын ойнатады; ағымдағы кадрда тоқтау үшін кез келген түймені басыңыз",
+  "Күннің фотолары",
+  "Пейзаждық фотография, күн сайын жаңартылады",
+  "Менің фотоларым",
+  "Кіріктірілген",
+  "Тағы",
+  "Теледидар түсқағазы етіп орнатылды",
+  "Жою",
+  "Бұл фотоны жою керек пе?",
+  "Ашық",
+  "Ауыспалы бұлтты",
+  "Бұлтты",
+  "Тұман",
+  "Жаңбыр",
+  "Қар",
+  "Нөсер",
+  "{place} ауа райы көрсетілген.",
+  "Желі бойынша анықтауға оралу",
+  "Қайтадан желі бойынша анықталады",
+  "Желі бойынша анықталды: {place}. Прокси жиі қателестіреді; қате болса, қалаңызды енгізіңіз.",
+  "Әлі анықталған жоқ. Қалаңызды енгізіңіз.",
+  "Көз",
+  "Өз белгішесі",
+  "Атын өзгерту",
+  "«{port}» атауын беріңіз (әдепкі атау үшін бос қалдырыңыз)",
+  "Теледидарда аты өзгертілді",
+  "Әдепкі атау қайтарылды",
+  "Атын өзгертуге болмады, қайталап көріңіз",
+  "Әдепкі белгішені қайтару",
+  "«{label}» әдепкі белгішесін қайтару керек пе?",
+  "Әдепкі белгіше қайтарылды",
+  "Apple TV сияқты: таңдалған қолданба тек көтеріледі.",
+  "Таңдалған қолданбаның айналасындағы ақ жақтау, бөлменің арғы шетінен де жақсы көрінеді.",
+  "Әрқашан бүгінгісі",
+  "Әрқашан бүгінгі фото",
+  "Күніне біреуі",
+  "Күн сайын келесі фотоға ауысады",
+  "Фотолар әлі жоқ. Оларды жоғарыдағы түймемен телефоннан қосыңыз.",
+  "«Күніне біреуін» таңдау үшін тағы бір фото қосыңыз.",
+  "Теледидарда жаңартылды",
+  "Жіберілуде: {n}…",
+  "Қосылды: {n}; соңғысы түсқағаз болды",
+  "Жарамды фотолар жоқ",
+  "Жіберуге болмады, қайталап көріңіз",
+  "Орнатылды: {place}",
+  "«{name}» табылмады",
+  "Орнатуға болмады, қайталап көріңіз",
+  "«{label}» үшін белгіше жіберілуде…",
+  "Теледидарда өзгертілді",
+  "Бұл суретті пайдалануға болмайды",
+  "Жиналуда…",
+  "Алуға болмады, қайталап көріңіз",
+  "Көшірілді",
+  "Мәтін өрісін ұзақ басып, барлығын таңдап, көшіріңіз",
+  "Тіл"
+ ]
+};
+const LANGS = Object.keys(TEXTS);
+const LANG = (() => {
+  const asked = new URLSearchParams(location.search).get('lang');
+  let saved = null;
+  try { saved = localStorage.getItem('aerial-lang'); } catch (e) {}
+  const prefs = [asked, saved, ...(navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ''])];
+  for (const l of prefs) { if (!l) continue; const c = String(l).toLowerCase().split('-')[0]; if (LANGS.includes(c)) return c; }
+  return 'en';
+})();
+const NAMES = { zh: '中文', en: 'English', ru: 'Русский', uk: 'Українська', kk: 'Қазақша' };
+const I18N = {};
+for (const l of LANGS) { I18N[l] = {}; KEYS.forEach((k, i) => I18N[l][k] = TEXTS[l][i]); }
+function t(key, vars) {
+  let s = I18N[LANG][key] || I18N.en[key] || I18N.zh[key] || key;
+  if (vars) for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+  return s;
+}
+function initLangSwitch() {
+  const s = $('#lang');
+  for (const l of LANGS) { const o = document.createElement('option'); o.value = l; o.textContent = NAMES[l] || l; s.appendChild(o); }
+  s.value = LANG;
+  s.onchange = () => {
+    try { localStorage.setItem('aerial-lang', s.value); } catch (e) {}
+    const u = new URL(location.href); u.searchParams.set('lang', s.value); location.replace(u.toString());
+  };
+}
+function applyI18n() {
+  document.documentElement.lang = LANG;
+  document.querySelectorAll('[data-i18n]').forEach(e => e.textContent = t(e.dataset.i18n));
+  document.querySelectorAll('[data-i18n-aria-label]').forEach(e => e.setAttribute('aria-label', t(e.dataset.i18nAriaLabel)));
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(e => e.setAttribute('placeholder', t(e.dataset.i18nPlaceholder)));
+}
+
 const hints = {
-  aerial: '播放 Apple TV 航拍影片，画面会标出所在的地点。',
-  photos: '轮播每日精选和你的照片。',
-  clock: '大号时钟，配合当前壁纸。'
+  aerial: t('hint_aerial'),
+  photos: t('hint_photos'),
+  clock: t('hint_clock')
 };
 const groups = [
-  ['live', '航拍', '停在主屏幕 10 秒后，壁纸播放 Apple TV 的航拍；按任意键停在当前画面'],
-  ['daily', '每日精选', '每天自动更新的风景摄影'],
-  ['photo', '我的照片', ''],
-  ['builtin', '内置', ''],
-  ['auto', '更多', '']
+  ['live', t('g_live'), t('g_live_sub')],
+  ['daily', t('g_daily'), t('g_daily_sub')],
+  ['photo', t('g_photo'), ''],
+  ['builtin', t('g_builtin'), ''],
+  ['auto', t('g_auto'), '']
 ];
 
 function toast(msg) {
@@ -197,14 +647,14 @@ function card(w, selected, extraClass) {
   b.querySelector('.t').textContent = w.title;
   b.querySelector('.c').textContent = w.caption || '';
   b.onclick = async () => {
-    state = await api('api/wallpaper', { id: w.id }); render(); toast('已设为电视壁纸');
+    state = await api('api/wallpaper', { id: w.id }); render(); toast(t('toast_wallpaper'));
   };
   if (w.kind === 'photo') {
     const d = document.createElement('button');
-    d.className = 'del'; d.textContent = '✕'; d.setAttribute('aria-label', '删除');
+    d.className = 'del'; d.textContent = '✕'; d.setAttribute('aria-label', t('aria_delete'));
     d.onclick = async e => {
       e.stopPropagation();
-      if (!confirm('删除这张照片？')) return;
+      if (!confirm(t('confirm_delete'))) return;
       state = await api('api/delete', { id: w.id }); render();
     };
     b.appendChild(d);
@@ -212,7 +662,7 @@ function card(w, selected, extraClass) {
   return b;
 }
 
-const weatherNames = { clear: '晴', partlycloudy: '多云', cloudy: '阴', fog: '雾', rain: '雨', snow: '雪', thunder: '雷雨' };
+const weatherNames = { clear: t('wx_clear'), partlycloudy: t('wx_partlycloudy'), cloudy: t('wx_cloudy'), fog: t('wx_fog'), rain: t('wx_rain'), snow: t('wx_snow'), thunder: t('wx_thunder') };
 
 function renderWeather() {
   const w = state.weather || {};
@@ -220,14 +670,14 @@ function renderWeather() {
   $('#wxPlace').textContent = w.place || '';
   const hint = $('#wxHint'); hint.innerHTML = '';
   if (w.chosen) {
-    hint.append(`显示 ${w.place} 的天气。`);
-    const b = document.createElement('button'); b.className = 'link'; b.textContent = '改回按网络自动定位';
-    b.onclick = async () => { state = await api('api/weather/auto', {}); render(); toast('已改回自动定位'); };
+    hint.append(t('wx_chosen', { place: w.place }));
+    const b = document.createElement('button'); b.className = 'link'; b.textContent = t('wx_auto_btn');
+    b.onclick = async () => { state = await api('api/weather/auto', {}); render(); toast(t('toast_auto')); };
     hint.append(b);
   } else {
     hint.textContent = w.place
-      ? `按网络自动定位：${w.place}。用了代理时常会定错，不对的话输入你所在的城市。`
-      : '还没有定位到。输入你所在的城市。';
+      ? t('wx_guessed', { place: w.place })
+      : t('wx_none');
   }
 }
 
@@ -240,27 +690,27 @@ function renderApps() {
     b.innerHTML = `<img loading="lazy" alt=""><div class="t"></div><div class="c"></div>`;
     b.querySelector('img').src = `${base}tile/${encodeURIComponent(a.key)}?v=${a.stamp}-${a.look || 0}`;
     b.querySelector('.t').textContent = a.label;
-    b.querySelector('.c').textContent = a.source ? (a.label === a.port ? '信号源' : a.port) : a.custom ? '自定义图标' : '';
+    b.querySelector('.c').textContent = a.source ? (a.label === a.port ? t('tag_source') : a.port) : a.custom ? t('tag_custom') : '';
     if (a.source) {
       const n = document.createElement('button');
-      n.className = 'del ren'; n.textContent = '✎'; n.setAttribute('aria-label', '起名字');
+      n.className = 'del ren'; n.textContent = '✎'; n.setAttribute('aria-label', t('aria_rename'));
       n.onclick = async e => {
         e.stopPropagation();
-        const name = prompt(`给「${a.port}」起个名字（留空恢复默认）`, a.name || '');
+        const name = prompt(t('prompt_rename', { port: a.port }), a.name || '');
         if (name === null) return;
-        try { state = await api('api/source/name', { app: a.key, name }); render(); toast(name.trim() ? '电视上已改名' : '已恢复默认名字'); }
-        catch (err) { toast('改名失败，请重试'); }
+        try { state = await api('api/source/name', { app: a.key, name }); render(); toast(t(name.trim() ? 'toast_renamed' : 'toast_name_reset')); }
+        catch (err) { toast(t('toast_rename_fail')); }
       };
       b.appendChild(n);
     }
     b.onclick = () => { iconFor = a; $('#iconFile').click(); };
     if (a.custom) {
       const r = document.createElement('button');
-      r.className = 'del'; r.textContent = '↺'; r.setAttribute('aria-label', '恢复默认图标');
+      r.className = 'del'; r.textContent = '↺'; r.setAttribute('aria-label', t('aria_reset_icon'));
       r.onclick = async e => {
         e.stopPropagation();
-        if (!confirm(`恢复「${a.label}」的默认图标？`)) return;
-        state = await api('api/icon/reset', { app: a.key }); render(); toast('已恢复默认图标');
+        if (!confirm(t('confirm_reset_icon', { label: a.label }))) return;
+        state = await api('api/icon/reset', { app: a.key }); render(); toast(t('toast_icon_reset'));
       };
       b.appendChild(r);
     }
@@ -279,29 +729,29 @@ function render() {
   document.querySelectorAll('#focus button').forEach(b =>
     b.setAttribute('aria-pressed', b.dataset.style === state.focusStyle ? 'true' : 'false'));
   $('#focusHint').textContent = state.focusStyle === 'standard'
-    ? '与 Apple TV 默认一致：选中的 App 只放大浮起。'
-    : '选中的 App 外面加一圈白色描边，离得远也看得清。';
+    ? t('focus_hint_standard')
+    : t('focus_hint_high');
   const root = $('#sections'); root.innerHTML = '';
   for (const [kind, title, sub] of groups) {
     let list = state.wallpapers.filter(w => w.kind === kind);
     if (kind === 'daily' && list.length) {
-      list = [{ id: state.latestDaily, kind: 'daily', title: '每日自动更新', caption: '总是使用当天的照片' }, ...list];
+      list = [{ id: state.latestDaily, kind: 'daily', title: t('daily_title'), caption: t('daily_caption') }, ...list];
     }
     // Two or more photos: one a day, as on the TV (#27, #194).
     if (kind === 'photo' && list.length > 1) {
-      list = [{ id: state.rotatePhotos, kind: 'photos', title: '每天换一张', caption: '每天自动换成下一张照片' }, ...list];
+      list = [{ id: state.rotatePhotos, kind: 'photos', title: t('rotate_title'), caption: t('rotate_caption') }, ...list];
     }
     if (!list.length && kind !== 'photo') continue;
     const h = document.createElement('h2'); h.textContent = title; root.appendChild(h);
     if (!list.length) {
-      const p = document.createElement('p'); p.className = 'empty'; p.textContent = '还没有照片。用上面的按钮从手机添加。'; root.appendChild(p);
+      const p = document.createElement('p'); p.className = 'empty'; p.textContent = t('empty_photos'); root.appendChild(p);
       continue;
     }
     const g = document.createElement('div'); g.className = 'grid';
     list.forEach(w => g.appendChild(card(w, w.id === state.selected)));
     root.appendChild(g);
     if (kind === 'photo' && list.length === 1) {
-      const p = document.createElement('p'); p.className = 'empty'; p.textContent = '再加一张照片，就可以选「每天换一张」。'; root.appendChild(p);
+      const p = document.createElement('p'); p.className = 'empty'; p.textContent = t('add_second'); root.appendChild(p);
     }
   }
 }
@@ -310,20 +760,20 @@ document.querySelectorAll('#ss button').forEach(b => b.onclick = async () => {
   state = await api('api/screensaver', { mode: b.dataset.mode }); render();
 });
 document.querySelectorAll('#focus button').forEach(b => b.onclick = async () => {
-  state = await api('api/focus', { style: b.dataset.style }); render(); toast('电视上已更新');
+  state = await api('api/focus', { style: b.dataset.style }); render(); toast(t('toast_tv_updated'));
 });
 
 $('#file').onchange = async e => {
   const files = [...e.target.files]; if (!files.length) return;
   const btn = $('#uploadBtn'); const label = $('#uploadLabel');
-  btn.setAttribute('disabled', ''); label.textContent = `正在发送 ${files.length} 张…`;
+  btn.setAttribute('disabled', ''); label.textContent = t('sending_n', { n: files.length });
   try {
     const fd = new FormData(); files.forEach((f, i) => fd.append('photo' + i, f, f.name));
     const r = await fetch(base + 'api/upload', { method: 'POST', body: fd });
     state = await r.json(); render();
-    toast(state.added ? `已添加 ${state.added} 张，最后一张已设为壁纸` : '没有可用的照片');
-  } catch (err) { toast('发送失败，请重试'); }
-  btn.removeAttribute('disabled'); label.textContent = '选择照片，设为电视壁纸'; e.target.value = '';
+    toast(state.added ? t('toast_added', { n: state.added }) : t('toast_no_photos'));
+  } catch (err) { toast(t('toast_send_fail')); }
+  btn.removeAttribute('disabled'); label.textContent = t('upload_label'); e.target.value = '';
 };
 
 $('#cityForm').onsubmit = async e => {
@@ -332,33 +782,33 @@ $('#cityForm').onsubmit = async e => {
   const btn = $('#cityBtn'); btn.setAttribute('disabled', '');
   try {
     state = await api('api/weather/city', { name }); render();
-    toast(state.found ? `已设为 ${state.weather.place}` : `没有找到「${name}」`);
+    toast(state.found ? t('toast_city_set', { place: state.weather.place }) : t('toast_city_nf', { name }));
     if (state.found) $('#city').value = '';
-  } catch (err) { toast('设置失败，请重试'); }
+  } catch (err) { toast(t('toast_set_fail')); }
   btn.removeAttribute('disabled');
 };
 
 $('#iconFile').onchange = async e => {
   const f = e.target.files[0]; const a = iconFor; e.target.value = '';
   if (!f || !a) return;
-  toast(`正在发送「${a.label}」的图标…`);
+  toast(t('toast_sending_icon', { label: a.label }));
   try {
     const fd = new FormData(); fd.append('app', a.key); fd.append('picture', f, f.name);
     const r = await fetch(base + 'api/icon', { method: 'POST', body: fd });
     if (!r.ok) throw new Error(r.status);
     state = await r.json(); render();
-    toast(state.saved ? '电视上已更换' : '这张图片用不了');
-  } catch (err) { toast('发送失败，请重试'); }
+    toast(t(state.saved ? 'toast_icon_set' : 'toast_icon_bad'));
+  } catch (err) { toast(t('toast_send_fail')); }
 };
 
 $('#diagBtn').onclick = async () => {
-  const b = $('#diagBtn'); b.disabled = true; b.textContent = '正在收集…';
+  const b = $('#diagBtn'); b.disabled = true; b.textContent = t('diag_collecting');
   try {
     const r = await fetch(base + 'api/diagnostics');
     if (!r.ok) throw new Error(r.status);
     $('#diag').value = await r.text();
     $('#diag').hidden = false; $('#diagActions').hidden = false; b.hidden = true;
-  } catch (e) { toast('没有取到，请重试'); b.textContent = '显示诊断信息'; }
+  } catch (e) { toast(t('toast_diag_fail')); b.textContent = t('diag_show'); }
   b.disabled = false;
 };
 // The page is plain HTTP on the LAN, where browsers offer no navigator.clipboard.
@@ -366,9 +816,11 @@ $('#diagCopy').onclick = () => {
   const t = $('#diag'); t.focus(); t.select(); t.setSelectionRange(0, t.value.length);
   let ok = false;
   try { ok = document.execCommand('copy'); } catch (e) {}
-  toast(ok ? '已复制' : '请长按文本框全选后复制');
+  toast(t(ok ? 'toast_copied' : 'toast_copy_manual'));
 };
 
+initLangSwitch();
+applyI18n();
 async function refresh() { try { state = await api('api/state'); render(); } catch (e) {} }
 refresh();
 setInterval(() => { if (!document.hidden) refresh(); }, 6000);
