@@ -427,7 +427,10 @@ class MainActivity : ComponentActivity() {
         vm.lastInputAt = SystemClock.uptimeMillis()
         idleHandler.removeCallbacks(showScreensaver)
         if (AerialSettings.screensaverMinutes != AerialSettings.NEVER) idleHandler.postDelayed(showScreensaver, idleBeforeScreensaver())
-        else if (window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON == 0 && screenNeverOff()) {
+        // Not with "System": the firmware's screensaver is wanted then, and holding the screen on
+        // held it off (Xiaomi's starts on its own timer, screen_saver_timeout).
+        else if (Wallpapers.screensaver != ScreensaverMode.System &&
+            window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON == 0 && screenNeverOff()) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
@@ -463,11 +466,12 @@ class MainActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (locked) return super.dispatchKeyEvent(event)
         if (event.keyCode == dreamWokeKey) {
+            DiagLog.i("key ${KeyEvent.keyCodeToString(event.keyCode)} #${event.repeatCount} is the rest of the press that woke the dream")
             if (event.action == KeyEvent.ACTION_UP) { dreamWokeKey = -1; return true }
             if (event.repeatCount > 0) return true
             dreamWokeKey = -1 // a new press of the same key
         }
-        if (keysLogged++ < 200) DiagLog.i("key ${KeyEvent.keyCodeToString(event.keyCode)} ${if (event.action == KeyEvent.ACTION_DOWN) "down" else "up"}, view focused ${currentFocus != null}")
+        if (keysLogged++ < 200) DiagLog.i("key ${KeyEvent.keyCodeToString(event.keyCode)} ${if (event.action == KeyEvent.ACTION_DOWN) "down" else "up"} #${event.repeatCount} at ${event.eventTime}, view focused ${currentFocus != null}")
         restartIdleTimer()
         // The key that wakes the screensaver only wakes it, silently.
         if (!vm.screensaverVisible && event.keyCode != swallowKeyUp) Sounds.onKey(event)

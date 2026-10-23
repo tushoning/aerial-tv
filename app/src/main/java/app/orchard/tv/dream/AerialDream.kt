@@ -8,6 +8,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import app.orchard.tv.MainActivity
+import app.orchard.tv.system.DiagLog
 import app.orchard.tv.system.MissingClipboard
 import app.orchard.tv.ui.theme.canvasDensity
 import app.orchard.tv.weather.Weather
@@ -77,9 +78,12 @@ class AerialDream : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             MainActivity.dreamWokeAt = event.eventTime
             MainActivity.dreamWokeKey = event.keyCode
+            DiagLog.i("dream woken by ${KeyEvent.keyCodeToString(event.keyCode)} at ${event.eventTime}")
             finish()
         }
-        if (event.action == KeyEvent.ACTION_UP && event.keyCode == MainActivity.dreamWokeKey) MainActivity.dreamWokeKey = -1
+        // The lift, if it comes here while the dream is still up. Not the cancelled one Android sends
+        // as the dream loses focus: the real lift then still goes to Home (TCL MT5879).
+        if (event.action == KeyEvent.ACTION_UP && !event.isCanceled && event.keyCode == MainActivity.dreamWokeKey) MainActivity.dreamWokeKey = -1
         return true
     }
 

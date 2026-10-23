@@ -3,7 +3,6 @@ package app.orchard.tv.system
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.provider.Settings
 import android.util.Log
 import app.orchard.tv.dream.AerialDream
@@ -55,12 +54,15 @@ object SystemScreensaver {
         val pm = context.packageManager
         val xiaomi = runCatching { pm.getPackageInfo(XIAOMI, 0) }.isSuccess
         if (xiaomi) {
-            val launch = pm.getLeanbackLaunchIntentForPackage(XIAOMI) ?: pm.getLaunchIntentForPackage(XIAOMI)
-                ?: pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).setPackage(XIAOMI), PackageManager.MATCH_ALL)
-                    .firstOrNull { it.activityInfo.exported }
-                    ?.let { Intent(Intent.ACTION_MAIN).setClassName(it.activityInfo.packageName, it.activityInfo.name) }
-            if (launch != null && runCatching { context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return true
-            Log.w(TAG, "Xiaomi's screensaver has no entry an app can open")
+            // Its MainActivity is the screensaver. HyperOS starts it from a protected broadcast with
+            // these extras; without them it opens with its style picker over it (and an ad).
+            // MiTV-MFTR0, screensaver 3.04.115.
+            val saver = Intent(Intent.ACTION_MAIN).setClassName(XIAOMI, "$XIAOMI.MainActivity")
+                .putExtra("show_saver_list", false)
+                .putExtra("show_widget_view", false)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (runCatching { context.startActivity(saver) }.isSuccess) return true
+            Log.w(TAG, "could not open Xiaomi's screensaver")
         }
         return startDream(context)
     }
