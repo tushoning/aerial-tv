@@ -68,3 +68,11 @@ Home Guard is running. Press Home on the remote.
 ```
 
 装的是 1.9（`versionCode=10`）。
+
+## 另一台同型号（固件 OS3.0.115.0.UFFMATV）
+
+2026-10-22 在第二台 finch 上重跑同一条命令，型号字符串、`ro.product.device` 都是 `MiTV-MFFU0` / `finch`，固件是 `OS3.0.115.0.UFFMATV`（不是上面的 OS4.0.11）：
+
+- 一次装成功，`install.sh` 的结尾输出和上面一致，装的版本是 1.31。
+- 验收 5 条全部通过：`versionName=1.31`、`enabled_accessibility_services` 里有 `HomeGuardService`、`dumpsys accessibility` 计数为 1、按 HOME 后前台是 `app.orchard.tv/.MainActivity`。
+- 重启后开机直接进入 Aerial，实机确认正常（这次没有留 adb 采样输出）。
