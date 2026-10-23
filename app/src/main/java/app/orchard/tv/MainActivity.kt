@@ -56,6 +56,7 @@ import app.orchard.tv.system.Diagnostics
 import app.orchard.tv.system.MissingClipboard
 import app.orchard.tv.system.Sounds
 import app.orchard.tv.system.SystemProbe
+import app.orchard.tv.system.LaunchFallback
 import app.orchard.tv.system.settingsLaunchIntent
 import app.orchard.tv.update.Updates
 import app.orchard.tv.weather.Weather
@@ -328,7 +329,7 @@ class MainActivity : ComponentActivity() {
     private fun restartIdleTimer() {
         vm.lastInputAt = SystemClock.uptimeMillis()
         idleHandler.removeCallbacks(showScreensaver)
-        idleHandler.postDelayed(showScreensaver, idleBeforeScreensaver())
+        if (AerialSettings.screensaverMinutes != AerialSettings.NEVER) idleHandler.postDelayed(showScreensaver, idleBeforeScreensaver())
     }
 
     /**
@@ -461,6 +462,10 @@ class MainActivity : ComponentActivity() {
         // Back in front by any route (Home was handled in onNewIntent, which runs first; Back from
         // the app lands here directly), so the next Home press is a Home-on-Home again.
         openedAppSinceHome = false
+        LaunchFallback.next()?.let {
+            DiagLog.i("the page just opened closed at once; opening ${it.component ?: it.action}")
+            open(it)
+        }
     }
 
     override fun onPause() {
@@ -510,6 +515,7 @@ class MainActivity : ComponentActivity() {
         try {
             startActivity(settingsLaunchIntent(this, intent))
         } catch (e: Exception) {
+            LaunchFallback.next()?.let { return open(it) }
             Toast.makeText(this, R.string.unavailable, Toast.LENGTH_SHORT).show()
         }
     }

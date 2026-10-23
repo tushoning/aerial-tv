@@ -40,6 +40,8 @@ object GuardSetup {
     private const val KEY_OWN_SCREENSAVER = "own_screensaver"
     private const val KEY_HOME_IN_FRONT = "home_in_front"
     private const val KEY_INSTALLER_OPENED = "installer_opened_at"
+    private const val KEY_SCREENSAVER_SWITCHED_OFF = "screensaver_switched_off"
+    private const val KEY_SCREENSAVER_ENABLED = "screensaver_enabled"
 
     /**
      * Kept on disk while Aerial's home screen is in front, so a new process can tell how the last
@@ -165,6 +167,20 @@ object GuardSetup {
         }
     }
 
+    /** Switches accessibility off and, a moment later, on again, so Android binds every service anew. */
+    fun restartAccessibility(context: Context) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return
+        val resolver = context.contentResolver
+        runCatching {
+            Settings.Secure.putInt(resolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
+            // See rebindIfStalled: two writes in a row are coalesced.
+            Handler(Looper.getMainLooper()).postDelayed({
+                runCatching { Settings.Secure.putInt(resolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1) }
+                    .onFailure { Log.w(TAG, "could not switch accessibility back on", it) }
+            }, 1500)
+        }.onFailure { Log.w(TAG, "could not switch accessibility off", it) }
+    }
+
     /**
      * Whether Aerial owns the TV's system screensaver (tools/install.sh sets it when it writes
      * screensaver_components; tools/restore.sh clears it). TCL MT5879 writes its own screensaver
@@ -190,6 +206,32 @@ object GuardSetup {
             Settings.Secure.putString(resolver, key, mine)
             Log.i(TAG, "the system screensaver was $current; put Aerial's back")
         }.onFailure { Log.w(TAG, "could not set the system screensaver", it) }
+    }
+
+    /**
+     * "Never" for the screensaver switches the system's off too while it is Aerial's, since that is
+     * what starts over other apps: on a Haier TV (Android 9) it came up over a phone casting to the
+     * TV, and no delay in Personalize could stop it (issue #333). Switched back on when a delay is
+     * chosen again, and only if Aerial was the one that switched it off.
+     */
+    fun setSystemScreensaverOff(context: Context, off: Boolean) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return
+        val resolver = context.contentResolver
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        runCatching {
+            if (off) {
+                val mine = ComponentName(context, AerialDream::class.java).flattenToString()
+                if (Settings.Secure.getString(resolver, "screensaver_components") != mine) return
+                if (Settings.Secure.getInt(resolver, KEY_SCREENSAVER_ENABLED, 1) == 0) return
+                Settings.Secure.putInt(resolver, KEY_SCREENSAVER_ENABLED, 0)
+                prefs.edit().putBoolean(KEY_SCREENSAVER_SWITCHED_OFF, true).apply()
+                Log.i(TAG, "screensaver set to never; switched the system's off")
+            } else if (prefs.getBoolean(KEY_SCREENSAVER_SWITCHED_OFF, false)) {
+                Settings.Secure.putInt(resolver, KEY_SCREENSAVER_ENABLED, 1)
+                prefs.edit().remove(KEY_SCREENSAVER_SWITCHED_OFF).apply()
+                Log.i(TAG, "screensaver delay chosen; switched the system's back on")
+            }
+        }.onFailure { Log.w(TAG, "could not change the system screensaver", it) }
     }
 
     /** Returns whether Home Guard had been switched off and was put back. */

@@ -90,9 +90,17 @@ object SystemProbe {
     /**
      * TCL's firmware only pushes a volume change to the amplifier from its own volume UI, which
      * the system shows only for FLAG_SHOW_UI; without it the number changes and the sound does not.
+     * Not on TCL's m7221 (75V2, Android 8): there the amplifier follows either way and the flag only
+     * puts TCL's volume bar over Control Center's slider (issue #288, measured by the reporter).
      */
     private fun volumeFlags(context: Context) =
-        if (isInstalled(context, "com.tcl.settings")) AudioManager.FLAG_SHOW_UI else 0
+        if (isInstalled(context, "com.tcl.settings") && boardPlatform != "m7221") AudioManager.FLAG_SHOW_UI else 0
+
+    private val boardPlatform: String by lazy {
+        runCatching {
+            Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, "ro.board.platform") as String
+        }.getOrDefault("")
+    }
 
     /**
      * TCL tcl_m7642 (雷鸟 65S515D, Android 9) has adjustStreamVolume note the change in battery stats,
@@ -182,10 +190,16 @@ object SystemProbe {
     private fun resolvable(context: Context, intent: Intent): Intent? =
         intent.takeIf { context.packageManager.resolveActivity(it, 0) != null }?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-    fun networkSettingsIntent(context: Context): Intent =
-        firstResolvable(
+    /**
+     * The network page and, after it, the ones to try if it closes at once. Xiaomi MiTV-ANSP0
+     * (Android 9) starts MitvWifiActivity and its MitvActivityManagerService destroys it 0.2 s later,
+     * while TV Settings' own network page opens fine (issue #331; MiTV-MFTP0 "flashes", #335).
+     */
+    fun networkSettingsIntents(context: Context): List<Intent> =
+        allResolvable(
             context,
             Intent("com.xiaomi.mitv.settings.WIFI_SETTINGS").setComponent(ComponentName("com.xiaomi.mitv.settings", "com.xiaomi.mitv.settings.wifi.MitvWifiActivity")),
+            Intent(Intent.ACTION_MAIN).setComponent(ComponentName("com.android.tv.settings", "com.android.tv.settings.connectivity.NetworkActivity")),
             Intent(Settings.ACTION_WIFI_SETTINGS),
             // PPTV K55U27 and XGIMI Z7X answer no standard Wi-Fi action (issues #264, #241).
             Intent("com.pptv.intent.action.WIFI_ACTIVITY").setComponent(ComponentName("com.pptv.setting", "com.pptv.setting.wifi.WifiWorkActivity")),
@@ -273,6 +287,19 @@ object SystemProbe {
         return (intents.firstOrNull { pm.resolveActivity(it, 0) != null } ?: intents.last())
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             .let { settingsLaunchIntent(context, it) }
+    }
+
+    /** Every one of [intents] that resolves, each to a different activity; the last one if none does. */
+    private fun allResolvable(context: Context, vararg intents: Intent): List<Intent> {
+        val pm = context.packageManager
+        val seen = HashSet<String>()
+        return intents
+            .filter { intent ->
+                val info = pm.resolveActivity(intent, 0)?.activityInfo ?: return@filter false
+                seen.add("${info.packageName}/${info.name}")
+            }
+            .ifEmpty { listOf(intents.last()) }
+            .map { settingsLaunchIntent(context, Intent(it).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 
     // ---- Inputs ----
@@ -472,7 +499,10 @@ object SystemProbe {
  * MiTV-ANTL0 (L42R7-RA, Amlogic, Android 5.1) registers only one HDMI input, HW6, labelled
  * HDMI2, but it is the HDMI 1 port and source 23 (#64, from the reporter's logcat).
  * MiTV4-ANSM0 (Mi TV 4, Amlogic, Android 6.0.1) registers an HDMI input only for a port with a
- * device in it; HW7 is source 23, not 25 (#191, the reporter scanned sources 1–32).
+ * device in it; HW7 is source 23, not 25 (#191, the reporter scanned sources 1–32). Mi TV 4A
+ * (MiTV4A, L32M5-AZ, same firmware) is the same: HW7 is 23 (#313, scanned likewise).
+ * MiTV-MFZP0 (77" OLED, mt9950, Android 9) registers HW4–HW7 as HDMI 1–4 but has three ports:
+ * HW7 has none behind it, and its tvplayer numbers them hw + 19 (#311, the reporter's local build).
  */
 private class DeviceProfile(
     val hiddenHardware: Set<Int?> = emptySet(),
@@ -494,8 +524,12 @@ private class DeviceProfile(
                 labels = mapOf(6 to "HDMI 1"),
                 xiaomiSourceIds = mapOf(6 to 23),
             )
-            "MiTV4-ANSM0", "MiTV4_ANSM0" -> DeviceProfile(
+            "MiTV4-ANSM0", "MiTV4_ANSM0", "MiTV4A" -> DeviceProfile(
                 xiaomiSourceIds = mapOf(7 to 23),
+            )
+            "MiTV_MFZP0", "MiTV-MFZP0" -> DeviceProfile(
+                hiddenHardware = setOf(7),
+                xiaomiSourceIds = mapOf(4 to 23, 5 to 24, 6 to 25),
             )
             else -> DeviceProfile()
         }

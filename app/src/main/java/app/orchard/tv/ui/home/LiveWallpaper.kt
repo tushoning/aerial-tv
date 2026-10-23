@@ -364,10 +364,18 @@ private class FrameReader(private val context: android.content.Context) {
             }
         }
         if (!quiet || frame == null) DiagLog.i("wallpaper ${if (exact) "frame" else if (nearest) "key frame" else "glass frame"} decoded: ${frame != null} in ${android.os.SystemClock.elapsedRealtime() - started} ms")
-        return frame?.let {
+        val sized = frame?.let {
             val sized = if (it.width == w && it.height == h) it else Bitmap.createScaledBitmap(it, w, h, true)
             if (sized.isMutable && sized.config == Bitmap.Config.ARGB_8888) sized else sized.copy(Bitmap.Config.ARGB_8888, true)
         }
+        // The decoder can lose the colour too: on Xiaomi MiTV-MFTP0 (Android 9) the wallpaper and
+        // the glass still turned green in 1.36, which reads the film's file wherever the copy of
+        // the screen came back green (issue #284). Only green: a dark film's frame may well be.
+        if (sized != null && unreadable(sized) == "green") {
+            DiagLog.i("wallpaper decoded frame is green; not used")
+            return null
+        }
+        return sized
     }
 
     /** Lets the file go; the next frame opens it again. */

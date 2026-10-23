@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.ContentObserver
+import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -23,6 +24,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import app.orchard.tv.MainActivity
 import app.orchard.tv.settings.AerialSettings
+import app.orchard.tv.system.SystemProbe
 
 /**
  * Keeps Aerial as the home screen on firmwares that will not let a third-party app own HOME
@@ -60,6 +62,36 @@ class HomeGuardService : AccessibilityService() {
     private var takeOverReason = ""
     private var takeOverOnWake = false
     private val takeOver = Runnable { takeOverIfStockHomeInFront(takeOverReason, takeOverOnWake) }
+
+    /**
+     * Mi TV 4 (MiTV4-ANSM0, Android 6.0.1) covers Aerial some 20 s into a boot with PatchWall's
+     * BootActivity, which is not its home activity. When that closes, the home activity under it is
+     * only uncovered and no window change follows, so Aerial stayed behind for good (issue #318,
+     * the reporter's boot timings). Looks again twice in the first minute after a boot take-over.
+     */
+    private val bootRecheck = Runnable {
+        if (SystemClock.elapsedRealtime() < BOOT_WINDOW_MS) takeOverIfStockHomeInFront("looking again after boot", woke = false)
+    }
+
+    private fun scheduleBootRechecks() {
+        handler.removeCallbacks(bootRecheck)
+        BOOT_RECHECKS_MS.forEach { handler.postDelayed(bootRecheck, it) }
+    }
+
+    /** Whether any window change has reached this binding. */
+    private var sawEvent = false
+
+    /**
+     * On the same Mi TV 4 the guard bound at boot is sometimes deaf: bound, yet no window change
+     * ever arrives, and only switching accessibility off and on again brings them (issue #318:
+     * rewriting the list of services was not enough). Up to Android 6, once per process.
+     */
+    private val deafCheck = Runnable {
+        if (sawEvent || deafRetried) return@Runnable
+        deafRetried = true
+        Log.i(TAG, "no window change since bound at boot; switching accessibility off and on")
+        GuardSetup.restartAccessibility(this)
+    }
 
     /**
      * Bound before unlock (Direct Boot), the guard takes over as soon as credential storage is
@@ -128,11 +160,15 @@ class HomeGuardService : AccessibilityService() {
         }
         refreshStockHomes()
         updateKeyFilter()
+        volumeSeen = volumeNow()
         registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON))
         @Suppress("DEPRECATION")
         ContextCompat.registerReceiver(this, homeKey, IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS), ContextCompat.RECEIVER_NOT_EXPORTED)
         contentResolver.registerContentObserver(Settings.Global.getUriFor(Settings.Global.ADB_ENABLED), false, adbObserver)
         GuardSetup.ensureAdb(this)
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M && SystemClock.elapsedRealtime() < BOOT_WINDOW_MS) {
+            handler.postDelayed(deafCheck, DEAF_AFTER_MS)
+        }
         if (!GuardSetup.isUserUnlocked(this)) {
             Log.i(TAG, "bound while user locked; deferred takeover until unlock")
             return
@@ -164,6 +200,7 @@ class HomeGuardService : AccessibilityService() {
                 // the owner wants the TV to start on.
                 woke = !diedInFront || revived,
             )
+            if (SystemClock.elapsedRealtime() < BOOT_WINDOW_MS) scheduleBootRechecks()
         }
     }
 
@@ -278,6 +315,9 @@ class HomeGuardService : AccessibilityService() {
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (!GuardSetup.isUserUnlocked(this)) return false
+        if (event.keyCode in VOLUME_KEYS) return takeVolumeKey(event)
+        // Any key that is done: whatever it did to the volume (Control Center's slider) is in.
+        if (event.action == KeyEvent.ACTION_UP) volumeSeen = volumeNow()
         if (event.keyCode != KeyEvent.KEYCODE_HOME) return false
         if (isDefaultHome()) return false
         // Held, Home is the firmware's task center, which taking the key hid (Xiaomi, issue #185):
@@ -286,17 +326,87 @@ class HomeGuardService : AccessibilityService() {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             homeHeld = false
             handler.removeCallbacks(homeHold)
+            // Pressed twice, Home is the task center on Xiaomi too (MiTV-MFTP0, issue #335). The
+            // first press already brought Aerial back; the second opens the recent apps.
+            if (event.eventTime - lastHomeUpAt < DOUBLE_HOME_MS) {
+                homeHeld = true
+                lastHomeUpAt = Long.MIN_VALUE / 2
+                Log.i(TAG, "Home pressed twice; opening recent apps")
+                performGlobalAction(GLOBAL_ACTION_RECENTS)
+                return true
+            }
             handler.postDelayed(homeHold, ViewConfiguration.getLongPressTimeout().toLong())
         }
         if (event.action == KeyEvent.ACTION_UP) {
             handler.removeCallbacks(homeHold)
             if (!event.isCanceled && !homeHeld) {
                 Log.i(TAG, "Home key taken before the system saw it")
+                lastHomeUpAt = event.eventTime
                 goHome()
             }
         }
         return true
     }
+
+    /** The music stream's level and mute when the guard last looked, after the last key was done. */
+    private var volumeSeen: Pair<Int, Boolean>? = null
+
+    /** Whether the volume key being pressed is kept from the system, repeats and lift included. */
+    private var volumeKeyTaken = false
+
+    private fun volumeNow(): Pair<Int, Boolean>? = getSystemService<AudioManager>()?.let {
+        runCatching {
+            it.getStreamVolume(AudioManager.STREAM_MUSIC) to (Build.VERSION.SDK_INT >= 23 && it.isStreamMute(AudioManager.STREAM_MUSIC))
+        }.getOrNull()
+    }
+
+    /**
+     * TCL MT5879 (Android 11) acts on a volume key before it reaches the filter, then again when
+     * the filter passes it on: one press moved the volume two steps (28 -> 29 -> 30, 25 ms apart,
+     * reported by a user and seen in the TV's log). Where the volume has already changed by the
+     * time the key gets here, the key is not passed on. Decided once per press; elsewhere keys pass
+     * as before (where Android's own TV volume handling has the key, it never gets here at all).
+     * A held key's repeats are made by Android after the filter, so a key not passed on has none:
+     * the guard steps the volume itself at Android's key repeat pace until the key comes up.
+     */
+    private fun takeVolumeKey(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            handler.removeCallbacks(volumeRepeat)
+            val now = volumeNow()
+            val seen = volumeSeen
+            volumeKeyTaken = now != null && seen != null && now != seen
+            if (volumeKeyTaken) {
+                Log.i(TAG, "volume already changed before the key filter; not passing the key on")
+                volumeRepeatDirection = when (event.keyCode) {
+                    KeyEvent.KEYCODE_VOLUME_UP -> 1
+                    KeyEvent.KEYCODE_VOLUME_DOWN -> -1
+                    else -> 0
+                }
+                if (volumeRepeatDirection != 0) handler.postDelayed(volumeRepeat, ViewConfiguration.getKeyRepeatTimeout().toLong())
+            }
+        } else if (event.action == KeyEvent.ACTION_DOWN) {
+            // The firmware repeats the key itself, and acts on each before the filter.
+            handler.removeCallbacks(volumeRepeat)
+        }
+        val taken = volumeKeyTaken
+        if (event.action == KeyEvent.ACTION_UP) {
+            handler.removeCallbacks(volumeRepeat)
+            volumeKeyTaken = false
+            volumeSeen = volumeNow()
+        }
+        return taken
+    }
+
+    private var volumeRepeatDirection = 0
+    private val volumeRepeat: Runnable = object : Runnable {
+        override fun run() {
+            SystemProbe.adjustVolume(this@HomeGuardService, volumeRepeatDirection)
+            handler.postDelayed(this, ViewConfiguration.getKeyRepeatDelay().toLong())
+        }
+    }
+
+    /** When a Home press the guard answered came up, for a second press just after it. */
+    private var lastHomeUpAt = Long.MIN_VALUE / 2
 
     private var homeHeld = false
     private val homeHold = Runnable {
@@ -306,6 +416,7 @@ class HomeGuardService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        sawEvent = true
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
         val cls = event.className?.toString() ?: return
@@ -438,6 +549,13 @@ class HomeGuardService : AccessibilityService() {
         private const val BOOT_WINDOW_MS = 3 * 60 * 1000L
         private const val SETTLE_MS = 1500L
         private const val WAKE_WINDOW_MS = 15_000L
+        private val BOOT_RECHECKS_MS = listOf(30_000L, 45_000L)
+        private const val DEAF_AFTER_MS = 20_000L
+        private const val DOUBLE_HOME_MS = 400L
+        private val VOLUME_KEYS = setOf(KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE)
+
+        @Volatile
+        private var deafRetried = false
 
         /** VIDAA's assistant and its launcher (聚好看), on the two VIDAA builds reported (issues #7, #40). */
         private val VIDAA_PACKAGES = listOf("com.hisense.vidaaassistant", "com.jamdeo.tv.vod")
@@ -477,7 +595,10 @@ class HomeGuardService : AccessibilityService() {
                 // Aerial already in front: the take-over at bind time worked, and has opened the
                 // input the TV starts on if there is one.
                 if (s.lastWindow?.first == s.packageName) return@post
-                if (s.getSystemService<PowerManager>()?.isInteractive == true) s.takeOverOnceSettled("boot completed", woke = true)
+                if (s.getSystemService<PowerManager>()?.isInteractive == true) {
+                    s.takeOverOnceSettled("boot completed", woke = true)
+                    s.scheduleBootRechecks()
+                }
             }
             return true
         }

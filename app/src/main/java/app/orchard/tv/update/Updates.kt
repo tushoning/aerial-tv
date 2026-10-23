@@ -43,6 +43,7 @@ object Updates {
     private const val VERSION_URL = "https://aerial.qust.me/download/version.txt"
     private const val CHECK_EVERY_MS = 3 * 60 * 60 * 1000L
     private const val RETRY_MS = 10 * 60 * 1000L
+    const val CONTROL_CENTER_MAX_AGE_MS = RETRY_MS
 
     /** This build's version, e.g. "1.17" (the guard build's "-guard" left off). */
     val current: String = BuildConfig.VERSION_NAME.substringBefore('-')
@@ -69,11 +70,15 @@ object Updates {
         }
     }
 
-    /** [force]: now, however recently it last looked (ConfigReceiver's check_update). */
-    fun checkIfStale(force: Boolean = false) {
+    /**
+     * [force]: now, however recently it last looked (ConfigReceiver's check_update). Opening Control
+     * Center asks with a shorter [maxAgeMs]: that is where the viewer looks for a new version, and a
+     * release out an hour ago was not shown there for hours more (issue #301).
+     */
+    fun checkIfStale(force: Boolean = false, maxAgeMs: Long = CHECK_EVERY_MS) {
         if (!started) return
         val now = System.currentTimeMillis()
-        if (!force && (now - lastAttempt < RETRY_MS || now - prefs.getLong("checked_at", 0) < CHECK_EVERY_MS)) return
+        if (!force && (now - lastAttempt < RETRY_MS || now - prefs.getLong("checked_at", 0) < maxAgeMs)) return
         lastAttempt = now
         scope.launch {
             val latest = withContext(Dispatchers.IO) {

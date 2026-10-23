@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.edit
 import android.os.SystemClock
 import android.provider.Settings
+import app.orchard.tv.guard.GuardSetup
 import app.orchard.tv.wallpaper.AerialQuality
 import java.security.MessageDigest
 
@@ -99,10 +100,13 @@ object AerialSettings {
     /**
      * Minutes of no input on Home before Aerial's screensaver starts (issue #66). The firmware's own
      * screensaver still caps it: Aerial starts just ahead of that one, see MainActivity.
+     * [NEVER] starts none, and switches off the system's while that is Aerial's (issue #333).
      */
     var screensaverMinutes by mutableStateOf(DEFAULT_SCREENSAVER_MINUTES); private set
 
-    val screensaverChoices = listOf(2, 5, 10, 20)
+    const val NEVER = 0
+
+    val screensaverChoices = listOf(2, 5, 10, 20, NEVER)
 
     /** Which of Apple's files the aerial screensaver plays; Auto is the best this TV decodes (issues #198, #217). */
     var aerialQuality by mutableStateOf(AerialQuality.Auto); private set
@@ -220,6 +224,7 @@ object AerialSettings {
     fun chooseScreensaverMinutes(minutes: Int) {
         screensaverMinutes = minutes
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putInt("screensaver_minutes", minutes) }
+        GuardSetup.setSystemScreensaverOff(app, minutes == NEVER)
     }
 
     fun setPinned(inputId: String, pinned: Boolean) {

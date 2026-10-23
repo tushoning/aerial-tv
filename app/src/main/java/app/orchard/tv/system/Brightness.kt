@@ -26,8 +26,16 @@ import androidx.core.content.ContextCompat
 object Brightness {
     private const val XIAOMI_BACKLIGHT = "picture_backlight"
 
+    /**
+     * MiTV-MFTP0 (Android 9) has picture_backlight, yet changing it leaves the panel as it was (two
+     * owners, issues #284 and #335); it gets Xiaomi's own backlight slider like the TVs without it.
+     * Nothing on the TV tells the two apart, so by model.
+     */
+    private val IGNORES_BACKLIGHT_SETTING = setOf("MiTV-MFTP0", "MiTV_MFTP0")
+
     private fun usesXiaomiBacklight(context: Context) =
-        Settings.Global.getString(context.contentResolver, XIAOMI_BACKLIGHT) != null
+        Build.MODEL !in IGNORES_BACKLIGHT_SETTING &&
+            Settings.Global.getString(context.contentResolver, XIAOMI_BACKLIGHT) != null
 
     private fun isTcl(context: Context) =
         runCatching { context.packageManager.getPackageInfo("com.tcl.settings", 0) }.isSuccess

@@ -76,6 +76,7 @@ import app.orchard.tv.R
 import app.orchard.tv.apps.SourceLooks
 import app.orchard.tv.settings.AerialSettings
 import app.orchard.tv.system.HomeStatus
+import app.orchard.tv.system.LaunchFallback
 import app.orchard.tv.system.NetKind
 import app.orchard.tv.system.SourceKind
 import app.orchard.tv.system.Sounds
@@ -117,6 +118,8 @@ fun ControlCenter(
             CcPage.Update, CcPage.Setup -> vm.overlay = Overlay.ControlCenter(CcPage.Main)
         }
     }
+
+    LaunchedEffect(visible) { if (visible) Updates.checkIfStale(maxAgeMs = Updates.CONTROL_CENTER_MAX_AGE_MS) }
 
     AnimatedVisibility(
         visible = visible,
@@ -210,7 +213,13 @@ private fun MainPage(vm: HomeViewModel, now: LocalDateTime, takeFocus: Boolean, 
             RoundButton(
                 when (vm.network.kind) { NetKind.Ethernet -> Glyph.Ethernet; NetKind.Offline -> Glyph.Offline; else -> Glyph.Wifi },
                 stringResource(R.string.cc_network),
-            ) { vm.whenUnlocked { onOpen(SystemProbe.networkSettingsIntent(context)) } }
+            ) {
+                vm.whenUnlocked {
+                    val pages = SystemProbe.networkSettingsIntents(context)
+                    LaunchFallback.arm(pages.drop(1))
+                    onOpen(pages.first())
+                }
+            }
             RoundButton(Glyph.Gear, stringResource(R.string.cc_settings)) { vm.whenUnlocked { onOpen(SystemProbe.settingsIntent(context)) } }
         }
 
