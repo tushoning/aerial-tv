@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.heightIn
 import android.view.KeyEvent as NativeKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -145,9 +146,12 @@ fun ControlCenter(
                 AnimatedContent(
                     targetState = page,
                     transitionSpec = {
-                        val forward = targetState != CcPage.Main
-                        (fadeIn(tween(200, delayMillis = 40)) + slideInHorizontally(tween(260, easing = Motion.EaseOut)) { if (forward) it / 6 else -it / 6 })
-                            .togetherWith(fadeOut(tween(120)) + slideOutHorizontally(tween(200, easing = Motion.EaseOut)) { if (forward) -it / 8 else it / 8 })
+                        // Fade only, and snap the panel size. Animating the panel's height re-measures
+                        // both pages (and their scrollables) every frame, and sliding the new page on
+                        // top of the cross-fade makes its first frame land late; on low-end TV SoCs
+                        // that is felt as a stutter when opening and leaving pages.
+                        (fadeIn(tween(130)) togetherWith fadeOut(tween(110)))
+                            .using(SizeTransform { _, _ -> tween(0) })
                     },
                     label = "cc-page",
                 ) { p ->
