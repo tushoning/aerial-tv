@@ -6,15 +6,21 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import app.orchard.tv.MainActivity
+import app.orchard.tv.R
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowToast
+import org.robolectric.util.ReflectionHelpers
 
 /** The network page Control Center opens first; the rest are tried if it closes at once. */
 private fun networkFirst(context: Context) = SystemProbe.networkSettingsIntents(context).first()
@@ -98,6 +104,58 @@ class XgimiSettingsTest {
         assertEquals(2, caller.activities.size)
         assertTrue(settingsCandidates().last().filterEquals(caller.activities[0]))
         assertTrue(networkCandidates().last().filterEquals(caller.activities[1]))
+    }
+
+    @Test
+    fun mainActivityStartsSettingsAndNetworkAsServicesWithoutUnavailableToast() {
+        pm.addServiceIfNotPresent(service).exported = true
+        shadowOf(RuntimeEnvironment.getApplication()).checkActivities(true)
+        val activity = Robolectric.buildActivity(MainActivity::class.java).get()
+        for ((select, page) in listOf(
+            SystemProbe::settingsIntent to "Settings://com.xgimi.misckey.main/mainPage",
+            SystemProbe::networkSettingsIntent to "Settings://com.xgimi.settings.net/wifi_misckey",
+        )) {
+            open(activity, select(activity))
+            assertEquals(0, ShadowToast.shownToastCount())
+            val started = shadowOf(activity).nextStartedService
+            assertNotNull("MainActivity must start the settings service", started)
+            assertService(started, page)
+            assertNull(shadowOf(activity).nextStartedActivity)
+        }
+    }
+
+    @Test
+    fun mainActivityShowsUnavailableToastWhenServiceAndActivityBothFail() {
+        pm.addServiceIfNotPresent(service).exported = true
+        shadowOf(RuntimeEnvironment.getApplication()).checkActivities(true)
+        val activity = Robolectric.buildActivity(MainActivity::class.java).get()
+        val caller = RecordingContext(serviceThrows = true)
+        ReflectionHelpers.setField(activity, "mBase", caller)
+        listOf(SystemProbe::settingsIntent, SystemProbe::networkSettingsIntent).forEachIndexed { index, select ->
+            open(activity, select(activity))
+            assertEquals(index + 1, caller.services.size)
+            assertEquals(index + 1, ShadowToast.shownToastCount())
+            assertEquals(context.getString(R.string.unavailable), ShadowToast.getTextOfLatestToast())
+            assertNull(shadowOf(activity).nextStartedActivity)
+        }
+    }
+
+    @Test
+    fun pictureSettingsKeepsLegacyActivityFallbackWhenXgimiServiceIsPresent() {
+        pm.addServiceIfNotPresent(service).exported = true
+        val settings = settingsCandidates().first()
+        pm.addActivityIfNotPresent(settings.component!!).exported = true
+        val application = shadowOf(RuntimeEnvironment.getApplication())
+        application.checkActivities(true)
+        assertTrue(SystemProbe.openPictureSettings(context))
+        assertTrue(settings.filterEquals(application.nextStartedActivity))
+        assertNull(application.nextStartedService)
+    }
+
+    private fun open(activity: MainActivity, intent: Intent) {
+        MainActivity::class.java.getDeclaredMethod("open", Intent::class.java).apply {
+            isAccessible = true
+        }.invoke(activity, intent)
     }
 
     private inner class RecordingContext(
