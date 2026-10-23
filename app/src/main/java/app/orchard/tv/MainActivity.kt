@@ -73,6 +73,14 @@ class MainActivity : ComponentActivity() {
         override fun onReceive(context: Context, intent: Intent) = vm.refreshSystem()
     }
 
+    /** Midnight, or the clock set at boot: a new daily photo, and the next of the rotating ones. */
+    private val dayReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            Wallpapers.refreshDailyIfStale()
+            Wallpapers.rotateIfDue()
+        }
+    }
+
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) = runOnUiThread {
             vm.refreshNetwork()
@@ -386,6 +394,15 @@ class MainActivity : ComponentActivity() {
             IntentFilter("android.media.VOLUME_CHANGED_ACTION"),
             ContextCompat.RECEIVER_EXPORTED,
         )
+        ContextCompat.registerReceiver(
+            this, dayReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_DATE_CHANGED)
+                addAction(Intent.ACTION_TIME_CHANGED)
+                addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         getSystemService<ConnectivityManager>()?.let { cm ->
             if (Build.VERSION.SDK_INT >= 24) cm.registerDefaultNetworkCallback(networkCallback)
             else cm.registerNetworkCallback(NetworkRequest.Builder().build(), networkCallback)
@@ -426,6 +443,7 @@ class MainActivity : ComponentActivity() {
         DiagLog.i("onStop")
         unregisterReceiver(packageReceiver)
         unregisterReceiver(volumeReceiver)
+        unregisterReceiver(dayReceiver)
         runCatching { getSystemService<ConnectivityManager>()?.unregisterNetworkCallback(networkCallback) }
     }
 

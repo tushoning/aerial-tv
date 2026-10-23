@@ -19,6 +19,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityEvent
+import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import app.orchard.tv.MainActivity
 import app.orchard.tv.settings.AerialSettings
@@ -30,12 +31,12 @@ import app.orchard.tv.settings.AerialSettings
  * 1. When the stock launcher's home activity comes to the front (the Home key, an app exiting to
  *    it, the TV booting into it), Aerial is brought back on top.
  * 2. The viewer can still open the stock launcher on purpose (its tile in Aerial's grid, for the
- *    maker's own content). While it is in front the Home key is taken before the system sees it
- *    and answered with Aerial, since pressing Home there would otherwise just stay put.
+ *    maker's own content). While it is in front the Home key is answered with Aerial, since
+ *    pressing Home there would otherwise just stay put.
  *
- * Key filtering is on only in that second case. With it on, every key press on the TV detours
- * through this service; some apps then see a press as held and move twice (云视听小电视 on Xiaomi
- * MiTV-MFTR0, reported by a user and gone once Aerial was uninstalled).
+ * Keys are filtered only up to Android 11 (see updateKeyFilter). With the filter on, every key
+ * press on the TV detours through this service; some apps then see a press as held and move twice
+ * (云视听小电视 on Xiaomi MiTV-MFTR0, reported by a user and gone once Aerial was uninstalled).
  *
  * Both only act while Aerial is not the resolved HOME app; once it is, the system does the work.
  * The service reads window-change events only; it never reads screen content.
@@ -92,6 +93,24 @@ class HomeGuardService : AccessibilityService() {
         }
     }
 
+    /**
+     * The Home key where keys are not filtered (see updateKeyFilter): the system closes its dialogs
+     * with reason "homekey" for it. In the stock launcher, opened on purpose from Aerial or simply
+     * in front, Home starts the launcher over itself and no window change follows. With the front
+     * unknown too: the guard leaves an unknown front alone when Aerial keeps being stopped, but a
+     * Home press says what the viewer wants. Elsewhere the window change does it.
+     */
+    private val homeKey = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.getStringExtra("reason") != "homekey" || isDefaultHome()) return
+            val front = lastWindow?.first
+            if (front != null && front !in stockHomes) return
+            Log.i(TAG, "Home pressed with ${front ?: "an unknown app"} in front; bringing Aerial back")
+            allowStockUntil = 0L
+            goHome()
+        }
+    }
+
     private val adbObserver by lazy {
         object : ContentObserver(handler) {
             override fun onChange(selfChange: Boolean) = GuardSetup.ensureAdb(this@HomeGuardService)
@@ -105,8 +124,10 @@ class HomeGuardService : AccessibilityService() {
             registerReceiver(userUnlocked, IntentFilter(Intent.ACTION_USER_UNLOCKED))
         }
         refreshStockHomes()
-        filterKeys(false)
+        updateKeyFilter()
         registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON))
+        @Suppress("DEPRECATION")
+        ContextCompat.registerReceiver(this, homeKey, IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS), ContextCompat.RECEIVER_NOT_EXPORTED)
         contentResolver.registerContentObserver(Settings.Global.getUriFor(Settings.Global.ADB_ENABLED), false, adbObserver)
         GuardSetup.ensureAdb(this)
         if (!GuardSetup.isUserUnlocked(this)) {
@@ -201,6 +222,7 @@ class HomeGuardService : AccessibilityService() {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(screenOn) }
+        runCatching { unregisterReceiver(homeKey) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             runCatching { unregisterReceiver(userUnlocked) }
         }
@@ -218,20 +240,22 @@ class HomeGuardService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     /**
-     * Filters keys only while the viewer is in the stock launcher on purpose; see the class comment.
-     * Up to Android 11 always: there, once Home reaches the system, it holds every background
-     * activity start for five seconds, so Aerial came back only after five seconds of the TCL
-     * launcher (TCL MT5879, since 1.11 stopped filtering by default).
+     * Filters keys only up to Android 11: there, once Home reaches the system, it holds every
+     * background activity start for five seconds, so Aerial came back only after five seconds of
+     * the TCL launcher (TCL MT5879, since 1.11 stopped filtering by default). Later versions take
+     * Home in the stock launcher from the "homekey" broadcast instead (homeKey). They used to filter
+     * there too, and the stock launcher then moved two or three places per press (Xiaomi S Pro
+     * mini-LED 2026, issue #293); MiTV-MFTR0 (Android 14) is back in Aerial 0.5 s after Home.
      *
      * Never while Aerial is the default Home: onKeyEvent leaves Home to the system then, so the
      * filter only costs. On Xiaomi MiTV-ASTP0 (Android 9) it crashed the system: every filtered
      * volume key reached Xiaomi's MitvFreezer with no window, which threw in system_server and
      * restarted the TV (issue #249).
      */
-    private fun filterKeys(on: Boolean) {
+    private fun updateKeyFilter() {
         val info = serviceInfo ?: return
         val flag = AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
-        val wanted = !keysPassThrough && (on || Build.VERSION.SDK_INT <= Build.VERSION_CODES.R)
+        val wanted = !keysPassThrough && Build.VERSION.SDK_INT <= Build.VERSION_CODES.R
         val want = if (wanted && !isDefaultHome()) info.flags or flag else info.flags and flag.inv()
         if (want == info.flags) return
         info.flags = want
@@ -296,7 +320,7 @@ class HomeGuardService : AccessibilityService() {
                 goHome()
                 return
             }
-            filterKeys(allowed)
+            updateKeyFilter()
             // Only the stock launcher's home activity itself, not its dialogs or other screens.
             // Not gated on isDefaultHome(): see takeOverIfStockHomeInFront.
             if (cls !in stockHomes.getValue(pkg) || allowed) return
@@ -314,7 +338,7 @@ class HomeGuardService : AccessibilityService() {
             goHome(woke = SystemClock.elapsedRealtime() - screenOnAt < WAKE_WINDOW_MS)
             return
         }
-        filterKeys(false)
+        updateKeyFilter()
         // Leaving the stock launcher for a real app ends the visit: Home goes to Aerial again.
         if (allowed && pkg != packageName && isApp(pkg)) allowStockUntil = 0L
     }
@@ -486,7 +510,7 @@ class HomeGuardService : AccessibilityService() {
             // Back in Aerial: an installer opened from Control Center was left without updating.
             GuardSetup.installerJustClosed(s)
             s.allowStockUntil = 0L
-            s.filterKeys(false)
+            s.updateKeyFilter()
         }
     }
 }

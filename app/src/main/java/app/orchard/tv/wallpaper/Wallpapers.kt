@@ -62,6 +62,7 @@ enum class ScreensaverMode(val key: String) {
 object Wallpapers {
     private const val TAG = "AerialWallpaper"
     const val LATEST_DAILY = "daily:latest"
+    private const val DAILY_RETRY_MS = 30 * 60 * 1000L
     const val AUTO = "auto"
     const val ROTATE_PHOTOS = "photos:rotate"
     const val LIVE = "aerial:live"
@@ -254,15 +255,39 @@ object Wallpapers {
     private var dailyFailed = false
 
     /**
-     * Bing publishes one photo a day; checking a few times a day is plenty. A check that failed,
-     * usually because the TV was on before its network was, is retried as soon as the network
-     * connects ([networkCameUp]), or else a few minutes later (issue #129).
+     * Bing publishes one photo a day, at midnight in China; checking a few times a day is plenty,
+     * plus once the day has turned (the date-change broadcast, or the first look after it), retried
+     * every half hour until the new photo is out: a TV left on Home overnight kept yesterday's
+     * photo for up to six hours (issue #286). A check that failed, usually because the TV was on
+     * before its network was, is retried as soon as the network connects ([networkCameUp]), or
+     * else a few minutes later (issue #129).
      */
     fun refreshDailyIfStale(networkCameUp: Boolean = false) {
         if (!started) return
         val since = System.currentTimeMillis() - lastDailyRefresh
-        val due = since >= 6 * 60 * 60 * 1000L || (dailyFailed && (networkCameUp || since >= 10 * 60 * 1000L))
+        val due = since >= 6 * 60 * 60 * 1000L ||
+            (dailyFailed && (networkCameUp || since >= 10 * 60 * 1000L)) ||
+            (!hasTodaysDaily() && since >= DAILY_RETRY_MS)
         if (due) scope.launch { refreshDaily() }
+    }
+
+    /** Bing's dates are China's, as yyyyMMdd. */
+    private fun hasTodaysDaily(): Boolean {
+        val today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"))
+            .format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE)
+        return readDailyIndex().any { it.first >= today }
+    }
+
+    private var dailyRetry: Job? = null
+
+    /** Looks again in half an hour while today's photo is not out; Home may stay up all night. */
+    private fun retryDailyLater() {
+        dailyRetry?.cancel()
+        if (hasTodaysDaily()) return
+        dailyRetry = scope.launch {
+            kotlinx.coroutines.delay(DAILY_RETRY_MS)
+            refreshDailyIfStale()
+        }
     }
 
     suspend fun refreshDaily() = io.withLock {
@@ -293,6 +318,7 @@ object Wallpapers {
                 true
             }.onFailure { Log.w(TAG, "daily photos unavailable", it) }.isSuccess.also { dailyFailed = !it }
         }
+        retryDailyLater()
         if (added) {
             synchronized(thumbs) { thumbs.remove(LATEST_DAILY) }
             rebuildList()

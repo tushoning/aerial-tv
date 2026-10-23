@@ -147,7 +147,7 @@ object SystemProbe {
         pkg in SETTINGS_PACKAGES ||
             context.packageManager.resolveActivity(Intent(Settings.ACTION_SETTINGS), 0)?.activityInfo?.packageName == pkg
 
-    private val SETTINGS_PACKAGES = setOf("com.android.settings", "com.android.tv.settings", "com.xiaomi.mitv.settings", "com.tcl.settings")
+    private val SETTINGS_PACKAGES = setOf("com.android.settings", "com.android.tv.settings", "com.xiaomi.mitv.settings", "com.tcl.settings", "com.helios.setting")
 
     fun settingsIntent(context: Context): Intent =
         firstResolvable(
@@ -160,6 +160,7 @@ object SystemProbe {
             Intent(Intent.ACTION_MAIN).setComponent(ComponentName("com.pptv.setting", "com.pptv.setting.root.SettingsActivity")),
             // XGIMI GMUI (Z7X, Android 9) neither; its settings open by link (issue #241).
             Intent(Intent.ACTION_VIEW, Uri.parse("Settings://com.xgimi.misckey.main/mainPage")),
+            WHALEY_SETTINGS,
         )
 
     // TCL MT5879 answers ACTION_WIFI_SETTINGS with its Wi-Fi side panel.
@@ -192,7 +193,15 @@ object SystemProbe {
             Intent(Settings.ACTION_SETTINGS),
             // TCL tcl_m7642 (Android 9) answers neither Wi-Fi nor settings actions (issue #15).
             Intent(Intent.ACTION_MAIN).setComponent(ComponentName("com.tcl.settings", "com.tcl.settings.ui.MainActivity")),
+            WHALEY_SETTINGS,
         )
+
+    /**
+     * Whaley (WTV55K1J, Android 5.0) answers no settings action; its network page is not exported,
+     * so the network button opens its settings too (issue #292).
+     */
+    private val WHALEY_SETTINGS
+        get() = Intent(Intent.ACTION_MAIN).setComponent(ComponentName("com.helios.setting", "com.helios.activity.StartActivity"))
 
     /**
      * Opens the TV's own picture settings where brightness lives, for TVs whose backlight Aerial
@@ -280,6 +289,7 @@ object SystemProbe {
     fun sources(context: Context): List<TvSource> = frameworkSources(context)
         .ifEmpty { KonkaSources.load(context) }
         .ifEmpty { tclSources(context) }
+        .ifEmpty { whaleySources(context) }
 
     private fun frameworkSources(context: Context): List<TvSource> {
         val tim = context.getSystemService<TvInputManager>() ?: return emptyList()
@@ -301,7 +311,7 @@ object SystemProbe {
                 }
                 val label = runCatching { info.loadLabel(context).toString() }.getOrNull()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val state = runCatching { tim.getInputState(info.id) }.getOrDefault(TvInputManager.INPUT_STATE_DISCONNECTED)
-                val intent = (if (xiaomi) xiaomiRoute(info, kind, profile) else null)
+                val intent = (if (xiaomi) xiaomiRoute(info, kind, label, profile) else null)
                     ?: genericRoute(info, kind)
                 // CEC devices register as child inputs of the port they are plugged into.
                 val device = infos.firstOrNull { it.parentId == info.id }
@@ -351,9 +361,37 @@ object SystemProbe {
         )
     }
 
+    private const val WHALEY_PLAYER = "com.whaley.tv.tvplayer.ui"
+
+    /**
+     * Whaley (微鲸 WTV55K1J, MStar, Android 5.0) registers no inputs either. Its player switches when
+     * started with the input's ordinal, which the reporter of issue #292 found port by port: HDMI 1–3
+     * are 4–6 and AV is 7 (0–3 are the tuners, which that TV has no hardware for). Not tried here.
+     */
+    private fun whaleySources(context: Context): List<TvSource> {
+        val player = ComponentName(WHALEY_PLAYER, "com.whaley.tv.tvplayer.ui.RootActivity")
+        if (runCatching { context.packageManager.getActivityInfo(player, 0) }.isFailure) return emptyList()
+        fun source(ordinal: Int, kind: SourceKind, label: String) = TvSource(
+            id = "whaley:$ordinal",
+            label = label,
+            kind = kind,
+            connected = false,
+            deviceName = null,
+            intent = Intent("com.whaley.tv.tvplayer.ui.START_TV_PLAYER").setComponent(player)
+                .putExtra("inputSrc", ordinal)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        return listOf(
+            source(4, SourceKind.Hdmi, "HDMI 1"),
+            source(5, SourceKind.Hdmi, "HDMI 2"),
+            source(6, SourceKind.Hdmi, "HDMI 3"),
+            source(7, SourceKind.Av, context.getString(R.string.input_av)),
+        )
+    }
+
     private fun hw(id: String): Int? = Regex("/HW(\\d+)$").find(id)?.groupValues?.get(1)?.toIntOrNull()
 
-    private fun xiaomiRoute(info: TvInputInfo, kind: SourceKind, profile: DeviceProfile): Intent? {
+    private fun xiaomiRoute(info: TvInputInfo, kind: SourceKind, label: String, profile: DeviceProfile): Intent? {
         val n = hw(info.id) ?: return null
         return when (kind) {
             // MediaTek hardware ids HW5.. map onto Xiaomi's source ids 23.. for HDMI; models that
@@ -371,13 +409,22 @@ object SystemProbe {
             SourceKind.Av -> Intent("com.xiaomi.mitv.tvplayer.EXTSRC_PLAY")
                 .setComponent(ComponentName(XIAOMI_PLAYER, "$XIAOMI_PLAYER.ExternalSourceActivity"))
                 .putExtra("input", 2)
-            SourceKind.Tuner -> if (n == 0) {
+            // MediaTek has the digital tuner at HW0 and the analogue one at HW1 (MiTV-MFTP0 labels
+            // them "Tuner(DTV)" and "Tuner(ATV)"); Amlogic has "ATV" at HW0 and "DTV" at HW10
+            // (MiTV4-ANSM0, issue #291), so the label decides where it names one.
+            SourceKind.Tuner -> if (isDigitalTuner(label, n)) {
                 Intent("com.xiaomi.mitv.tvplayer.DTMB_PLAY").setComponent(ComponentName(XIAOMI_PLAYER, "$XIAOMI_PLAYER.dtmb.DTMBActivity"))
             } else {
                 Intent("com.xiaomi.mitv.tvplayer.ATV_PLAY").setComponent(ComponentName(XIAOMI_PLAYER, "$XIAOMI_PLAYER.AtvActivity"))
             }
             SourceKind.Other -> null
         }
+    }
+
+    private fun isDigitalTuner(label: String, hw: Int): Boolean = when {
+        label.contains("ATV", ignoreCase = true) -> false
+        label.contains("DTV", ignoreCase = true) || label.contains("DTMB", ignoreCase = true) -> true
+        else -> hw == 0
     }
 
     private fun genericRoute(info: TvInputInfo, kind: SourceKind): Intent =
