@@ -158,6 +158,13 @@ class HomeGuardService : AccessibilityService() {
         }
     }
 
+    /** The firmware putting its own screensaver back while Aerial's is chosen (GuardSetup). */
+    private val screensaverObserver by lazy {
+        object : ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean) = GuardSetup.screensaverSettingChanged(this@HomeGuardService)
+        }
+    }
+
     private val adbObserver by lazy {
         object : ContentObserver(handler) {
             override fun onChange(selfChange: Boolean) = GuardSetup.ensureAdb(this@HomeGuardService)
@@ -228,6 +235,7 @@ class HomeGuardService : AccessibilityService() {
         @Suppress("DEPRECATION")
         ContextCompat.registerReceiver(this, homeKey, IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS), ContextCompat.RECEIVER_NOT_EXPORTED)
         contentResolver.registerContentObserver(Settings.Global.getUriFor(Settings.Global.ADB_ENABLED), false, adbObserver)
+        contentResolver.registerContentObserver(Settings.Secure.getUriFor("screensaver_components"), false, screensaverObserver)
         GuardSetup.ensureAdb(this)
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M && SystemClock.elapsedRealtime() < BOOT_WINDOW_MS) {
             handler.postDelayed(deafCheck, DEAF_AFTER_MS)
@@ -334,6 +342,7 @@ class HomeGuardService : AccessibilityService() {
             runCatching { unregisterReceiver(userUnlocked) }
         }
         runCatching { contentResolver.unregisterContentObserver(adbObserver) }
+        runCatching { contentResolver.unregisterContentObserver(screensaverObserver) }
         if (cecWatching) {
             runCatching { contentResolver.unregisterContentObserver(cecInputObserver) }
             runCatching { getSystemService<TvInputManager>()?.unregisterCallback(cecInputCallback) }

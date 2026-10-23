@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.content.edit
 import app.orchard.tv.BuildConfig
+import app.orchard.tv.guard.GuardSetup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,8 +38,9 @@ data class Wallpaper(
     val caption: String? = null,
 )
 
+/** System: none of Aerial's; the TV's own screensaver starts as the firmware has it (SystemScreensaver). */
 enum class ScreensaverMode(val key: String) {
-    Aerial("aerial"), Photos("photos"), Clock("clock"), Videos("videos");
+    Aerial("aerial"), Photos("photos"), Clock("clock"), Videos("videos"), System("system");
 
     companion object {
         fun of(key: String?) = entries.firstOrNull { it.key == key } ?: Aerial
@@ -179,6 +181,7 @@ object Wallpapers {
     fun chooseScreensaver(mode: ScreensaverMode) {
         chosenScreensaver = mode
         prefs.edit { putString("screensaver", mode.key) }
+        GuardSetup.screensaverModeChanged(app)
     }
 
     /** The concrete wallpaper the selection points at today. */

@@ -53,6 +53,8 @@ import app.orchard.tv.ui.theme.canvasDensity
 import app.orchard.tv.settings.AerialSettings
 import app.orchard.tv.wallpaper.Wallpapers
 import app.orchard.tv.system.DiagLog
+import app.orchard.tv.wallpaper.ScreensaverMode
+import app.orchard.tv.system.SystemScreensaver
 import app.orchard.tv.system.Diagnostics
 import app.orchard.tv.system.MissingClipboard
 import app.orchard.tv.system.Sounds
@@ -159,7 +161,7 @@ class MainActivity : ComponentActivity() {
                     onAppInfo = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", it, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
                     onUninstall = { open(Intent(Intent.ACTION_DELETE, Uri.fromParts("package", it, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
                     // Posted so the key-up of the Back press that started it does not end it at once.
-                    onStartScreensaver = { idleHandler.postDelayed({ showScreensaver.run() }, 150) },
+                    onStartScreensaver = { idleHandler.postDelayed({ startScreensaver(asked = true) }, 150) },
                 )
             }
         }
@@ -329,7 +331,25 @@ class MainActivity : ComponentActivity() {
     // ---- Screensaver: Aerial's own, before the firmware's ad-carrying one can start ----
 
     private val idleHandler = Handler(Looper.getMainLooper())
-    private val showScreensaver = Runnable {
+    private val showScreensaver = Runnable { startScreensaver(asked = false) }
+
+    /**
+     * [asked]: Back, or "Start now", rather than the idle timer.
+     *
+     * Where Aerial's dream is the TV's screensaver (TCL), that dream is the one shown either way:
+     * Home's own screensaver was a second one, which the TV's timer then replaced with the dream
+     * (in its own quality), and which never held it off (TCL MT5879). With "System" chosen, Aerial
+     * starts nothing on the timer, and Back starts the firmware's.
+     */
+    private fun startScreensaver(asked: Boolean) {
+        if (Wallpapers.screensaver == ScreensaverMode.System) {
+            if (asked && !SystemScreensaver.startFirmware(this)) DiagLog.i("no system screensaver to start")
+            return
+        }
+        if (SystemScreensaver.isAerials(this) && SystemScreensaver.startDream(this)) {
+            DiagLog.i("screensaver starts as the system's dream")
+            return
+        }
         DiagLog.i("screensaver starts (${Wallpapers.screensaver})")
         vm.screensaverVisible = true
         // Holding the screen on keeps the firmware's screensaver from starting over ours. After a
@@ -389,6 +409,11 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == dreamWokeKey) {
+            if (event.action == KeyEvent.ACTION_UP) { dreamWokeKey = -1; return true }
+            if (event.repeatCount > 0) return true
+            dreamWokeKey = -1 // a new press of the same key
+        }
         if (keysLogged++ < 200) DiagLog.i("key ${KeyEvent.keyCodeToString(event.keyCode)} ${if (event.action == KeyEvent.ACTION_DOWN) "down" else "up"}, view focused ${currentFocus != null}")
         restartIdleTimer()
         // The key that wakes the screensaver only wakes it, silently.
@@ -433,7 +458,7 @@ class MainActivity : ComponentActivity() {
         DiagLog.i("onNewIntent ${intent.action}")
         if (intent.getBooleanExtra(EXTRA_WOKE, false)) openBootSource("brought back on wake")
         if (intent.action == ACTION_PREVIEW_SCREENSAVER) {
-            idleHandler.post { showScreensaver.run() }
+            idleHandler.post { startScreensaver(asked = true) }
             return
         }
         if (intent.hasCategory(Intent.CATEGORY_HOME) || intent.action == Intent.ACTION_MAIN) {
@@ -584,5 +609,13 @@ class MainActivity : ComponentActivity() {
          */
         @Volatile
         var dreamWokeAt = 0L
+
+        /**
+         * The key that woke AerialDream, until its lift. The rest of that press (its repeats and its
+         * lift) comes to Home once the dream is gone; on TCL MT5879 the dream's teardown can hold
+         * the lift back long enough for Android to repeat the key, and one Down moved focus several
+         * rows. Set by AerialDream.
+         */
+        @Volatile var dreamWokeKey = -1
     }
 }

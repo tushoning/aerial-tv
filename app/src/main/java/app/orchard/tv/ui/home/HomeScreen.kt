@@ -58,6 +58,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
@@ -76,6 +77,8 @@ import app.orchard.tv.ui.control.ControlCenter
 import app.orchard.tv.ui.wallpaper.WallpaperSheet
 import app.orchard.tv.wallpaper.ScreensaverMode
 import app.orchard.tv.wallpaper.Wallpapers
+import app.orchard.tv.wallpaper.AerialQuality
+import app.orchard.tv.wallpaper.AerialFormats
 import app.orchard.tv.ui.components.liquidGlass
 import app.orchard.tv.ui.theme.LocalReducedMotion
 import app.orchard.tv.ui.theme.Motion
@@ -201,8 +204,12 @@ fun HomeScreen(
     // top row with nothing over it. A film that does not move within FILM_SAVER_WAIT_MS hands over
     // to the screensaver's own films.
     var filmFailed by remember(vm.screensaverVisible) { mutableStateOf(false) }
+    // Not where the screensaver plays Dolby Vision, which the wallpaper never does (it stays out
+    // of the display's DV mode): the film carried on would be the wallpaper's 4K SDR (TCL).
+    val context = LocalContext.current
     val filmSaverChosen = remember(vm.screensaverVisible) {
         vm.screensaverVisible && Wallpapers.selectedId == Wallpapers.LIVE && Wallpapers.screensaver == ScreensaverMode.Aerial &&
+            AerialFormats.resolve(context, AerialSettings.aerialQuality) != AerialQuality.DolbyVision &&
             (filmCover.value > 0.5f || focusedRow == 0 && overlay == Overlay.None && moving == null)
     }
     val filmSaver = filmSaverChosen && !filmFailed

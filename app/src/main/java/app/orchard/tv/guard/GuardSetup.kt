@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import android.util.Log
 import app.orchard.tv.dream.AerialDream
+import app.orchard.tv.system.SystemScreensaver
 
 /**
  * Turns Home Guard back on after the firmware turned it off.
@@ -204,6 +205,8 @@ object GuardSetup {
         val renamed = "${context.packageName}/${context.packageName}.dream.OrchardDream" in current
         if (renamed) prefs.edit().putBoolean(KEY_OWN_SCREENSAVER, true).apply()
         if (!prefs.getBoolean(KEY_OWN_SCREENSAVER, false) || current == mine) return
+        // "System" chosen in Personalize: the firmware's dream stays (screensaverModeChanged).
+        if (systemChosen(context)) return
         runCatching {
             Settings.Secure.putString(resolver, key, mine)
             Log.i(TAG, "the system screensaver was $current; put Aerial's back")
@@ -235,6 +238,34 @@ object GuardSetup {
             }
         }.onFailure { Log.w(TAG, "could not change the system screensaver", it) }
     }
+
+    private fun systemChosen(context: Context) =
+        context.getSharedPreferences("wallpaper", Context.MODE_PRIVATE).getString("screensaver", null) == "system"
+
+    /**
+     * The screensaver chosen in Personalize changed. "System" gives the TV's dream back to the one
+     * the firmware came with, where Aerial had taken it (TCL); any other choice takes it again.
+     */
+    fun screensaverModeChanged(context: Context) {
+        if (!isUserUnlocked(context)) return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_OWN_SCREENSAVER, false)) return
+        if (!systemChosen(context)) { keepScreensaver(context); return }
+        val resolver = context.contentResolver
+        val mine = ComponentName(context, AerialDream::class.java).flattenToString()
+        val firmware = SystemScreensaver.firmwareDream(context) ?: return
+        if (Settings.Secure.getString(resolver, "screensaver_components").orEmpty() != mine) return
+        runCatching {
+            Settings.Secure.putString(resolver, "screensaver_components", firmware)
+            Log.i(TAG, "screensaver set to the system's; the dream is $firmware again")
+        }.onFailure { Log.w(TAG, "could not give the system screensaver back", it) }
+    }
+
+    /**
+     * The firmware wrote its own dream back while Aerial's was chosen: TCL MT5879 put back its
+     * art screensaver at boot once, after Aerial had looked (watched by Home Guard).
+     */
+    fun screensaverSettingChanged(context: Context) = keepScreensaver(context)
 
     /** Returns whether Home Guard had been switched off and was put back. */
     fun ensureEnabled(context: Context): Boolean {

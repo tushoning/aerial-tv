@@ -228,4 +228,6 @@
     <string name="tile_kids">Kids</string>
     <string name="ss_videos">Videos</string>
     <string name="ss_videos_hint">Add MP4 or MOV films from the phone page. Plays offline; photos are shown when no film can play.</string>
+    <string name="ss_system">System</string>
+    <string name="ss_system_hint">The TV\'s own screensaver, as it came with the TV (Xiaomi\'s pictures, for one). Aerial shows none of its own.</string>
 </resources>

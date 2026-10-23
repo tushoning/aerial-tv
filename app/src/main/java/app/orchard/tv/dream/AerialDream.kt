@@ -74,10 +74,12 @@ class AerialDream : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (skips.onKey(event)) return true
-        if (event.action == KeyEvent.ACTION_DOWN) {
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             MainActivity.dreamWokeAt = event.eventTime
+            MainActivity.dreamWokeKey = event.keyCode
             finish()
         }
+        if (event.action == KeyEvent.ACTION_UP && event.keyCode == MainActivity.dreamWokeKey) MainActivity.dreamWokeKey = -1
         return true
     }
 

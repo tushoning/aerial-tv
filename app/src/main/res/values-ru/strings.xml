@@ -220,4 +220,6 @@
     <string name="tile_kids">Детям</string>
     <string name="ss_videos">Видео</string>
     <string name="ss_videos_hint">Добавьте MP4 или MOV со страницы на телефоне. Просмотр без сети; если видео недоступны, показываются фото.</string>
+    <string name="ss_system">Системная</string>
+    <string name="ss_system_hint">Заставка самого телевизора, как задумал производитель (например, картины Xiaomi). Aerial свою не показывает.</string>
 </resources>
