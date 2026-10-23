@@ -30,7 +30,7 @@ object ScreensaverVideos {
             }.getOrNull()
         }.sortedBy { it.id }
 
-    /** The upload is already on disk. Validate it before copying, and publish a complete directory. */
+    /** The upload is already on disk and is taken over. Validate it first, and publish a complete directory. */
     @Synchronized
     fun add(context: Context, upload: File, name: String): ScreensaverVideo? {
         val root = directory(context)
@@ -56,7 +56,10 @@ object ScreensaverVideos {
         val target = File(root, id)
         return try {
             check(staging.mkdir())
-            upload.copyTo(File(staging, "video.mp4"))
+            // The upload is the phone server's temp file in the cache, on the same volume: moving it
+            // saves writing up to 200 MB again on a TV's slow storage. Copy where it cannot move.
+            val film = File(staging, "video.mp4")
+            if (!upload.renameTo(film)) upload.copyTo(film)
             File(staging, "info.json").writeText(JSONObject().put("name", title).toString())
             check(staging.renameTo(target))
             ScreensaverVideo(id, title, File(target, "video.mp4"))

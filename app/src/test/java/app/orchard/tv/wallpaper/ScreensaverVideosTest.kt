@@ -38,12 +38,12 @@ class ScreensaverVideosTest {
     @Test
     fun uploadIsPublishedWithItsNameAndBytesButDoesNotSelectIt() {
         val original = upload()
+        val bytes = original.readText()
         val video = ScreensaverVideos.add(context, original, "../phone/scene.mov")
         assertNotNull(video)
         assertEquals("scene.mov", video!!.name)
-        assertEquals(original.readText(), video.file.readText())
+        assertEquals(bytes, video.file.readText())
         assertEquals(listOf(video), ScreensaverVideos.all(context))
-        assertTrue(original.exists())
         assertFalse(root.listFiles().orEmpty().any { it.name.startsWith("import-") })
         assertFalse(context.getSharedPreferences("wallpaper", Context.MODE_PRIVATE).contains("screensaver"))
     }
