@@ -268,15 +268,18 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshSystem() {
         viewModelScope.launch {
             val ctx = context
+            // Brightness off the main thread too: on MiTV without picture_backlight its first read
+            // probes the panel over binder (MitvPanel.usable).
             val (n, v, s) = withContext(Dispatchers.Default) {
                 Triple(SystemProbe.network(ctx), SystemProbe.volume(ctx), SystemProbe.sources(ctx))
             }
+            val level = withContext(Dispatchers.Default) { Brightness.level(ctx) }
             network = n; volume = v
             // TvSource holds an Intent, which has no value equality; compare what a tile shows.
             fun shown(list: List<TvSource>) = list.map { Triple(it.id, it.label, it.deviceName) }
             if (shown(s) != shown(sources)) { sources = s; arrange() } else sources = s
             homeStatus = SystemProbe.homeStatus(ctx)
-            brightness = Brightness.level(ctx)
+            brightness = level
         }
     }
 

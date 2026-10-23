@@ -12,14 +12,16 @@ import androidx.core.content.ContextCompat
  *
  * - Xiaomi (MediaTek, China firmware): Settings.Global "picture_backlight", 0–100, applied by the
  *   firmware's TV menu service as soon as it changes. Writing it needs WRITE_SECURE_SETTINGS.
+ * - MiTV China firmware without "picture_backlight" (MiTV-ASTP0, Mi TV 4A, recent Redmi): the
+ *   panel is driven by the mitv middleware, which keeps the level in Settings.System
+ *   "backLightForNormal" (0–100). The setting alone does not move the backlight: the value has to
+ *   be pushed to TvService as well, and only once [MitvPanel.usable] has found that the
+ *   transactions match this firmware (issues #23, #346).
  * - TCL: TTvPictureManager in TCL's framework (see TclPicture); where it is missing, Control
  *   Center opens TCL's picture panel.
  * - Sony BRAVIA: the screen brightness setting changes but the backlight does not (no backlight in
  *   the display config); Control Center opens Sony's picture settings, which DISPLAY_SETTINGS
  *   resolves to. Reported on a BRAVIA VH1, Android 12 (GitHub issue #2).
- * - Xiaomi without "picture_backlight" (MiTV-ASTP0 Android 9, Mi TV 4A, recent Redmi, issue #23):
- *   the screen brightness setting changes but the backlight does not; Control Center opens the
- *   TV's settings instead.
  * - Others: the standard Settings.System screen brightness, 0–255. Writing it needs the "modify
  *   system settings" app-op. Both are granted by tools/install.sh; without them Control Center
  *   opens the TV's own picture settings instead.
@@ -47,20 +49,41 @@ object Brightness {
     private fun isSony(context: Context) =
         runCatching { context.packageManager.getPackageInfo("com.sony.dtv.configsettings", 0) }.isSuccess
 
+    /**
+     * Level Aerial last pushed to the MiTV panel. The middleware's getter reports animated values
+     * and the firmware refuses third-party writes to its own setting, so Aerial tracks the level it
+     * set, seeded once per process from the panel itself when it has none.
+     */
+    private var mitvLevel: Int? = null
+
+    private const val PREFS = "aerial"
+    private const val KEY_MITV_LEVEL = "mitv_backlight"
+
+    private fun storedLevel(context: Context): Int? {
+        val value = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_MITV_LEVEL, -1)
+        return if (value in 1..100) value else null
+    }
+
     /** Current level as 0..1, or null when Aerial cannot change it on this TV. */
     fun level(context: Context): Float? {
         val r = context.contentResolver
         if (isTcl(context)) TclPicture.backlight(context)?.let { return it / 100f }
-        return if (usesXiaomiBacklight(context)) {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return null
-            Settings.Global.getInt(r, XIAOMI_BACKLIGHT, 50) / 100f
-        } else {
+        return when {
+            usesXiaomiBacklight(context) -> {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return null
+                Settings.Global.getInt(r, XIAOMI_BACKLIGHT, 50) / 100f
+            }
+            // The MiTV middleware is driven over its own binder and Aerial keeps the level in its own
+            // preferences, so this path does not need WRITE_SETTINGS.
+            MitvPanel.usable(context) -> (mitvLevel ?: MitvPanel.level(context) ?: storedLevel(context) ?: 50) / 100f
+            // A Xiaomi TV where neither place works: open the TV's own backlight slider rather than
+            // show one that changes nothing (issue #346).
+            isXiaomi(context) -> null
             // TCL and Sony drive the backlight through their own TV services and ignore the system
-            // setting (TCL MT5879, Sony BRAVIA VH1, Xiaomi without picture_backlight); Control
-            // Center opens their picture panels.
+            // setting; Control Center opens their picture panels.
             // Before Android 6.0 WRITE_SETTINGS is granted at install.
-            if (isTcl(context) || isSony(context) || isXiaomi(context) || Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(context)) return null
-            Settings.System.getInt(r, Settings.System.SCREEN_BRIGHTNESS, 128) / 255f
+            isTcl(context) || isSony(context) || Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(context) -> null
+            else -> Settings.System.getInt(r, Settings.System.SCREEN_BRIGHTNESS, 128) / 255f
         }
     }
 
@@ -75,6 +98,23 @@ object Brightness {
         val percent = Math.round(current * 100)
         val next = (if (direction > 0) (percent / 5 + 1) * 5 else ((percent + 4) / 5 - 1) * 5).coerceIn(1, 100)
         val r = context.contentResolver
+        // The same order as level(): TCL's SDK and picture_backlight come first, so a Xiaomi that
+        // has both never has its panel probed or moved this way.
+        if (!isTcl(context) && !usesXiaomiBacklight(context) && MitvPanel.usable(context)) {
+            runCatching {
+                // Start the relative step from the level Aerial set last: the middleware's getter is
+                // animated, so a panel reading taken mid-step is only the seed of the first step
+                // after a restart.
+                val from = mitvLevel ?: MitvPanel.level(context) ?: storedLevel(context) ?: percent
+                MitvPanel.setBacklight(context, from, next)
+                mitvLevel = next
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .edit().putInt(KEY_MITV_LEVEL, next).apply()
+            }
+            // Return what was asked for rather than reading it back: the MiTV middleware animates
+            // the panel and its getter reports the transient level, which made the slider jump.
+            return next / 100f
+        }
         runCatching {
             if (isTcl(context)) {
                 TclPicture.setBacklight(context, next)
