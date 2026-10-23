@@ -206,4 +206,5 @@
     <string name="notice_boot_on">%1$s відкриється під час увімкнення телевізора</string>
     <string name="notice_boot_switch">%1$s відкриється під час увімкнення телевізора замість %2$s</string>
     <string name="notice_boot_off">%1$s більше не відкриватиметься під час увімкнення телевізора</string>
+    <string name="tile_stock_home">Головний екран ТБ</string>
 </resources>

@@ -213,4 +213,5 @@
     <string name="notice_boot_on">开机时会打开「%1$s」</string>
     <string name="notice_boot_switch">开机时改为打开「%1$s」，不再打开「%2$s」</string>
     <string name="notice_boot_off">开机时不再打开「%1$s」</string>
+    <string name="tile_stock_home">原桌面</string>
 </resources>

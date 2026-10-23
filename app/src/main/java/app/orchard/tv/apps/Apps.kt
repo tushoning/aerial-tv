@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import app.orchard.tv.R
+import app.orchard.tv.guard.HomeGuardService
 import app.orchard.tv.system.TvSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -150,6 +152,8 @@ object AppCatalog {
     suspend fun load(context: Context): List<AppEntry> = withContext(Dispatchers.Default) {
         TileDiskCache.init(context)
         val pm = context.packageManager
+        // Its own label names the firmware rather than what it is ("T-UI" on TCL MT5879).
+        val homeLabel = context.getString(R.string.tile_stock_home)
         val found = LinkedHashMap<String, Pair<ActivityInfo, Boolean>>()
         pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER), 0)
             .forEach { found.putIfAbsent(it.activityInfo.packageName, it.activityInfo to true) }
@@ -160,6 +164,10 @@ object AppCatalog {
         for (component in UNLISTED_ENTRIES) {
             val info = runCatching { pm.getActivityInfo(component, 0) }.getOrNull() ?: continue
             if (info.exported && info.isEnabled && info.applicationInfo.enabled) found.putIfAbsent(info.packageName, info to false)
+        }
+        val stockHomes = HashSet<String>()
+        for (info in stockLaunchers(pm)) {
+            if (found.putIfAbsent(info.packageName, info to false) == null) stockHomes += info.packageName
         }
         found.remove(context.packageName)
 
@@ -173,12 +181,36 @@ object AppCatalog {
 
         coroutineScope {
             found.values.map { (info, leanback) ->
-                async { runCatching { entry(pm, info, leanback, byCategory) }.getOrNull() }
+                val home = info.packageName in stockHomes
+                async { runCatching { entry(pm, info, leanback, byCategory, home) }.getOrNull()?.let { if (home) it.copy(label = homeLabel) else it } }
             }.awaitAll().filterNotNull()
         }.also {
             loaded = it
             TileDiskCache.keepOnly(it.mapTo(HashSet()) { app -> app.packageName })
         }
+    }
+
+    /**
+     * The TV's own launcher, which some firmwares declare only as a Home: TCL's com.tcl.cyberui
+     * (雷鸟, MT5879) has no launcher entry at all, and the maker's content (欢网 membership) is
+     * only there (issues #110, #98). The ones Home Guard keeps away while it runs, else the other
+     * Homes that are not fallbacks. Opening the tile goes through HomeGuardService.openStockLauncher,
+     * so the guard leaves it in front until Aerial is back. Launchers with an entry of their own
+     * (Xiaomi's PatchWall) keep that one.
+     */
+    private fun stockLaunchers(pm: PackageManager): List<ActivityInfo> {
+        val guarded = HomeGuardService.stockHomes()
+        if (guarded != null) {
+            return guarded.mapNotNull { (pkg, classes) ->
+                classes.firstNotNullOfOrNull { cls ->
+                    runCatching { pm.getActivityInfo(ComponentName(pkg, cls), 0) }.getOrNull()
+                        ?.takeIf { it.exported && it.isEnabled && it.applicationInfo.enabled }
+                }
+            }
+        }
+        return pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
+            .filter { it.priority >= 0 && it.activityInfo.exported }
+            .map { it.activityInfo }
     }
 
     /**
@@ -215,10 +247,12 @@ object AppCatalog {
         label to art
     }.getOrNull()
 
-    private fun entry(pm: PackageManager, info: ActivityInfo, leanback: Boolean, byCategory: Map<String, SystemTile>): AppEntry {
+    private fun entry(pm: PackageManager, info: ActivityInfo, leanback: Boolean, byCategory: Map<String, SystemTile>, stockHome: Boolean = false): AppEntry {
         val pkg = info.packageName
         // A picture chosen on the phone page changes the tile as much as an update does.
-        val stamp = runCatching { pm.getPackageInfo(pkg, 0).lastUpdateTime }.getOrDefault(0L) + CustomIcons.stamp(pkg)
+        // Drawn as the stock launcher or not is part of it too: the same package can be either.
+        val stamp = runCatching { pm.getPackageInfo(pkg, 0).lastUpdateTime }.getOrDefault(0L) + CustomIcons.stamp(pkg) +
+            if (stockHome) 1 else 0
         val cached = synchronized(cache) { cache[pkg] }?.takeIf { it.stamp == stamp && it.width == TileArtFactory.W }
             ?: TileDiskCache.read(pkg, TileDiskCache.key(stamp))?.let { (label, art) ->
                 Cached(stamp, TileArtFactory.W, label, art).also { synchronized(cache) { cache[pkg] = it } }
@@ -237,7 +271,10 @@ object AppCatalog {
             // Xiaomi MiTV-MFTR0); covering the tile with it blows the logo up past the edges.
             val banner = (if (leanback) densest(pm, info, info.bannerResource) ?: runCatching { info.loadBanner(pm) }.getOrNull() else null)
                 ?.takeIf { it.intrinsicWidth >= it.intrinsicHeight * 4 / 3 }
-            val own = if (system) SYSTEM_TILES[pkg] ?: byCategory[pkg]?.takeIf { banner == null } else null
+            // A launcher declared only as a Home has an icon for phones at best (TCL's cyberui: the
+            // default robot), so it is drawn as Aerial's own.
+            val own = if (stockHome) SystemTile.Home
+                else if (system) SYSTEM_TILES[pkg] ?: byCategory[pkg]?.takeIf { banner == null } else null
             val custom = CustomIcons.load(pkg)
             val recipe = TileRecipes.of(pkg)
             art = when {
