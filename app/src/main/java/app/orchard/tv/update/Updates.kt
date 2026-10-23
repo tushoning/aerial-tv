@@ -8,6 +8,7 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import androidx.compose.runtime.getValue
@@ -43,6 +44,9 @@ object Updates {
     private const val VERSION_URL = "https://aerial.qust.me/download/version.txt"
     private const val CHECK_EVERY_MS = 3 * 60 * 60 * 1000L
     private const val RETRY_MS = 10 * 60 * 1000L
+
+    /** Longest one download source may take; past it the next source gets a try (issue #390). */
+    private const val SOURCE_BUDGET_MS = 60_000L
     const val CONTROL_CENTER_MAX_AGE_MS = RETRY_MS
 
     /** This build's version, e.g. "1.17" (the guard build's "-guard" left off). */
@@ -242,6 +246,10 @@ object Updates {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 10_000
         c.readTimeout = 20_000
+        // A throttled route can keep the TLS handshake up and deliver a byte now and then, so no
+        // read() ever blocks long enough to time out and the progress bar sits at 0% for good
+        // (issue #390, FFALCON/TCL on China Unicom). Cap the whole source, not each read.
+        val deadline = SystemClock.elapsedRealtime() + SOURCE_BUDGET_MS
         try {
             if (c.responseCode != HttpURLConnection.HTTP_OK) error("HTTP ${c.responseCode}")
             val total = c.contentLength.toLong()
@@ -251,6 +259,9 @@ object Updates {
                 part.outputStream().use { out ->
                     val buf = ByteArray(64 * 1024)
                     while (true) {
+                        if (SystemClock.elapsedRealtime() > deadline) {
+                            error("exceeded the ${SOURCE_BUDGET_MS / 1000} s budget for one source")
+                        }
                         val n = input.read(buf)
                         if (n < 0) break
                         out.write(buf, 0, n)
