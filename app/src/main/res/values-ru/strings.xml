@@ -217,4 +217,6 @@
     <string name="notice_boot_off">%1$s больше не будет открываться при включении телевизора</string>
     <string name="tile_stock_home">Главный экран ТВ</string>
     <string name="tile_kids">Детям</string>
+    <string name="ss_videos">Видео</string>
+    <string name="ss_videos_hint">Добавьте MP4 или MOV со страницы на телефоне. Просмотр без сети; если видео недоступны, показываются фото.</string>
 </resources>

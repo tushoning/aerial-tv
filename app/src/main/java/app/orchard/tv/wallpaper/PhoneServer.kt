@@ -75,6 +75,11 @@ class PhoneServer private constructor(private val context: Context, private val 
                     json(state())
                 }
                 session.method == Method.POST && path == "/api/upload" -> upload(session)
+                session.method == Method.POST && path == "/api/videos/upload" -> video(session)
+                session.method == Method.POST && path == "/api/videos/delete" -> {
+                    val removed = ScreensaverVideos.delete(context, form(session)["id"].orEmpty())
+                    json(state().put("removed", removed))
+                }
                 path.startsWith("/tile/") -> tile(java.net.URLDecoder.decode(path.removePrefix("/tile/"), "UTF-8"))
                 session.method == Method.POST && path == "/api/icon" -> icon(session)
                 session.method == Method.POST && path == "/api/source/name" -> {
@@ -121,6 +126,9 @@ class PhoneServer private constructor(private val context: Context, private val 
             .put("rotatePhotos", Wallpapers.ROTATE_PHOTOS)
             .put("screensaver", Wallpapers.screensaver.key)
             .put("screensaverFollows", Wallpapers.screensaverFollows)
+            .put("videos", JSONArray().apply {
+                ScreensaverVideos.all(context).forEach { put(JSONObject().put("id", it.id).put("name", it.name)) }
+            })
             .put("focusStyle", AerialSettings.focusStyle.key)
             .put("wallpapers", list)
             .put("apps", JSONArray().apply {
@@ -195,6 +203,19 @@ class PhoneServer private constructor(private val context: Context, private val 
             }
         }
         return json(state().put("added", added))
+    }
+
+    /** One film per request: a batch never needs twice its total size free on the TV. */
+    private fun video(session: IHTTPSession): Response {
+        val length = session.headers["content-length"]?.toLongOrNull() ?: 0L
+        // Include room for multipart headers, but do not accept an unbounded chunked body.
+        if (length <= 0 || length > ScreensaverVideos.MAX_FILE_BYTES + 1024 * 1024) return text(Response.Status.BAD_REQUEST, "too large")
+        val files = HashMap<String, String>()
+        session.parseBody(files)
+        val path = files["video"] ?: return text(Response.Status.BAD_REQUEST, "no video")
+        val name = session.parameters["video"]?.firstOrNull().orEmpty()
+        val saved = ScreensaverVideos.add(context, File(path), name) != null
+        return json(state().put("saved", saved))
     }
 
     // NanoHTTPD writes the whole body to the cache before we see it; keep a stray or hostile

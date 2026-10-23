@@ -38,7 +38,7 @@ data class Wallpaper(
 )
 
 enum class ScreensaverMode(val key: String) {
-    Aerial("aerial"), Photos("photos"), Clock("clock");
+    Aerial("aerial"), Photos("photos"), Clock("clock"), Videos("videos");
 
     companion object {
         fun of(key: String?) = entries.firstOrNull { it.key == key } ?: Aerial

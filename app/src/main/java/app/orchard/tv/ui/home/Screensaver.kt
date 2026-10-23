@@ -73,12 +73,13 @@ import kotlin.random.Random
 
 /**
  * Aerial's screensaver, shown on Home after a few idle minutes, before the firmware's
- * (ad-carrying) one would start. Three kinds, chosen in Personalize:
+ * (ad-carrying) one would start. Four kinds, chosen in Personalize:
  *
  * - Aerial: Apple TV's aerial films, streamed from Apple, with the place named as the camera moves.
  * - Photos: the owner's own photos (the daily ones when there are none), slowly drifting, each
  *   with where it was taken.
  * - Clock: a large clock over the wallpaper, moving once a minute so nothing burns in.
+ * - Videos: the owner's local films, uploaded from the phone page, playing silently offline.
  *
  * If the films cannot be reached, Aerial falls back to Photos. Left and right step to the previous
  * or next film or photo, as on Apple TV; see [ScreensaverSkips].
@@ -109,11 +110,13 @@ fun Screensaver(visible: Boolean, apps: List<AppEntry>, now: LocalDateTime, skip
             null -> Unit
         }
         var aerialFailed by remember { mutableStateOf(false) }
+        var videosFailed by remember { mutableStateOf(false) }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             when (Wallpapers.screensaver) {
                 ScreensaverMode.Aerial -> if (aerialFailed) PhotoSaver(now, skips.steps) else AerialSaver(now, skips.steps, onUnavailable = { aerialFailed = true })
                 ScreensaverMode.Photos -> PhotoSaver(now, skips.steps, remember { Wallpapers.screensaverPicture() })
                 ScreensaverMode.Clock -> ClockSaver(apps, now)
+                ScreensaverMode.Videos -> if (videosFailed) PhotoSaver(now, skips.steps) else VideoSaver(skips.steps, onUnavailable = { videosFailed = true })
             }
         }
     }
