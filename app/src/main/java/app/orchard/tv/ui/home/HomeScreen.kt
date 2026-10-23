@@ -608,7 +608,11 @@ fun HomeScreen(
                 showTime = if (dragged) pastShelf else focusedRow > 0,
                 enabled = gridEnabled && moving == null,
                 focusRequester = pillRequester,
-                modifier = Modifier.graphicsLayer { alpha = 1f - (toSaver.value * 2f).coerceIn(0f, 1f) },
+                modifier = Modifier.graphicsLayer {
+                    alpha = 1f - (toSaver.value * 2f).coerceIn(0f, 1f)
+                    // No offscreen buffer: it would cut the focused pill's 8% growth to a box.
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                },
                 onFocused = { gained ->
                     // The window hands its first focus to the top-most control; the top row is where Home starts.
                     if (gained) {
