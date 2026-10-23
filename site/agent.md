@@ -4,8 +4,8 @@
 
 ## 规则
 
-1. **亲自在用户电脑上运行命令**，不要只把步骤列给用户。如果你不能执行命令（比如你是手机版或网页版聊天），直接告诉用户：请换成能执行命令的电脑版 Agent（WorkBuddy、豆包电脑版、千问电脑版、Trae、Claude Code、Codex 等），并在第一次运行命令时允许它执行命令、访问网络。
-2. **不要假装成功。** 每一步都看命令的真实输出；最后必须完成「验收」，把原始输出贴给用户。
+1. **亲自在用户电脑上运行命令**，不要只把步骤列给用户。如果你不能执行命令（比如你是手机版或网页版聊天），直接告诉用户：请换成能执行命令的电脑版 Agent（WorkBuddy、豆包电脑版或豆包工作版、千问电脑版、Trae、Claude Code、Codex 等），并在第一次运行命令时允许它执行命令、访问网络。豆包手机版、网页版只会把步骤告诉用户，不会执行。
+2. **不要假装成功。** 每一步都看命令的真实输出；最后必须完成「验收」，把原始输出原样贴给用户，包括 `resolve-activity` 解析到的桌面和 `enabled_accessibility_services` 的内容。没有看到这些输出，就不能说装好了。
 3. **不要卸载、停用任何系统应用**（包括电视原来的桌面），不要删除电视上的任何文件，不要恢复出厂设置。只能删除这次安装自己创建的 `/sdcard/Download/Aerial.apk`。
 4. 重启电视（`adb reboot`）前先征得用户同意。
 5. 需要用户在电视上操作时（允许调试、同意安装），明确告诉用户按遥控器的哪个键。
@@ -46,11 +46,15 @@ adb devices
 |---|---|
 | 小米 / Redmi | 设置 → 关于 → **产品型号**，连续按确认键，直到提示进入开发者模式。再到 设置 → 账号与安全，打开 **ADB 调试** 和 **安装未知来源的应用** |
 | TCL / 雷鸟 | 设置 → 关于 → **本机信息**，依次按遥控器 **上、下、左、右**（间隔不超过 1 秒），底部出现「更多」，在里面打开 **ADB** |
-| OPPO 电视 | 设置 → 系统 → 关于本机 → **设备型号**，依次按 **上、上、右、右**，再按确认（用户反馈，未验证） |
+| OPPO 电视（含 S1） | 设置 → 系统 → 关于本机 → **设备型号**，依次按 **上、上、右、右**，再按确认；然后到 设置 → 系统 → **开发者选项**，打开 **USB 调试**（有的机型叫 ADB 调试）。用户反馈；ColorOS TV 在 OPPO K9 上验证过 |
 | 海尔 / 模卡（MOOKA） | 按**电视机身**上的信号源键，弹出信号源菜单后，用遥控器依次按 **左、左、上、右**，进入「海尔工厂菜单」，把 **ADB 调试开关** 设为开（有的机型在第二页 Other Option → adb debug）。只改这一项，别动其他选项，尤其不要选「工厂复位」。（ZNDS 用户反馈，模卡 U65H3 等，未验证） |
 | 原生 Android TV / Google TV、索尼、海信等 | 设置 → 设备偏好设置 → 关于 → 连续按 **内部版本号**（Build，不是「Android 版本」，按错了会出彩蛋，按返回键退出即可）7 次，再到开发者选项打开 **USB 调试**（也可能叫「网络调试」） |
 
-电视的 IP 一般在 设置 → 网络 或 关于 里能看到。
+电视的 IP 一般在 设置 → 网络 → 已连接的网络 里（OPPO S1 在这一页最下面）。
+
+**打不开 ADB 的机型**：极米 H3、老乐视、荣耀智慧屏、老康佳（看不到版本号）等，目前没有办法，直接告诉用户不支持，不要反复尝试。
+
+**用户没有电脑**：有用户用手机上的「甲壳虫 ADB 助手」「超级小爱」装成功过，本项目没有逐一实测。可以让用户照本说明第 2、3 步在手机上操作（手机 ADB 工具一般不能执行全部命令），装好后尽量再用电脑或你跑一遍「验收」。
 
 ## 第 3 步：安装
 
@@ -154,6 +158,7 @@ python tcast-push.py <IP> http://127.0.0.1:8765/Aerial.apk app.orchard.tv Aerial
 
 ```
 adb shell "dumpsys package app.orchard.tv | grep versionName"
+adb shell "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME"
 adb shell settings get secure enabled_accessibility_services
 adb shell "dumpsys accessibility | grep -c -E 'label=(Aerial|app.orchard.tv)'"
 adb shell input keyevent KEYCODE_HOME
@@ -161,15 +166,17 @@ adb shell "sleep 3; dumpsys window | grep mCurrentFocus"
 ```
 
 - 第 1 条有 `versionName`：已安装。
-- 第 2 条有 `app.orchard.tv/app.orchard.tv.guard.HomeGuardService`：守护已打开（原生 Android TV 已是默认桌面时可能没有，看第 5 条即可）。
-- 第 3 条大于 0：守护正在运行。
-- **第 5 条包含 `app.orchard.tv`：按主页键进入 Aerial，安装成功。** 这一条不满足，就不能告诉用户装好了。
+- 第 2 条是系统给出的默认桌面。小米仍然是 PatchWall（`com.mitv.tvhome`）、TCL 仍然是自己的桌面时正常，守护接管；是 `app.orchard.tv` 更好。
+- 第 3 条有 `app.orchard.tv/app.orchard.tv.guard.HomeGuardService`：守护已打开（原生 Android TV 已是默认桌面时可能没有，看第 6 条即可）。
+- 第 4 条大于 0：守护正在运行。
+- **第 6 条包含 `app.orchard.tv`：按主页键进入 Aerial，安装成功。** 这一条不满足，就不能告诉用户装好了。
+- 第 2、3、6 条的原始输出必须贴给用户，不要只说「成功」。第 2 条报错（老系统没有 `cmd`）时，改用 `adb shell pm resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME`。
 
-第 5 条不是 `app.orchard.tv` 时，等 5 秒再运行一次第 4、5 条（有的电视守护启动得慢）。还不是，看「常见情况」。
+第 6 条不是 `app.orchard.tv` 时，等 5 秒再运行一次第 5、6 条（有的电视守护启动得慢）。还不是，看「常见情况」。
 
-`input keyevent` 模拟的主页键不经过守护的按键过滤，在少数电视上（索尼 Android 9）结果和实体遥控器不同：这时请用户用实体遥控器按一次主页键，再只运行第 5 条，以这次为准。
+`input keyevent` 模拟的主页键不经过守护的按键过滤，在少数电视上（索尼 Android 9）结果和实体遥控器不同：这时请用户用实体遥控器按一次主页键，再只运行第 6 条，以这次为准。
 
-都通过后，征得用户同意再 `adb reboot`，等一两分钟电视开机后重新 `adb connect <IP>:5555`，再跑一次第 5 条，确认开机直接进入 Aerial。
+都通过后，征得用户同意再 `adb reboot`，等一两分钟电视开机后重新 `adb connect <IP>:5555`，再跑一次第 6 条，确认开机直接进入 Aerial。
 
 ## 还原
 
@@ -212,16 +219,16 @@ adb shell cmd role remove-role-holder --user 0 android.app.role.HOME app.orchard
 - **雷鸟 55S595C Ultra（MT9655）等只有「无线调试」的机型**：拿不到授权，能装但接管不了主页键。
 - **海信 VIDAA**：第 7 步改了 `persist.vt.use_home_pkg` 以后，主页键直接进 Aerial；但开机仍会先进聚好看（固件在开机完成前拦截第三方 App），按一次主页键即可。
 - **Vidda 其他系统、OPPO K9、雷鸟鹤 6**：能装，但开机进不了 Aerial（固件只认自家桌面，除非删掉原桌面，这里不做）。可以把 Aerial 当普通 App 用。
-- **验收第 3 条是 0，但第 2 条里有 Aerial**：常见于升级之后，系统还在找旧的安装目录（小米 Android 9，#72）。运行 `adb shell am force-stop app.orchard.tv`，等 3 秒，再 `adb shell am start -W -n app.orchard.tv/.MainActivity`，然后重新验收。macOS / Linux 也可以直接运行 `curl -fsSL https://aerial.qust.me/install.sh | TV=<IP> bash -s repair`。
+- **验收第 4 条是 0，但第 3 条里有 Aerial**：常见于升级之后，系统还在找旧的安装目录（小米 Android 9，#72）。运行 `adb shell am force-stop app.orchard.tv`，等 3 秒，再 `adb shell am start -W -n app.orchard.tv/.MainActivity`，然后重新验收。macOS / Linux 也可以直接运行 `curl -fsSL https://aerial.qust.me/install.sh | TV=<IP> bash -s repair`。
 - **用了一段时间后按主页键又回到原桌面**：同上，先试一次上面的强停再打开。
-- **验收第 3 条是 0，第 2 条里也没有 Aerial**：有的固件拦截侧载的无障碍服务。请用户在电视的安全中心或权限管理里允许 Aerial 自启动、无障碍，然后重新运行 `adb shell am start -n app.orchard.tv/.MainActivity` 再验收。
+- **验收第 4 条是 0，第 3 条里也没有 Aerial**：有的固件拦截侧载的无障碍服务。请用户在电视的安全中心或权限管理里允许 Aerial 自启动、无障碍，然后重新运行 `adb shell am start -n app.orchard.tv/.MainActivity` 再验收。
 - **忘了家长密码**：`adb shell am broadcast -a app.orchard.tv.CONFIG -n app.orchard.tv/.guard.ConfigReceiver --ez clear_pin true`，密码就关掉了。
-- **不支持**：LG webOS、三星 Tizen、华为智慧屏（鸿蒙）、Android 4.4 及更老的电视。
+- **不支持**：LG webOS、三星 Tizen、华为智慧屏（鸿蒙）、Android 4.4 及更老的电视（Aerial 最低要 Android 5.0）。极米 H3、老乐视、荣耀智慧屏、老康佳（看不到版本号）等打不开 ADB 的机型也暂时没办法。
 
 ## 用户常问
 
-- **会员和 App 还在吗？** 在。Aerial 只换桌面，电视里的 App、账号和会员都不变，从 Aerial 里打开即可。
-- **原来的桌面还能用吗？** 能。原来的桌面作为一个 App 留在 Aerial 的 App 列表里（小米的 PatchWall 也在），打开就是原来的界面和推荐内容。
+- **会员和 App 还在吗？** 在。Aerial 只换桌面，电视里的 App、账号和会员都不变，从 Aerial 里打开即可。小米 / TCL 的会员、小爱同学、小米账号、有线电视都不受影响。
+- **原来的桌面还能用吗？** 能。原来的桌面作为一个 App 留在 Aerial 的 App 列表里（小米的 PatchWall 也在，从「桌面」磁贴进入），打开就是原来的界面和推荐内容。小米影视、PatchWall 的内容都在。
 - **开机广告能去掉吗？** 不能。开机广告是固件在 Aerial 启动之前播的。
 - **以后怎么升级？** 1.32 起，电视上控制中心出现「有新版本」时点「下载并安装」，在系统安装界面确认即可（小米上验证过）。电视不让 App 安装应用时，再运行一次同样的安装命令（Windows 重复第 3 步的 1、2、3、6 条），设置都会保留。
 - **电视上有问题，想反馈给作者**：macOS / Linux 运行 `curl -fsSL https://aerial.qust.me/tools/report.sh | TV=<IP> bash`，它只读不改，生成 `aerial-report-<机型>.md`；读一遍，再贴进 https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml 。没有电脑时，用手机扫个性化里的二维码，在手机页底部「反馈问题」复制诊断信息。

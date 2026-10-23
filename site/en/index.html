@@ -22,7 +22,7 @@
 <link rel="alternate" hreflang="en" href="https://aerial.qust.me/en/">
 <link rel="alternate" hreflang="x-default" href="https://aerial.qust.me/en/">
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../style.css?v=4">
+<link rel="stylesheet" href="../style.css?v=5">
 </head>
 <body>
 
@@ -200,14 +200,15 @@
         <button role="tab" aria-selected="false" data-tab="oppo" aria-label="OPPO"><i class="logo oppo" aria-hidden="true"></i></button>
         <button role="tab" aria-selected="false" data-tab="other"><i class="logo android" aria-hidden="true"></i>Others</button>
       </div>
-      <div class="panel on" data-panel="xiaomi"><p>Settings (设置) → About (关于) → press OK on <b>Model</b> (产品型号) until developer mode is on. Then Settings → Account &amp; Security (账号与安全): turn on <b>ADB debugging</b> (ADB 调试) and <b>Install unknown apps</b> (安装未知来源的应用).</p></div>
-      <div class="panel" data-panel="tcl"><p>Settings (设置) → About (关于) → <b>Device info</b> (本机信息), then quickly press <b>Up, Down, Left, Right</b>. Turn on <b>ADB</b> in the <b>More</b> (更多) group that appears.</p></div>
-      <div class="panel" data-panel="haier"><p>Press the Source button <b>on the TV itself</b>. While the source menu is open, press <b>Left, Left, Up, Right</b> on the remote to open the factory menu (海尔工厂菜单), then set <b>ADB 调试开关</b> (ADB debugging) to on. Change nothing else.</p></div>
-      <div class="panel" data-panel="oppo"><p>Settings (设置) → System (系统) → About (关于本机) → <b>Model</b> (设备型号), press <b>Up, Up, Right, Right</b>, then OK.</p></div>
-      <div class="panel" data-panel="other"><p>Settings → Device Preferences → About → press <b>Build</b> (not Android version) 7 times, then turn on <b>USB debugging</b> in Developer options.</p></div>
+      <div class="panel on" data-panel="xiaomi"><p>Settings (设置) → About (关于) → press OK on <b>Model</b> (产品型号) until developer mode is on. Then Settings → Account &amp; Security (账号与安全): turn on <b>ADB debugging</b> (ADB 调试) and <b>Install unknown apps</b> (安装未知来源的应用).<br>The IP address is under Settings → Network → the connected network.</p></div>
+      <div class="panel" data-panel="tcl"><p>Settings (设置) → About (关于) → <b>Device info</b> (本机信息), then quickly press <b>Up, Down, Left, Right</b>. Turn on <b>ADB</b> in the <b>More</b> (更多) group that appears.<br>The IP address is under Settings → Network → the connected network.</p></div>
+      <div class="panel" data-panel="haier"><p>Press the Source button <b>on the TV itself</b>. While the source menu is open, press <b>Left, Left, Up, Right</b> on the remote to open the factory menu (海尔工厂菜单), then set <b>ADB 调试开关</b> (ADB debugging) to on. Change nothing else.<br>The IP address is under Settings → Network → the connected network.</p></div>
+      <div class="panel" data-panel="oppo"><p>Settings (设置) → System (系统) → About (关于本机) → <b>Model</b> (设备型号), press <b>Up, Up, Right, Right</b>, then OK. Then Settings → System → <b>Developer options</b> (开发者选项) and turn on <b>USB debugging</b> (USB 调试, sometimes called ADB debugging).<br>The IP address is at the <b>bottom</b> of Settings → Network → the connected network.</p></div>
+      <div class="panel" data-panel="other"><p>Settings → Device Preferences → About → press <b>Build</b> (not Android version) 7 times, then turn on <b>USB debugging</b> in Developer options.<br>The IP address is under Settings → Network → the connected network.</p></div>
+      <p class="note">Some TVs cannot open ADB at all: XGIMI H3, old LeTV sets, Honor Vision and old Konka models (no version number to tap).</p>
 
       <h3 class="step"><span>2</span>Enter the TV's IP address</h3>
-      <p class="hint">It's under Settings → Network. Your computer must be on the same network.</p>
+      <p class="hint">It's under Settings → Network → the connected network (at the bottom on OPPO S1). Your computer must be on the same network.</p>
       <div class="field">
         <label for="ip">TV IP address</label>
         <input id="ip" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="e.g. 192.168.1.20">
@@ -219,6 +220,7 @@
         <button role="tab" aria-selected="true" data-tab="agent">Agent</button>
         <button role="tab" aria-selected="false" data-tab="cli">One command</button>
         <button role="tab" aria-selected="false" data-tab="manual">Manual</button>
+        <button role="tab" aria-selected="false" data-tab="phone">Phone only</button>
       </div>
 
       <div class="panel on" data-panel="agent">
@@ -231,7 +233,7 @@
           <li><img src="../img/agents/trae.svg" alt="" width="20" height="20">Trae</li>
         </ul>
         <div class="code"><button class="copy" data-copy="prompt">Copy</button><pre id="prompt"></pre></div>
-        <p class="note">Phone apps and web chats only tell you the steps; they can't install it.</p>
+        <p class="note">Phone apps and web chats (including Doubao on a phone) only tell you the steps; they can't run anything. Use a desktop build that can run commands, such as Doubao for desktop or Doubao Work, WorkBuddy, Qwen for desktop, Trae, Claude Code or Codex.</p>
       </div>
 
       <div class="panel" data-panel="cli">
@@ -242,6 +244,17 @@
       <div class="panel" data-panel="manual">
         <p>Download <a href="../download/aerial-standard.apk"><b>aerial-standard.apk</b></a>, then run:</p>
         <div class="code"><button class="copy" data-copy="manualcmd">Copy</button><pre id="manualcmd"></pre></div>
+      </div>
+
+      <div class="panel" data-panel="phone">
+        <p>Without a computer, use an ADB app on a phone: <b>甲壳虫 ADB 助手</b> (Beetle ADB), <b>超级小爱</b> (Super Xiaoai), or similar tools from the app store.</p>
+        <ol>
+          <li>Phone and TV on the same Wi-Fi.</li>
+          <li>Turn on ADB on the TV as in step 1 above; the IP address is in the same place.</li>
+          <li>Connect the phone to <code>&lt;TV-IP&gt;:5555</code>; choose Always allow on the TV.</li>
+          <li>Install Aerial from the app (standard build; try the guard build if that is refused), then grant permissions one by one as in Windows item 3 of the <a href="agent.md">install guide</a> and start the app as in item 6.</li>
+        </ol>
+        <p class="note">Users have installed Aerial this way; we have not tested each tool. Phone tools usually can't finish every setting, so once it's installed, run the check with a computer or an agent if you can.</p>
       </div>
 
       <p class="note">When the TV asks to allow debugging, choose Always allow. On TCL, accept the 多屏互动 (screen sharing) prompt with 同意 (Agree).</p>
@@ -259,20 +272,29 @@
       </details>
       <details>
         <summary>Can it break my TV? How do I undo it?</summary>
-        <p>No. Aerial doesn't touch system apps; it grants itself a few permissions and changes the home screen and screensaver settings. To undo it, replace the final <code>bash</code> in the one-line command with <code>bash -s restore</code>; add <code>--uninstall</code> to remove Aerial too. With an agent, give it this:</p>
+        <p>No. Aerial doesn't touch system apps; it grants itself a few permissions and changes the home screen and screensaver settings, and all of that can be undone. The easiest way is to paste the text below into an AI that can run commands on a computer (the same kind you installed with): it follows the Undo section of the <a href="agent.md">install guide</a>, undoes every change and leaves the TV on its original home screen. Add "and uninstall Aerial as well" to also remove it.</p>
         <div class="code"><button class="copy" data-copy="restoreprompt">Copy</button><pre id="restoreprompt"></pre></div>
+        <p>By hand: replace the final <code>bash</code> in the one-line command with <code>bash -s restore</code>, that is <code>curl -fsSL https://aerial.qust.me/install.sh | TV=&lt;TV-IP&gt; bash -s restore</code>; add <code>--uninstall</code> to remove Aerial too. On Windows without bash, the commands one by one are in the <a href="agent.md">install guide</a>.</p>
       </details>
       <details>
         <summary>My firmware won't install home-screen apps?</summary>
         <p>Install the build that doesn't declare itself a home screen: add <code>-s guard</code> to the end of the one-line command, or download <a href="../download/aerial-guard.apk">aerial-guard.apk</a> for a manual install.</p>
       </details>
       <details>
-        <summary>Do my apps, subscriptions and old home screen stay?</summary>
-        <p>Yes. Aerial only replaces the home screen; apps, accounts and subscriptions stay, and the old home screen opens from the app list. A boot ad comes from the firmware, so it stays.</p>
+        <summary>Do my subscriptions, Xiaoai, Xiaomi account or cable TV change?</summary>
+        <p>No. Aerial only replaces the home screen: Xiaomi / TCL subscriptions, Xiaoai, your Xiaomi account and cable TV all work as before, and the old home screen still opens from the app list.</p>
+      </details>
+      <details>
+        <summary>Where did Xiaomi Video and PatchWall content go?</summary>
+        <p>The 桌面 (Home) tile opens PatchWall as before, with its recommendations and subscription content. The boot ad comes from the firmware; Aerial can't remove it.</p>
       </details>
       <details>
         <summary>The agent says it's installed, but nothing changed on the TV?</summary>
-        <p>Some agents report success without running anything. Ask for the raw output of the "Check" commands in the <a href="agent.md">install guide</a>: the last one must include <code>app.orchard.tv</code>.</p>
+        <p>Some agents report success without running anything. Ask it to paste the raw output from "Check" in the <a href="agent.md">install guide</a>: which home screen <code>resolve-activity</code> finds, whether <code>enabled_accessibility_services</code> contains <code>app.orchard.tv</code>, and the <code>mCurrentFocus</code> after pressing Home. The install only worked if the last one includes <code>app.orchard.tv</code>.</p>
+      </details>
+      <details>
+        <summary>Can I install it with only a phone?</summary>
+        <p>You can try. Users have installed Aerial with Beetle ADB (甲壳虫 ADB 助手) and Super Xiaoai (超级小爱) on a phone; we haven't tested each one. See "Phone only" under Install.</p>
       </details>
       <details>
         <summary>How do I update?</summary>
@@ -288,7 +310,7 @@
       </details>
       <details>
         <summary>My TV isn't listed. Will it work?</summary>
-        <p>Probably. Stock Android TV and Google TV are the easiest. LG webOS, Samsung Tizen, Huawei Vision (HarmonyOS) and Android 4.4 or older aren't supported. If something goes wrong, tell us with the <a href="https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml">device support form</a> and its diagnostics: run <code>curl -fsSL https://aerial.qust.me/tools/report.sh | TV=&lt;tv-ip&gt; bash</code> on a computer, or copy them from 反馈问题 (Report a problem) at the bottom of the phone page.</p>
+        <p>Probably. Stock Android TV and Google TV are the easiest. LG webOS, Samsung Tizen and Huawei Vision (HarmonyOS) run different systems and can't take Aerial; Android 4.4 or older can't either (Aerial needs Android 5.0). Some TVs can't open ADB at all, such as XGIMI H3, old LeTV sets, Honor Vision and old Konka models (no version number to tap). If something goes wrong, tell us with the <a href="https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml">device support form</a> and its diagnostics: run <code>curl -fsSL https://aerial.qust.me/tools/report.sh | TV=&lt;tv-ip&gt; bash</code> on a computer, or copy them from 反馈问题 (Report a problem) at the bottom of the phone page.</p>
       </details>
     </div>
   </div>
@@ -320,9 +342,17 @@ The install guide is here: ${guide}
 (If you can't open it, use https://raw.githubusercontent.com/pengchujin/aerial-tv/main/site/en/agent.md)
 
 Read the whole guide before you start. Then run the commands yourself on my computer; don't just tell me the steps. Tell me when I need to do something on the TV.
-At the end, paste the raw output of the commands under "Check" in the guide.`,
+At the end, paste the raw output of these commands from the "Check" section, not just "it worked":
+- adb shell "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME" (which home screen it finds)
+- adb shell settings get secure enabled_accessibility_services (does it contain app.orchard.tv/app.orchard.tv.guard.HomeGuardService?)
+- adb shell "dumpsys window | grep mCurrentFocus" after pressing Home
+If it did not work, tell me exactly which step failed.`,
     restore: (ip, guide) =>
-`Please follow the "Undo" section of ${guide} to give my TV (IP address: ${ip}) its original home screen back, without uninstalling Aerial. Run the commands yourself on my computer, and at the end paste the raw output of adb shell "dumpsys window | grep mCurrentFocus".`,
+`Please follow the "Undo" section of ${guide} to give my TV (IP address: ${ip}) its original home screen back, without uninstalling Aerial.
+Run the commands yourself on my computer; don't just send me the steps.
+At the end, paste the raw output of:
+- adb shell settings get secure enabled_accessibility_services (it should no longer contain app.orchard.tv)
+- adb shell "dumpsys window | grep mCurrentFocus" after pressing Home (it should be the TV's original home screen)`,
   };
 </script>
 <script src="../app.js?v=3"></script>

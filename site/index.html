@@ -22,7 +22,7 @@
 <link rel="alternate" hreflang="en" href="https://aerial.qust.me/en/">
 <link rel="alternate" hreflang="x-default" href="https://aerial.qust.me/en/">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 
@@ -200,14 +200,15 @@
         <button role="tab" aria-selected="false" data-tab="oppo" aria-label="OPPO"><i class="logo oppo" aria-hidden="true"></i></button>
         <button role="tab" aria-selected="false" data-tab="other"><i class="logo android" aria-hidden="true"></i>其他</button>
       </div>
-      <div class="panel on" data-panel="xiaomi"><p>设置 → 关于 → 连续按 <b>产品型号</b>，进入开发者模式；再到 设置 → 账号与安全，打开 <b>ADB 调试</b> 和 <b>安装未知来源的应用</b>。</p></div>
-      <div class="panel" data-panel="tcl"><p>设置 → 关于 → <b>本机信息</b>，快速按遥控器 <b>上下左右</b>，在底部出现的「更多」里打开 <b>ADB</b>。</p></div>
-      <div class="panel" data-panel="haier"><p>按<b>电视机身上</b>的信号源键，弹出信号源菜单后，用遥控器按 <b>左左上右</b>，进入「海尔工厂菜单」，把 <b>ADB 调试开关</b> 设为开。只改这一项，别动其他选项。</p></div>
-      <div class="panel" data-panel="oppo"><p>设置 → 系统 → 关于本机 → <b>设备型号</b>，按 <b>上上右右</b> 再按确认。</p></div>
-      <div class="panel" data-panel="other"><p>设置 → 设备偏好设置 → 关于 → 连按 <b>内部版本号</b>（Build，不是「Android 版本」）7 次，再在开发者选项里打开 <b>USB 调试</b>。</p></div>
+      <div class="panel on" data-panel="xiaomi"><p>设置 → 关于 → 连续按 <b>产品型号</b>，进入开发者模式；再到 设置 → 账号与安全，打开 <b>ADB 调试</b> 和 <b>安装未知来源的应用</b>。<br>IP 在 设置 → 网络 → 已连接的网络 里。</p></div>
+      <div class="panel" data-panel="tcl"><p>设置 → 关于 → <b>本机信息</b>，快速按遥控器 <b>上下左右</b>，在底部出现的「更多」里打开 <b>ADB</b>。<br>IP 在 设置 → 网络 → 已连接的网络 里。</p></div>
+      <div class="panel" data-panel="haier"><p>按<b>电视机身上</b>的信号源键，弹出信号源菜单后，用遥控器按 <b>左左上右</b>，进入「海尔工厂菜单」，把 <b>ADB 调试开关</b> 设为开。只改这一项，别动其他选项。<br>IP 在 设置 → 网络 → 已连接的网络 里。</p></div>
+      <div class="panel" data-panel="oppo"><p>设置 → 系统 → 关于本机 → <b>设备型号</b>，按 <b>上上右右</b> 再按确认；然后到 设置 → 系统 → <b>开发者选项</b>，打开 <b>USB 调试</b>（有的机型叫「ADB 调试」）。<br>IP 在 设置 → 网络 → 已连接的网络 <b>最下面</b>。</p></div>
+      <div class="panel" data-panel="other"><p>设置 → 设备偏好设置 → 关于 → 连按 <b>内部版本号</b>（Build，不是「Android 版本」）7 次，再在开发者选项里打开 <b>USB 调试</b>。<br>IP 在 设置 → 网络 → 已连接的网络 里。</p></div>
+      <p class="note">极米 H3、老乐视、荣耀智慧屏、老康佳（看不到版本号）等机型打不开 ADB。</p>
 
       <h3 class="step"><span>2</span>填上电视 IP</h3>
-      <p class="hint">在电视的「设置 → 网络」里。电脑要和电视连同一个网络。</p>
+      <p class="hint">在电视的 设置 → 网络 → 已连接的网络 里（OPPO S1 在这一页最下面）。电脑要和电视连同一个网络。</p>
       <div class="field">
         <label for="ip">电视 IP</label>
         <input id="ip" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="例如 192.168.1.20">
@@ -219,6 +220,7 @@
         <button role="tab" aria-selected="true" data-tab="agent">交给 Agent</button>
         <button role="tab" aria-selected="false" data-tab="cli">一行命令</button>
         <button role="tab" aria-selected="false" data-tab="manual">手动</button>
+        <button role="tab" aria-selected="false" data-tab="phone">只用手机</button>
       </div>
 
       <div class="panel on" data-panel="agent">
@@ -232,7 +234,7 @@
           <li><img src="img/agents/codex.svg" alt="" width="20" height="20">Codex</li>
         </ul>
         <div class="code"><button class="copy" data-copy="prompt">复制</button><pre id="prompt"></pre></div>
-        <p class="note">手机 App 和网页版聊天只会把步骤告诉你，装不了。</p>
+        <p class="note">手机上的豆包、网页版聊天只会把步骤告诉你，不会自己执行。要用能在电脑上跑命令的版本：豆包电脑版或豆包工作版、WorkBuddy、千问电脑版、Trae、Claude Code、Codex 等。手机 App 和网页版聊天装不了。</p>
       </div>
 
       <div class="panel" data-panel="cli">
@@ -243,6 +245,17 @@
       <div class="panel" data-panel="manual">
         <p>先下载 <a href="download/aerial-standard.apk"><b>aerial-standard.apk</b></a>，再运行：</p>
         <div class="code"><button class="copy" data-copy="manualcmd">复制</button><pre id="manualcmd"></pre></div>
+      </div>
+
+      <div class="panel" data-panel="phone">
+        <p>没有电脑时，可以用手机上的 ADB 工具：<b>甲壳虫 ADB 助手</b>、<b>超级小爱</b>，或应用商店里同类工具。</p>
+        <ol>
+          <li>手机和电视连同一个 Wi-Fi。</li>
+          <li>按上面的第 1 步在电视上打开 ADB，IP 也按上面的位置找。</li>
+          <li>手机连上电视：<code>&lt;电视IP&gt;:5555</code>，电视上选「始终允许」。</li>
+          <li>在工具里安装 Aerial（standard 版；装不上时试 guard 版），再按 <a href="agent.md">安装说明</a> 的 Windows 第 3 步逐条授权、第 6 步启动 App。</li>
+        </ol>
+        <p class="note">这些工具是用户反馈装过的，本仓库没有逐一实测。手机工具一般不能替你完成全部设置，装好后建议再用电脑或 Agent 跑一遍验收。</p>
       </div>
 
       <p class="note">电视问是否允许调试时，选「始终允许」。TCL 会弹「多屏互动：正在发起应用推送」，选「同意」。</p>
@@ -260,24 +273,29 @@
       </details>
       <details>
         <summary>会不会把电视弄坏？怎么还原？</summary>
-        <p>不会。Aerial 不动系统应用，只授予几项权限、改了桌面和屏保设置。用命令还原：把一行命令最后的 <code>bash</code> 换成 <code>bash -s restore</code>，加 <code>--uninstall</code> 顺便卸载。用 Agent 还原，把这段交给它：</p>
+        <p>不会。Aerial 不动系统应用，只授予几项权限、改了桌面和屏保设置，这些都能撤销。最省事的还原方法是把下面这段直接发给 AI（和安装时一样，要用能在电脑上运行命令的版本），它会按<a href="agent.md">安装说明</a>的「还原」一节撤销全部改动，最后用主页键回到原来的桌面。想连 Aerial 一起卸载，在提示词最后加一句「顺便卸载 Aerial」。</p>
         <div class="code"><button class="copy" data-copy="restoreprompt">复制</button><pre id="restoreprompt"></pre></div>
+        <p>自己动手也可以：把一行命令最后的 <code>bash</code> 换成 <code>bash -s restore</code>，也就是 <code>curl -fsSL https://aerial.qust.me/install.sh | TV=&lt;电视IP&gt; bash -s restore</code>；最后加 <code>--uninstall</code> 会顺便卸载 Aerial。不能运行 bash 的 Windows，逐条命令见<a href="agent.md">安装说明</a>。</p>
       </details>
       <details>
         <summary>提示固件不允许安装桌面类 App？</summary>
         <p>改装不声明桌面的版本：一行命令最后加 <code>-s guard</code>，手动安装就下载 <a href="download/aerial-guard.apk">aerial-guard.apk</a>。</p>
       </details>
       <details>
-        <summary>会员、App 和原来的桌面还在吗？</summary>
-        <p>都在。Aerial 只换桌面，App、账号和会员不变，原来的桌面也能从 App 列表打开。开机广告是固件播的，去不掉。</p>
+        <summary>会员、小爱同学、小米账号和有线电视受影响吗？</summary>
+        <p>都不受影响。Aerial 只换桌面：小米 / TCL 的会员、小爱同学、小米账号、有线电视都照常使用，原来的桌面也能从 App 列表打开。</p>
+      </details>
+      <details>
+        <summary>小米影视、PatchWall 的内容去哪了？</summary>
+        <p>从「桌面」磁贴进去就是原来的 PatchWall，推荐和会员内容都在。开机广告是固件播的，Aerial 去不掉。</p>
       </details>
       <details>
         <summary>Agent 说装好了，电视上却没变？</summary>
-        <p>有的 Agent 没运行命令就说成功了。让它按 <a href="agent.md">安装说明</a> 的「验收」贴出原始输出，最后一条里有 <code>app.orchard.tv</code> 才算装好。</p>
+        <p>有的 Agent 没运行命令就说成功了。让它按 <a href="agent.md">安装说明</a> 的「验收」把原始输出贴出来：<code>resolve-activity</code> 解析到的桌面、<code>enabled_accessibility_services</code> 里有没有 <code>app.orchard.tv</code>、按主页键后的 <code>mCurrentFocus</code>。最后一条里有 <code>app.orchard.tv</code> 才算装好。</p>
       </details>
       <details>
         <summary>没有电脑，只用手机能装吗？</summary>
-        <p>有用户用手机 ADB 工具（比如甲壳虫 ADB 助手）装成功过，我们没测过。命令和 <a href="agent.md">安装说明</a> 里 Windows 的步骤一样。</p>
+        <p>可以试。有用户用手机上的甲壳虫 ADB 助手、超级小爱装成功过，我们没逐一实测。步骤见安装区的「只用手机」。</p>
       </details>
       <details>
         <summary>怎么升级？</summary>
@@ -293,7 +311,7 @@
       </details>
       <details>
         <summary>我的电视不在列表里，能用吗？</summary>
-        <p>大概率可以，原生 Android TV / Google TV 最省事。不支持 LG webOS、三星 Tizen、华为鸿蒙和 Android 4.4 及更老的电视。遇到问题请用 <a href="https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml">机型适配模板</a> 告诉我们，附上诊断信息：电脑上运行 <code>curl -fsSL https://aerial.qust.me/tools/report.sh | TV=&lt;电视IP&gt; bash</code>，或在手机配置页最下面「反馈问题」里复制。</p>
+        <p>大概率可以，原生 Android TV / Google TV 最省事。LG webOS、三星 Tizen、华为鸿蒙智慧屏的系统不一样，装不了；Android 4.4 及更老的电视也不行（Aerial 最低要 Android 5.0）。极米 H3、老乐视、荣耀智慧屏、老康佳（看不到版本号）等机型打不开 ADB，暂时没有办法。遇到问题请用 <a href="https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml">机型适配模板</a> 告诉我们，附上诊断信息：电脑上运行 <code>curl -fsSL https://aerial.qust.me/tools/report.sh | TV=&lt;电视IP&gt; bash</code>，或在手机配置页最下面「反馈问题」里复制。</p>
       </details>
     </div>
   </div>
@@ -325,9 +343,17 @@
 （打不开时用 https://raw.githubusercontent.com/pengchujin/aerial-tv/main/site/agent.md ）
 
 请先完整读完安装说明再动手，然后在我的电脑上亲自运行命令，不要只把步骤告诉我。需要我在电视上操作时提醒我。
-最后按说明里的「验收」，把那几条命令的原始输出贴给我。`,
+最后按说明里的「验收」，把下面几条命令的原始输出原样贴给我，不要只写「成功」：
+- adb shell "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME"（解析到的桌面）
+- adb shell settings get secure enabled_accessibility_services（里面有没有 app.orchard.tv/app.orchard.tv.guard.HomeGuardService）
+- 按主页键后的 adb shell "dumpsys window | grep mCurrentFocus"
+如果没有安装成功，直接告诉我卡在哪一步。`,
     restore: (ip, guide) =>
-`请按 ${guide} 里「还原」部分的步骤，把我电视（IP：${ip}）的桌面还原成原来的，Aerial 先不卸载。请在我的电脑上亲自运行命令，最后把 adb shell "dumpsys window | grep mCurrentFocus" 的原始输出贴给我。`,
+`请按 ${guide} 里「还原」部分的步骤，把我电视（IP：${ip}）的桌面还原成原来的，Aerial 先不卸载。
+请在我的电脑上亲自运行命令，不要只把步骤发给我。
+最后把下面两条命令的原始输出贴给我：
+- adb shell settings get secure enabled_accessibility_services（应该已经不含 app.orchard.tv）
+- 按主页键后的 adb shell "dumpsys window | grep mCurrentFocus"（应该回到电视原来的桌面）`,
   };
 </script>
 <script src="app.js?v=3"></script>
