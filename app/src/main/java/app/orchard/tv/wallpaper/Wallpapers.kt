@@ -69,6 +69,9 @@ object Wallpapers {
     const val LIVE = "aerial:live"
     private const val DEFAULT_FALLBACK = "grad:aurora"
 
+    /** The built-ins Personalize offers, one or two of each family; the rest stay for whoever chose them. */
+    val FEATURED_BUILTINS = setOf("grad:hills_dawn", "grad:hills_night", "grad:dunes_gold", "grad:sea_sunset", "grad:waves_blue", "grad:aurora")
+
     private lateinit var app: Context
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val io = Mutex()
@@ -270,10 +273,12 @@ object Wallpapers {
     /**
      * The frame a moving wallpaper film stopped on becomes the wallpaper's picture: shaded, frosted
      * and kept for the next start. Returns once Home has it. [frame] is screen-sized and is used up.
+     * It was [atMs] into [film], where the film picks up when it next moves ([liveSpot]).
      */
-    suspend fun useLiveFrame(frame: Bitmap) {
+    suspend fun useLiveFrame(frame: Bitmap, film: String, atMs: Long) {
         if (selectedId != LIVE) return
         backdropJob?.cancel()
+        prefs.edit { putString("live_film", film).putLong("live_at", atMs) }
         val (bmp, frost) = withContext(Dispatchers.Default) {
             runCatching { liveFrame.outputStream().use { frame.compress(Bitmap.CompressFormat.JPEG, 90, it) } }
                 .onFailure { Log.w(TAG, "could not keep the film's frame", it) }
@@ -285,6 +290,31 @@ object Wallpapers {
         backdrop = bmp.asImageBitmap()
         frosted = frost.asImageBitmap()
         resolve(LIVE)?.let { saveBaked(bakedKey(it), bmp, frost) }
+    }
+
+    /**
+     * The film and moment the wallpaper's picture was taken from, so the film starts again on the
+     * picture on screen rather than cutting to another place. Null until one has stopped on a frame.
+     */
+    fun liveSpot(): Pair<String, Long>? {
+        val film = prefs.getString("live_film", null)?.takeIf { it.isNotEmpty() } ?: return null
+        return film to prefs.getLong("live_at", 0L)
+    }
+
+    /**
+     * The glass for a moving wallpaper film that has just stopped, from a small frame near it: the
+     * plate can stand over the paused film at once, before the exact frame is decoded for
+     * [useLiveFrame]. [frame] is used up.
+     */
+    suspend fun useLiveFrost(frame: Bitmap) {
+        if (selectedId != LIVE) return
+        backdropJob?.cancel()
+        frosted = withContext(Dispatchers.Default) { Images.frost(frame) }.asImageBitmap()
+    }
+
+    /** Puts back the glass from before [useLiveFrost] when the exact frame could not be had. */
+    fun restoreFrost(before: ImageBitmap?) {
+        if (selectedId == LIVE && before != null) frosted = before
     }
 
     private fun rebuildList() {

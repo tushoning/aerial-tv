@@ -9,6 +9,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntOffsetAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -72,12 +73,17 @@ import app.orchard.tv.settings.AerialSettings
 import app.orchard.tv.apps.AppEntry
 import app.orchard.tv.ui.control.ControlCenter
 import app.orchard.tv.ui.wallpaper.WallpaperSheet
+import app.orchard.tv.wallpaper.ScreensaverMode
 import app.orchard.tv.wallpaper.Wallpapers
 import app.orchard.tv.ui.components.liquidGlass
 import app.orchard.tv.ui.theme.LocalReducedMotion
 import app.orchard.tv.ui.theme.Motion
 import app.orchard.tv.ui.theme.Type
+import androidx.compose.runtime.snapshotFlow
+import app.orchard.tv.system.DiagLog
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -145,6 +151,9 @@ private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, val nameRoo
     }
 }
 
+/** How long the screensaver waits for the wallpaper's film to move before playing its own. */
+private const val FILM_SAVER_WAIT_MS = 10_000L
+
 @Composable
 fun HomeScreen(
     vm: HomeViewModel,
@@ -176,6 +185,44 @@ fun HomeScreen(
     val focusedIndex = apps.indexOfFirst { it.key == focusedKey }
     val focusedRow = if (pillFocused || focusedIndex < 0) 0 else focusedIndex / COLUMNS
     val gridEnabled = overlay == Overlay.None
+
+    // The aerial wallpaper's film, and how far it shows through.
+    val filmCover = remember { Animatable(0f) }
+    val liveFilm = remember { LiveFilm() }
+    // A screensaver of aerials over the aerial wallpaper carries the wallpaper's film on, one shot
+    // from Home to screensaver: the apps fade, the clock moves to the corner. Whether the film is
+    // moving already or still on its frame (Back on the top row), as long as Home shows it: on the
+    // top row with nothing over it. A film that does not move within FILM_SAVER_WAIT_MS hands over
+    // to the screensaver's own films.
+    var filmFailed by remember(vm.screensaverVisible) { mutableStateOf(false) }
+    val filmSaverChosen = remember(vm.screensaverVisible) {
+        vm.screensaverVisible && Wallpapers.selectedId == Wallpapers.LIVE &&
+            Wallpapers.screensaver == ScreensaverMode.Aerial &&
+            (filmCover.value > 0.5f || focusedRow == 0 && overlay == Overlay.None && moving == null)
+    }
+    val filmSaver = filmSaverChosen && !filmFailed
+    LaunchedEffect(filmSaverChosen) {
+        if (!filmSaverChosen) return@LaunchedEffect
+        val moved = withTimeoutOrNull(FILM_SAVER_WAIT_MS) { snapshotFlow { filmCover.value > 0.99f }.first { it } }
+        if (moved == null) {
+            DiagLog.i("wallpaper film did not move for the screensaver; its own films instead")
+            filmFailed = true
+        }
+    }
+    // The plate over a stopped film, once its glass is ready; out as the film moves again.
+    val filmStopped by animateFloatAsState(
+        if (liveFilm.stopped) 1f else 0f,
+        tween(if (liveFilm.stopped) 250 else 900, easing = Motion.EaseOut), label = "film-stopped",
+    )
+    val toSaver = remember { Animatable(0f) }
+    LaunchedEffect(filmSaver) {
+        when {
+            reduced -> toSaver.snapTo(if (filmSaver) 1f else 0f)
+            filmSaver -> toSaver.animateTo(1f, tween(2000, easing = Motion.EaseInOut))
+            // A key woke it: Home comes straight back.
+            else -> toSaver.animateTo(0f, tween(380, easing = Motion.EaseOut))
+        }
+    }
 
     // Grid scroll offset (px). The remote sets it from the focused row; a finger drags it freely
     // (issue #60), and then it stays where the finger left it until the next key press.
@@ -353,14 +400,16 @@ fun HomeScreen(
                 )
             }
             // The aerial wallpaper's film, under everything; it moves only on a still top row.
-            val filmCover = remember { Animatable(0f) }
             if (Wallpapers.selectedId == Wallpapers.LIVE) {
                 LiveWallpaper(
                     moving = vm.resumed && overlay == Overlay.None && !vm.screensaverVisible && !pastShelf &&
                         focusedRow == 0 && moving == null,
-                    keep = vm.resumed && !vm.screensaverVisible,
+                    keep = vm.resumed && (!vm.screensaverVisible || filmSaver),
                     lastInputAt = vm.lastInputAt,
                     cover = filmCover,
+                    hold = filmSaver && vm.resumed,
+                    standIn = overlay == Overlay.None,
+                    live = liveFilm,
                 )
             }
             HomeBackground(
@@ -371,6 +420,7 @@ fun HomeScreen(
                 scroll = { scroll.value },
                 collapse = collapsePx,
                 cover = { filmCover.value },
+                filmStopped = { filmStopped },
             )
 
             Box(Modifier.fillMaxSize().offset { IntOffset(0, -scroll.value.roundToInt()) }) {
@@ -386,6 +436,7 @@ fun HomeScreen(
                             .padding(horizontal = metrics.margin)
                             .padding(top = metrics.clockY)
                             .graphicsLayer { alpha = 1f - (scroll.value / collapsePx * 1.6f).coerceIn(0f, 1f) },
+                        toSaver = { toSaver.value },
                     )
                 } else if (!clockRight) {
                     CornerClock(
@@ -393,6 +444,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .padding(start = metrics.margin, top = 28.dp)
                             .graphicsLayer { alpha = 1f - (scroll.value / collapsePx * 1.6f).coerceIn(0f, 1f) },
+                        toSaver = { toSaver.value },
                     )
                 }
 
@@ -455,7 +507,16 @@ fun HomeScreen(
                                         // No offscreen buffer: it would clip the focus frame to the tile.
                                         compositingStrategy = CompositingStrategy.ModulateAlpha
                                     } else Modifier,
-                                ),
+                                )
+                                // Into the screensaver, the apps go left to right, sinking a little.
+                                .graphicsLayer {
+                                    val f = ((toSaver.value - 0.05f * (index % COLUMNS)) / 0.6f).coerceIn(0f, 1f)
+                                    if (f > 0f) {
+                                        alpha = 1f - f
+                                        translationY = f * 18.dp.toPx()
+                                        compositingStrategy = CompositingStrategy.ModulateAlpha
+                                    }
+                                },
                             rowEnd = index % COLUMNS == COLUMNS - 1 || index == apps.lastIndex,
                             // On the glass plate only with every name shown (an earlier build showed
                             // the focused one alone there, but it sat oddly on the glass).
@@ -493,6 +554,7 @@ fun HomeScreen(
                     modifier = Modifier
                         .padding(end = 14.dp)
                         .graphicsLayer { alpha = 1f - (scroll.value / collapsePx * 1.6f).coerceIn(0f, 1f) },
+                    toSaver = { toSaver.value },
                 )
             }
             StatusPill(
@@ -501,6 +563,7 @@ fun HomeScreen(
                 showTime = if (dragged) pastShelf else focusedRow > 0,
                 enabled = gridEnabled && moving == null,
                 focusRequester = pillRequester,
+                modifier = Modifier.graphicsLayer { alpha = 1f - (toSaver.value * 2f).coerceIn(0f, 1f) },
                 onFocused = { gained ->
                     // The window hands its first focus to the top-most control; the top row is where Home starts.
                     if (gained) {
@@ -653,6 +716,6 @@ fun HomeScreen(
 
         NoticeBanner(vm.notice, Modifier.align(Alignment.TopCenter).padding(top = 24.dp))
 
-        Screensaver(visible = vm.screensaverVisible, apps = apps, now = now, skips = vm.screensaverSkips)
+        Screensaver(visible = vm.screensaverVisible, apps = apps, now = now, skips = vm.screensaverSkips, film = liveFilm.takeIf { filmSaver })
     }
 }

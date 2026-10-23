@@ -82,9 +82,13 @@ import kotlin.random.Random
  *
  * If the films cannot be reached, Aerial falls back to Photos. Left and right step to the previous
  * or next film or photo, as on Apple TV; see [ScreensaverSkips].
+ *
+ * With [film], the aerial wallpaper's film was already moving behind Home and simply carries on:
+ * Home fades away around it (HomeScreen, whose clock becomes the screensaver's) and only the place
+ * names are added here.
  */
 @Composable
-fun Screensaver(visible: Boolean, apps: List<AppEntry>, now: LocalDateTime, skips: ScreensaverSkips) {
+fun Screensaver(visible: Boolean, apps: List<AppEntry>, now: LocalDateTime, skips: ScreensaverSkips, film: LiveFilm? = null) {
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(tween(1200, easing = Motion.EaseOut)),
@@ -92,6 +96,15 @@ fun Screensaver(visible: Boolean, apps: List<AppEntry>, now: LocalDateTime, skip
         exit = fadeOut(tween(220, easing = Motion.EaseOut)),
         modifier = Modifier.fillMaxSize(),
     ) {
+        // Follows Home while up (the film may fail and hand over to the screensaver's own), and
+        // stays as it was through the fade out, so leaving does not start a player.
+        val held = remember { mutableStateOf(film) }
+        if (visible) held.value = film
+        val carried = held.value
+        if (carried != null) {
+            FilmLabels(carried, now, skips.steps)
+            return@AnimatedVisibility
+        }
         var aerialFailed by remember { mutableStateOf(false) }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             when (Wallpapers.screensaver) {
@@ -124,19 +137,33 @@ class ScreensaverSkips {
     }
 }
 
+/** The place names over the wallpaper's film, which goes on playing; left and right step through films. */
+@Composable
+private fun FilmLabels(film: LiveFilm, now: LocalDateTime, steps: SharedFlow<Int>) {
+    var caption by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(film.film) {
+        while (true) {
+            caption = film.film?.captionAt((film.positionMs / 1000).toInt())
+            delay(1000)
+        }
+    }
+    LaunchedEffect(steps) { steps.collect { film.skip(it) } }
+    Labels(caption, now, showTime = false)
+}
+
 /** Place name bottom-left, time top-right: how tvOS labels its screensaver. */
 @Composable
-private fun Labels(caption: String?, now: LocalDateTime) {
+private fun Labels(caption: String?, now: LocalDateTime, showTime: Boolean = true) {
     Box(Modifier.fillMaxSize()) {
         Canvas(Modifier.fillMaxSize()) {
             // Just enough shade under the text to read it over bright sky or snow.
             drawRect(Brush.verticalGradient(0.7f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.45f)))
             drawRect(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.3f), 0.18f to Color.Transparent))
         }
-        BasicText(
+        if (showTime) BasicText(
             timeText(now),
-            style = Type.LargeTitle.copy(fontSize = Type.LargeTitle.fontSize * 1.3f, color = Color.White.copy(alpha = 0.92f)),
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 56.dp),
+            style = SaverClockStyle,
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = SaverClockTop, end = SaverClockEnd),
         )
         AnimatedContent(
             targetState = caption.orEmpty(),
@@ -152,6 +179,11 @@ private fun Labels(caption: String?, now: LocalDateTime) {
         }
     }
 }
+
+/** The screensaver's time, top right; Home's clock moves here when the screensaver carries on its film. */
+internal val SaverClockStyle = Type.LargeTitle.copy(fontSize = Type.LargeTitle.fontSize * 1.3f, color = Color.White.copy(alpha = 0.92f))
+internal val SaverClockTop = 40.dp
+internal val SaverClockEnd = 56.dp
 
 /**
  * Before Android 7.0 network_security_config is ignored, so Apple Root CA is never trusted and
