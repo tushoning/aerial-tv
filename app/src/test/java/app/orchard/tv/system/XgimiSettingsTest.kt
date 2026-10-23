@@ -113,7 +113,7 @@ class XgimiSettingsTest {
         val activity = Robolectric.buildActivity(MainActivity::class.java).get()
         for ((select, page) in listOf(
             SystemProbe::settingsIntent to "Settings://com.xgimi.misckey.main/mainPage",
-            SystemProbe::networkSettingsIntent to "Settings://com.xgimi.settings.net/wifi_misckey",
+            ::networkFirst to "Settings://com.xgimi.settings.net/wifi_misckey",
         )) {
             open(activity, select(activity))
             assertEquals(0, ShadowToast.shownToastCount())
@@ -131,7 +131,7 @@ class XgimiSettingsTest {
         val activity = Robolectric.buildActivity(MainActivity::class.java).get()
         val caller = RecordingContext(serviceThrows = true)
         ReflectionHelpers.setField(activity, "mBase", caller)
-        listOf(SystemProbe::settingsIntent, SystemProbe::networkSettingsIntent).forEachIndexed { index, select ->
+        listOf(SystemProbe::settingsIntent, ::networkFirst).forEachIndexed { index, select ->
             open(activity, select(activity))
             assertEquals(index + 1, caller.services.size)
             assertEquals(index + 1, ShadowToast.shownToastCount())
