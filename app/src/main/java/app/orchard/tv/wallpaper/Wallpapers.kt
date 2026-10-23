@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.content.edit
+import app.orchard.tv.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -75,6 +76,7 @@ object Wallpapers {
     private val dailyDir by lazy { File(app.filesDir, "daily").apply { mkdirs() } }
     private val photoDir by lazy { File(app.filesDir, "photos").apply { mkdirs() } }
     private val liveFrame by lazy { File(app.filesDir, "live-frame.jpg") }
+    private val bakedDir by lazy { File(app.filesDir, "backdrop").apply { mkdirs() } }
     private val thumbs = HashMap<String, Bitmap>()
 
     var items by mutableStateOf<List<Wallpaper>>(emptyList()); private set
@@ -110,6 +112,7 @@ object Wallpapers {
             .let { if (it.startsWith("grad:")) "grad:" + Gradients.currentKey(it.removePrefix("grad:")) else it }
         screensaver = ScreensaverMode.of(prefs.getString("screensaver", null))
         rebuildList()
+        loadBaked()
         rebuildBackdrop()
         scope.launch { refreshDaily() }
         scope.launch(Dispatchers.IO) { clearStaleUploads() }
@@ -198,6 +201,8 @@ object Wallpapers {
             }
             rotatedOn = today()
             val wp = resolve(id) ?: resolve(DEFAULT_FALLBACK)
+            val key = wp?.let(::bakedKey)
+            if (key != null && key == bakedKey && backdrop != null) return@launch
             val (bmp, frost) = withContext(Dispatchers.Default) {
                 val picture = wp?.let { picture(it, screenW, screenH) }
                 // Frosted from the picture before the home shading: the glass sits low on the
@@ -207,6 +212,58 @@ object Wallpapers {
             }
             backdrop = bmp?.asImageBitmap()
             frosted = frost?.asImageBitmap()
+            if (key != null && bmp != null && frost != null) saveBaked(key, bmp, frost)
+        }
+    }
+
+    // ---- the baked backdrop, kept for the next start ----
+
+    /**
+     * What the backdrop on disk was baked from; null when there is none. Baking takes a cold start
+     * about two seconds on Xiaomi MiTV-MFTR0 (decoding, or drawing a built-in picture pixel by pixel,
+     * then shading and frosting), and Home showed black, then the focused app's light, meanwhile
+     * (issues #277, #294). Reading the baked pair back takes tens of milliseconds.
+     */
+    private var bakedKey: String? = null
+
+    /** Changes with the picture behind [wp], the screen size, and Aerial's version (the baking may change). */
+    private fun bakedKey(wp: Wallpaper): String {
+        val stamp = when (wp.kind) {
+            WallpaperKind.Daily, WallpaperKind.Photo -> fileFor(wp)?.lastModified() ?: 0L
+            WallpaperKind.Live -> liveFrame.lastModified()
+            else -> 0L
+        }
+        return "${wp.id}|$stamp|${screenW}x$screenH|${BuildConfig.VERSION_CODE}"
+    }
+
+    /**
+     * Puts the last baked backdrop up at once, on the main thread, so Home's first frame has it. Even
+     * one that is out of date (a new day's photo): it is the picture Home last showed, and the fresh
+     * one crossfades in once baked. Not in "Follow App", which has no backdrop.
+     */
+    private fun loadBaked() {
+        if (selectedId == AUTO) return
+        runCatching {
+            val key = File(bakedDir, "key").takeIf { it.exists() }?.readText() ?: return
+            val home = BitmapFactory.decodeFile(File(bakedDir, "home.jpg").path) ?: return
+            val frost = BitmapFactory.decodeFile(File(bakedDir, "frost.png").path) ?: return
+            if (home.width != screenW || home.height != screenH) return
+            backdrop = home.asImageBitmap()
+            frosted = frost.asImageBitmap()
+            bakedKey = key
+        }.onFailure { Log.w(TAG, "could not read the baked backdrop", it) }
+    }
+
+    private suspend fun saveBaked(key: String, home: Bitmap, frost: Bitmap) {
+        bakedKey = key
+        withContext(Dispatchers.IO) {
+            runCatching {
+                // The key last, so a write cut short is never taken for a good one.
+                File(bakedDir, "key").delete()
+                File(bakedDir, "home.jpg").outputStream().use { home.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+                File(bakedDir, "frost.png").outputStream().use { frost.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                File(bakedDir, "key").writeText(key)
+            }.onFailure { Log.w(TAG, "could not keep the baked backdrop", it) }
         }
     }
 
@@ -227,6 +284,7 @@ object Wallpapers {
         synchronized(thumbs) { thumbs.remove(LIVE) }
         backdrop = bmp.asImageBitmap()
         frosted = frost.asImageBitmap()
+        resolve(LIVE)?.let { saveBaked(bakedKey(it), bmp, frost) }
     }
 
     private fun rebuildList() {

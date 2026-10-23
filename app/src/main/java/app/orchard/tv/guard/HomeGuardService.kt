@@ -105,6 +105,9 @@ class HomeGuardService : AccessibilityService() {
             if (intent.getStringExtra("reason") != "homekey" || isDefaultHome()) return
             val front = lastWindow?.first
             if (front != null && front !in stockHomes) return
+            // The stock launcher's window change usually comes first and already brought Aerial
+            // back; starting it again redid Home's resume (MiTV-MFTR0: 0.2 s apart).
+            if (SystemClock.uptimeMillis() - broughtBackAt < 1_000) return
             Log.i(TAG, "Home pressed with ${front ?: "an unknown app"} in front; bringing Aerial back")
             allowStockUntil = 0L
             goHome()
@@ -406,6 +409,9 @@ class HomeGuardService : AccessibilityService() {
      * system Home, that category made the system open a second, home-type task with a fresh
      * MainActivity every time, which lost the focused tile (Xiaomi MiTV-MFTR0, 1.11).
      */
+    /** When goHome last started Aerial. */
+    private var broughtBackAt = Long.MIN_VALUE / 2
+
     private fun goHome(woke: Boolean = false) {
         if (!GuardSetup.isUserUnlocked(this)) return
         // Starting an activity can light the screen: on OPPO K9 the TV came back on by itself a few
@@ -421,6 +427,7 @@ class HomeGuardService : AccessibilityService() {
             Log.i(TAG, "quick standby; leaving Home alone")
             return
         }
+        broughtBackAt = SystemClock.uptimeMillis()
         runCatching {
             startActivity(MainActivity.bringBackIntent(this).putExtra(MainActivity.EXTRA_WOKE, woke))
         }.onFailure { Log.w(TAG, "could not bring Aerial Home to the front", it) }

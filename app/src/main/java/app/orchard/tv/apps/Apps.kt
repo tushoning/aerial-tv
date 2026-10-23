@@ -148,6 +148,7 @@ object AppCatalog {
      * One tile per package; the TV entry wins.
      */
     suspend fun load(context: Context): List<AppEntry> = withContext(Dispatchers.Default) {
+        TileDiskCache.init(context)
         val pm = context.packageManager
         val found = LinkedHashMap<String, Pair<ActivityInfo, Boolean>>()
         pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER), 0)
@@ -174,7 +175,10 @@ object AppCatalog {
             found.values.map { (info, leanback) ->
                 async { runCatching { entry(pm, info, leanback, byCategory) }.getOrNull() }
             }.awaitAll().filterNotNull()
-        }.also { loaded = it }
+        }.also {
+            loaded = it
+            TileDiskCache.keepOnly(it.mapTo(HashSet()) { app -> app.packageName })
+        }
     }
 
     /**
@@ -216,6 +220,9 @@ object AppCatalog {
         // A picture chosen on the phone page changes the tile as much as an update does.
         val stamp = runCatching { pm.getPackageInfo(pkg, 0).lastUpdateTime }.getOrDefault(0L) + CustomIcons.stamp(pkg)
         val cached = synchronized(cache) { cache[pkg] }?.takeIf { it.stamp == stamp && it.width == TileArtFactory.W }
+            ?: TileDiskCache.read(pkg, TileDiskCache.key(stamp))?.let { (label, art) ->
+                Cached(stamp, TileArtFactory.W, label, art).also { synchronized(cache) { cache[pkg] = it } }
+            }
         val system = (info.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
         val label: String
         val art: TileArt
@@ -241,6 +248,7 @@ object AppCatalog {
                 else -> TileArtFactory.fromIcon(densest(pm, info, info.iconResource) ?: info.loadIcon(pm), recipe)
             }
             synchronized(cache) { cache[pkg] = Cached(stamp, TileArtFactory.W, label, art) }
+            TileDiskCache.write(pkg, TileDiskCache.key(stamp), label, art)
         }
         val removable = !system
         return AppEntry(pkg, label, ComponentName(pkg, info.name), leanback, removable, art)

@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.drawable.BitmapDrawable
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkRequest
@@ -19,6 +20,7 @@ import android.view.Choreographer
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.provider.Settings
 import android.widget.Toast
@@ -29,6 +31,7 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.core.content.ContextCompat
@@ -117,8 +120,21 @@ class MainActivity : ComponentActivity() {
         val reducedMotion = Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
 
         // The home screen paints every pixel itself; a window background would be one more
-        // full-screen fill per frame for the TV's GPU.
-        window.setBackgroundDrawable(null)
+        // full-screen fill per frame for the TV's GPU. Only until Home's first frame, the backdrop
+        // baked at the last start, so the window never shows black while Compose sets up.
+        val baked = Wallpapers.backdrop
+        window.setBackgroundDrawable(baked?.let { BitmapDrawable(resources, it.asAndroidBitmap()) })
+        if (baked != null) {
+            window.decorView.viewTreeObserver.addOnDrawListener(object : ViewTreeObserver.OnDrawListener {
+                override fun onDraw() {
+                    // Not from inside the draw itself.
+                    idleHandler.post {
+                        window.setBackgroundDrawable(null)
+                        window.decorView.viewTreeObserver.removeOnDrawListener(this)
+                    }
+                }
+            })
+        }
         if (DiagLog.modeSwitch(this)) preferSmoothestRefreshRate() else DiagLog.i("refresh rate left as it is (mode_switch off)")
         if (DiagLog.softLayer(this)) window.decorView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         logWindow()
