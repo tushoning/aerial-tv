@@ -98,6 +98,10 @@ TCL 手机 App 有一个「把手机里的 APK 推到电视」的功能。电视
 - 手动测试：`adb shell am start -n com.android.systemui/.Somnambulator`。
 - 1.14 及以前，按键结束屏保时 Aerial 会崩溃：Android 11 起屏保跑在 Activity 里，窗口先被移除（生命周期变成 DESTROYED），然后才调用 `onDreamingStopped`，往回设成 CREATED 会抛异常。崩溃后无障碍服务处于「已启用但没绑定」，守护失效，按 HOME 就进了 TCL 桌面。1.15 修复了崩溃，并在复活时也检查一次「已启用但没绑定」。
 - 遥控器按一下可能到达两次（户主反馈：从屏保按「下」唤醒后焦点跟着进了 App 列表，小米蓝牙遥控器没有），唤醒后 400ms 内的按键都当作唤醒（2026-10-23）。
+- 1.42：Aerial 的 Dream 是系统屏保时，主页按返回和主页计时到点都通过 `Somnambulator` 启动这个 Dream，不再另起主页里的屏保。以前两套并存：返回键起的是主页屏保（接着放壁纸那段 4K SDR），2 分钟后被系统 Dream（杜比视界）顶掉，`FLAG_KEEP_SCREEN_ON` 挡不住。实测返回键起 Dream，解码器是 `OMX.MS.DOLBY_VISION.DVHE.STN.Decoder`（2026-10-24）。
+- 1.42：「从屏保按一下下键焦点连跳好几行」。关 Dream 时杜比视界解码器释放会卡住主线程，这一下的重复键 2.7 秒后才到主页，过了 400ms 的唤醒窗口。现在唤醒 Dream 的那个键整次按键（重复和松开）都由主页吞掉。注意 Dream 失焦时 Android 会给它补一个**被取消的** UP，不能把它当成松开。`input keyevent --longpress DPAD_DOWN` 复现、修复后焦点留在第一排（2026-10-24）。
+- 1.42：守护监听 `screensaver_components`，固件改回「艺术画报」时立即改回 Aerial 的。个性化选「系统内置」时把系统屏保还给 `screensaver_default_component`（艺术画报），返回键起的就是它；选回别的再改回 Aerial 的。都在 MT5879 上验证过（2026-10-24）。
+- 1.42：遥控器信号源键在有 TCL 信号源面板的固件上交给固件（PR #334），实测只弹 TCL 自己的面板。
 - 主屏幕的航拍壁纸（4K SDR，SurfaceView）PixelCopy 能读到，`screencap` 也截得到（2026-10-23）。
 - **截图截不到视频画面**（视频走独立的硬件图层，截出来是黑的），但字幕和时钟能截到。地名字幕出现，说明视频已经在渲染。
 
