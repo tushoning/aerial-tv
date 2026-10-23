@@ -31,6 +31,14 @@
 - 修复：复活、开机、亮屏这三种情况都等 1.5 秒再接管，期间如果有原桌面以外的窗口到了前台（信号源、别的 App），就不动它。`BootReceiver` 在守护已运行时不再直接打开 Aerial。
 - 注意：覆盖安装后 2 分钟内，守护不会因为「被复活」而接管（防止打断正在看的内容），测这条路径要等 2 分钟。
 
+## 开机到 Aerial 的时间（2026-10-23 实测）
+
+- 屏幕亮起后，小米先显示 PatchWall，约 4–5 秒后 `LaunchOtherAppsUtils: enable start process` 才放开第三方进程；Aerial 的进程为守护启动，系统再过 4–5 秒才连上守护。1.41 是连上后再等 1.5 秒接管，屏幕亮起后 11–13 秒才到 Aerial。
+- 1.42 起设了「开机时打开」时，开机 3 分钟内守护进程一启动（`onCreate`）就开始接管（没设的不提前，免得打断小米开机自动播放的信号源，见下一节）；开机打开的 App 直接用它自己的入口启动，不再等 Aerial 列完全部 App（开机时要 5.5–6.5 秒）。实测从屏幕亮起到打开开机 App（云视听小电视）是 7.2 秒。
+- 开机打开 App 后「又被拉回 Aerial」：户主遇到的那次，日志里是有人在小电视里连按了三次主页键（`interceptKeyTq keycode=3`），守护把它当作主页键处理。不按键时连续三次重启，小电视都停在前台，开机 30 秒、45 秒的两次复查也没动它。
+- 主页键：Android 12 以上 1.36 起不过滤按键（#293），在 Aerial 里按主页键会先启动 PatchWall，守护 0.1 秒后再拉回，户主看到「闪一下小米桌面」。1.42 起 Aerial 自己在前台时过滤按键，主页键在系统之前被接住；原桌面和其他 App 里仍不过滤。户主用真遥控器确认不闪了。注意 adb `input keyevent` 注入的按键不经过过滤，测不出来。
+- 待机唤醒：小米待机时杀掉了 Aerial，唤醒后要等进程重新拉起，所以会先看到小米桌面。这里没有提前接管：唤醒时 Apple TV 可能通过 CEC 正在切信号源，守护连上之前分辨不出来。
+
 ## 开机自动播放信号源
 
 - 小米桌面开机时会自动播放上一次用过的外接信号源（日志里 `com.mitv.tvhome` 打印 `oneTouchPlay = false, autoPlay = true`，然后启动 `ExternalSourceActivity`）。2026-10-21 实测：重启前切过 HDMI 1，重启后前台就是 HDMI 1。
@@ -45,6 +53,7 @@
 
 - 不用 Android 标准的 Dream（`screensaver_enabled=0`）。由小米的 PowerManagerService 在空闲 `system screen_saver_timeout`（480000 = 8 分钟）后发出 `com.duokan.intent.action.show.screensaver`，交给 `com.xiaomi.mitv.hyper.screensaver` 显示。这个广播受保护，shell 发不出去。
 - 解决办法：Aerial 在桌面空闲 5 分钟时启动自己的屏保，同时加 `FLAG_KEEP_SCREEN_ON`，小米的屏保就不会再触发。停在别的 App 里空闲时，小米屏保仍可能出现。
+- 1.38 加了「从不」以后，选「从不」时 Aerial 不启动屏保，8 分钟后小米的屏保照样出现在 Aerial 上，户主以为屏保「跳回了小米自带的」（2026-10-23，户主的这台就设成了「从不」）。1.42 起选「从不」且 `screen_off_timeout` 是无限（这台是 2147483647）时，Aerial 在前台就保持 `FLAG_KEEP_SCREEN_ON`，日志里有 `setKeepScreenOnFlag KeepScreenOn:true`，户主确认小米屏保不再出来。
 
 ## 其他
 

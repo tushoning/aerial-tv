@@ -163,6 +163,25 @@ class HomeGuardService : AccessibilityService() {
         }
     }
 
+    /**
+     * At power-on the guard's process starts well before Android connects the service: on Xiaomi
+     * MiTV-MFTR0 (Android 14) 4.7 s and 5 s in two boots, with PatchWall on screen meanwhile
+     * (11-13 s from the screen lighting to Aerial). Within the boot window the take-over starts
+     * here; it treats the front as unknown, as onServiceConnected does when nothing has been seen.
+     * Only with something chosen to open at power-on, which goes over whatever is in front anyway.
+     * Otherwise an input PatchWall plays at power-on (the last one used) or an HDMI-CEC device
+     * switched to would be pulled out of, which only the window changes after the connection can
+     * tell (see takeOverOnceSettled). Not after a wake either, for the same reason.
+     */
+    override fun onCreate() {
+        super.onCreate()
+        if (SystemClock.elapsedRealtime() >= BOOT_WINDOW_MS || !GuardSetup.isUserUnlocked(this)) return
+        if (!hasBootSource()) return
+        if (getSystemService<PowerManager>()?.isInteractive != true) return
+        Log.i(TAG, "started shortly after boot; taking over before the service is connected")
+        takeOverOnceSettled("started shortly after boot", woke = true)
+    }
+
     override fun onServiceConnected() {
         instance = this
         // Register before querying homes or checking the state so an unlock cannot be missed.
@@ -256,6 +275,10 @@ class HomeGuardService : AccessibilityService() {
             Log.i(TAG, "$reason, but Aerial keeps being stopped and the front is unknown; leaving it")
             return
         }
+        // Brought back a moment ago and nothing seen since: what is in front is Aerial. The boot
+        // take-over in onCreate and the one at the connection are a few seconds apart, and the
+        // second redid Home's resume (MiTV-MFTR0).
+        if (last == null && SystemClock.uptimeMillis() - broughtBackAt < 30_000) return
         val stockInFront = last == null || last.first in stockHomes
         // Aerial is in front after a wake because the guard already brought it back when the stock
         // launcher showed, or because it survived standby; either way the input the TV starts on
@@ -292,12 +315,13 @@ class HomeGuardService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     /**
-     * Filters keys only up to Android 11: there, once Home reaches the system, it holds every
+     * Filters keys up to Android 11: there, once Home reaches the system, it holds every
      * background activity start for five seconds, so Aerial came back only after five seconds of
      * the TCL launcher (TCL MT5879, since 1.11 stopped filtering by default). Later versions take
-     * Home in the stock launcher from the "homekey" broadcast instead (homeKey). They used to filter
-     * there too, and the stock launcher then moved two or three places per press (Xiaomi S Pro
-     * mini-LED 2026, issue #293); MiTV-MFTR0 (Android 14) is back in Aerial 0.5 s after Home.
+     * Home in the stock launcher and other apps from the "homekey" broadcast instead (homeKey).
+     * They used to filter there too, and the stock launcher then moved two or three places per
+     * press (Xiaomi S Pro mini-LED 2026, issue #293). With Aerial itself in front they filter
+     * again (1.42): Home there showed PatchWall for a moment first.
      *
      * Never while Aerial is the default Home: onKeyEvent leaves Home to the system then, so the
      * filter only costs. On Xiaomi MiTV-ASTP0 (Android 9) it crashed the system: every filtered
@@ -307,7 +331,12 @@ class HomeGuardService : AccessibilityService() {
     private fun updateKeyFilter() {
         val info = serviceInfo ?: return
         val flag = AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
-        val wanted = !keysPassThrough && !screenOff && Build.VERSION.SDK_INT <= Build.VERSION_CODES.R
+        // Later versions filter while Aerial itself is in front, so Home there never reaches the
+        // system, which would start PatchWall and show it for a moment before the guard brought
+        // Aerial back (MiTV-MFTR0, Android 14). Elsewhere they leave keys alone: #293's
+        // repeating keys were in the stock launcher, and in other apps Home goes as above.
+        val aerialInFront = lastWindow?.first == packageName
+        val wanted = !keysPassThrough && !screenOff && (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R || aerialInFront)
         val want = if (wanted && !isDefaultHome()) info.flags or flag else info.flags and flag.inv()
         if (want == info.flags) return
         info.flags = want
@@ -459,6 +488,8 @@ class HomeGuardService : AccessibilityService() {
                 takeOverOnceSettled("after an input switch", woke = false)
                 return
             }
+            // One Home press shows two window changes 0.2 s apart (MiTV-MFTR0); one start will do.
+            if (SystemClock.uptimeMillis() - broughtBackAt < 1_000) return
             Log.i(TAG, "stock home $pkg came to the front; bringing Aerial back")
             // Shortly after the screen lit, this is the wake itself (issue #111).
             goHome(woke = SystemClock.elapsedRealtime() - screenOnAt < WAKE_WINDOW_MS)

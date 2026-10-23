@@ -224,8 +224,18 @@ class MainActivity : ComponentActivity() {
         if (SystemClock.elapsedRealtime() - bootSourceOpenedAt < 15_000) return
         bootSourceOpenedAt = SystemClock.elapsedRealtime()
         lifecycleScope.launch {
+            // An app opens from its own entry at once: listing every app took 6.5 s at power-on on
+            // Xiaomi MiTV-MFTR0 once Aerial came up earlier in the boot, all of it on PatchWall's
+            // heels. Inputs and Aerial's own tiles (AppCatalog.shortcuts) only Home lists.
+            val direct = pkg?.let { p ->
+                runCatching {
+                    val launch = packageManager.getLeanbackLaunchIntentForPackage(p) ?: packageManager.getLaunchIntentForPackage(p)
+                    launch?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                        ?.let { packageManager.getApplicationLabel(packageManager.getApplicationInfo(p, 0)).toString() to it }
+                }.getOrNull()
+            }
             // Inputs can take a while to list right after a wake (Xiaomi MiTV-MTEQ0, issue #111).
-            val intent = withTimeoutOrNull(30_000) {
+            val intent = direct ?: withTimeoutOrNull(30_000) {
                 snapshotFlow {
                     if (id != null) vm.sources.firstOrNull { it.id == id }?.let { it.label to it.intent }
                     else vm.entry(pkg!!)?.let { it.label to it.launchIntent() }
@@ -345,6 +355,9 @@ class MainActivity : ComponentActivity() {
         vm.lastInputAt = SystemClock.uptimeMillis()
         idleHandler.removeCallbacks(showScreensaver)
         if (AerialSettings.screensaverMinutes != AerialSettings.NEVER) idleHandler.postDelayed(showScreensaver, idleBeforeScreensaver())
+        else if (window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON == 0 && screenNeverOff()) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     /**
@@ -352,6 +365,15 @@ class MainActivity : ComponentActivity() {
      * delay in system/screen_saver_timeout: 120000 on some MiTV-MFTR0 units, 480000 on others, -1
      * when off. Start 15 s ahead of it when it is shorter than the delay chosen in Personalize.
      */
+    /**
+     * "Never" for the screensaver, on a TV whose screen itself never goes off: Home keeps the
+     * screen on, which also holds off the firmware's own screensaver. Xiaomi's HyperOS one is not
+     * the system's (screen_saver_timeout, 8 minutes on MiTV-MFTR0) and came up over Home anyway,
+     * read as the screensaver "jumping back" to Xiaomi's. Where the screen does go off, that stays.
+     */
+    private fun screenNeverOff(): Boolean =
+        runCatching { Settings.System.getLong(contentResolver, Settings.System.SCREEN_OFF_TIMEOUT) }.getOrDefault(0L) >= 24 * 60 * 60 * 1000L
+
     private fun idleBeforeScreensaver(): Long {
         val chosen = AerialSettings.screensaverMinutes * 60_000L
         val firmware = runCatching { Settings.System.getLong(contentResolver, "screen_saver_timeout") }.getOrNull()
