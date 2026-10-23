@@ -5,7 +5,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.ColorDrawable
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkRequest
@@ -105,16 +108,55 @@ class MainActivity : ComponentActivity() {
     override fun getSystemService(name: String): Any? =
         super.getSystemService(name) ?: if (name == CLIPBOARD_SERVICE) MissingClipboard.standIn else null
 
+    /**
+     * Started at power-on before the user is unlocked. Home is direct-boot aware so that it, not the
+     * firmware's launcher, is what shows then (TCL MT5879 showed its own launcher for a few
+     * seconds, PR #334). Until unlock nothing in credential storage can be read (settings, the
+     * PIN, photos, the app list), so it shows only the picture Wallpapers keeps for this and
+     * starts for real when the user is unlocked.
+     */
+    private var locked = false
+
+    private val unlocked = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = startUnlocked()
+    }
+
+    private fun showLocked() {
+        locked = true
+        DiagLog.i("onCreate before the user is unlocked; showing the kept backdrop")
+        val picture = Wallpapers.lockedBootBackdrop(this)?.takeIf { it.exists() }
+            ?.let { runCatching { BitmapFactory.decodeFile(it.path) }.getOrNull() }
+        window.setBackgroundDrawable(picture?.let { BitmapDrawable(resources, it) } ?: ColorDrawable(Color.BLACK))
+        ContextCompat.registerReceiver(this, unlocked, IntentFilter(Intent.ACTION_USER_UNLOCKED), ContextCompat.RECEIVER_EXPORTED)
+        // Unlocked between the check and the registration.
+        if (GuardSetup.isUserUnlocked(this)) startUnlocked()
+    }
+
+    private var recreating = false
+
+    /** The locked instance stays locked to its end: it has set up none of what the rest undo. */
+    private fun startUnlocked() {
+        if (!locked || recreating) return
+        recreating = true
+        startedLocked = true
+        recreate()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         DiagLog.catchCrashes()
+        if (!GuardSetup.isUserUnlocked(this)) {
+            super.onCreate(null)
+            hideSystemBars()
+            showLocked()
+            return
+        }
         DiagLog.init(this)
         DiagLog.i("onCreate ${intent.action} restored=${savedInstanceState != null}; ${DiagLog.device()}")
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowInsetsControllerCompat(window, window.decorView).apply {
-            hide(WindowInsetsCompat.Type.systemBars())
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        }
+        hideSystemBars()
+        // Recreated at unlock: this is the boot's first real start, though the state was saved.
+        val fresh = savedInstanceState == null || startedLocked
+        startedLocked = false
         TileArtFactory.useCanvasDensity(canvasDensity(resources.displayMetrics))
         Wallpapers.init(this)
         Weather.init(this)
@@ -179,11 +221,20 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        if (savedInstanceState == null && firstStartSinceBoot()) openBootSource("boot")
+        if (fresh && firstStartSinceBoot()) openBootSource("boot")
         if (intent.getBooleanExtra(EXTRA_WOKE, false)) openBootSource("brought back on wake")
     }
 
+    private fun hideSystemBars() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
     override fun onDestroy() {
+        if (locked) runCatching { unregisterReceiver(unlocked) }
         runCatching { unregisterReceiver(screenOnReceiver) }
         super.onDestroy()
     }
@@ -324,6 +375,7 @@ class MainActivity : ComponentActivity() {
 
     override fun dump(prefix: String, fd: java.io.FileDescriptor?, writer: java.io.PrintWriter, args: Array<out String>?) {
         super.dump(prefix, fd, writer, args)
+        if (locked) return
         // `... MainActivity report`: what tools/report.sh pastes into an issue.
         if (args?.contains("report") == true) writer.print(Diagnostics.report(this)) else DiagLog.dump(writer)
     }
@@ -409,6 +461,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (locked) return super.dispatchKeyEvent(event)
         if (event.keyCode == dreamWokeKey) {
             if (event.action == KeyEvent.ACTION_UP) { dreamWokeKey = -1; return true }
             if (event.repeatCount > 0) return true
@@ -440,6 +493,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (locked) return super.dispatchTouchEvent(event)
         restartIdleTimer()
         // As with keys: the touch that ends the screensaver only ends it, through to the lift.
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -455,6 +509,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (locked) return
         DiagLog.i("onNewIntent ${intent.action}")
         if (intent.getBooleanExtra(EXTRA_WOKE, false)) openBootSource("brought back on wake")
         if (intent.action == ACTION_PREVIEW_SCREENSAVER) {
@@ -471,6 +526,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        if (locked) return
         DiagLog.i("onStart")
         GuardSetup.ensureEnabled(this)
         idleHandler.postDelayed({ GuardSetup.rebindIfStalled(this) }, 5_000)
@@ -514,6 +570,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (locked) return
         vm.resumed = true
         DiagLog.i("onResume; screensaver after ${idleBeforeScreensaver() / 1000} s")
         restartIdleTimer()
@@ -532,6 +589,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        if (locked) return
         vm.resumed = false
         DiagLog.i("onPause")
         GuardSetup.setHomeInFront(this, false)
@@ -541,6 +599,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        if (locked) return
         DiagLog.i("onStop")
         unregisterReceiver(packageReceiver)
         unregisterReceiver(volumeReceiver)
@@ -583,6 +642,9 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        /** Set as the locked start recreates itself at unlock; read by the next onCreate. */
+        private var startedLocked = false
+
         /** How Home Guard and the boot receiver bring Aerial back: the same task the launcher entry uses. */
         fun bringBackIntent(context: Context): Intent =
             Intent(context, MainActivity::class.java)
