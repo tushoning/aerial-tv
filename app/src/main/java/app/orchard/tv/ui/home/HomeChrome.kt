@@ -72,8 +72,11 @@ import app.orchard.tv.weather.Weather
 import app.orchard.tv.weather.WeatherKind
 import app.orchard.tv.weather.WeatherNow
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -105,7 +108,10 @@ fun dateText(now: LocalDateTime): String {
             .replace(Regex("(?<=[^\\s,，'])EEEE"), " EEEE")
             .replace(Regex("EEEE(?=[^\\s,，'])"), "EEEE ")
     }
-    return now.format(DateTimeFormatter.ofPattern(pattern, locale))
+    // Android's SimpleDateFormat (ICU), not java.time: through desugaring, java.time gave the month
+    // its stand-alone form, "23 октябрь" in Russian where a date needs "23 октября".
+    val millis = now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    return SimpleDateFormat(pattern, locale).format(Date(millis))
 }
 
 /**

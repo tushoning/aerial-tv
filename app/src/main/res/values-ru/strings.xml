@@ -77,13 +77,15 @@
     <string name="wx_rain">Дождь</string>
     <string name="wx_snow">Снег</string>
     <string name="wx_thunder">Гроза</string>
-    <string name="wp_daily">Фото дня</string>
     <string name="wp_daily_latest">Всегда сегодняшнее</string>
-    <string name="wp_builtin">Встроенные</string>
     <string name="wp_live">Аэросъёмка · запускается через 10 секунд на главном экране</string>
-    <string name="wp_photos">Мои фото</string>
     <string name="wp_photos_rotate">Одно в день</string>
+    <string name="wp_daily_note">Фото дня от Bing, каждый день новое.</string>
+    <string name="wp_photos_rotate_note">Каждый день другое из ваших фото.</string>
+    <string name="wp_photo_note">Ваше фото. Отсканируйте код справа, чтобы прислать ещё с телефона.</string>
+    <string name="wp_auto_note">Свет берётся из обложки выбранного приложения.</string>
     <string name="wp_screensaver">Заставка</string>
+    <string name="ss_follow_hint">Пока не выбрано, поэтому следует за обоями: аэросъёмка с обоями аэросъёмки, фото с картинкой, начиная с неё. Выберите, чтобы закрепить.</string>
     <string name="ss_aerial">Аэросъёмка</string>
     <string name="ss_photos">Фото</string>
     <string name="ss_clock">Часы</string>
@@ -93,6 +95,7 @@
     <string name="ss_start">Запустить сейчас</string>
     <string name="ss_delay">Запускать через</string>
     <string name="ss_minutes">%d мин</string>
+    <string name="ss_never">Никогда</string>
     <string name="ss_back_hint">Совет: нажмите «Назад» в верхнем ряду главного экрана, чтобы запустить заставку.</string>
     <string name="ss_back">Кнопка «Назад»</string>
     <string name="ss_back_on">Запускает её</string>
@@ -193,4 +196,14 @@
     <string name="weather_snow">Снег</string>
     <string name="weather_thunder">Грозы</string>
     <string name="weather_high_low">Макс.: %1$d°  Мин.: %2$d°</string>
+    <string name="st_peek">Второй ряд</string>
+    <string name="st_peek_show">Выглядывает</string>
+    <string name="st_peek_hide">Скрыт</string>
+    <string name="st_peek_hint">При одном ряде верх второго ряда выглядывает под первым, показывая, что ниже есть ещё. «Скрыт» прячет его, пока вы не нажмёте вниз.</string>
+    <string name="menu_boot_on">Открывать при включении ТВ</string>
+    <string name="menu_boot_off">Не открывать при включении ТВ</string>
+    <string name="cc_boot">При включении ТВ</string>
+    <string name="notice_boot_on">%1$s откроется при включении телевизора</string>
+    <string name="notice_boot_switch">%1$s откроется при включении телевизора вместо %2$s</string>
+    <string name="notice_boot_off">%1$s больше не будет открываться при включении телевизора</string>
 </resources>

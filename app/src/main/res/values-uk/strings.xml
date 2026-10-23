@@ -77,13 +77,15 @@
     <string name="wx_rain">Дощ</string>
     <string name="wx_snow">Сніг</string>
     <string name="wx_thunder">Гроза</string>
-    <string name="wp_daily">Фото дня</string>
     <string name="wp_daily_latest">Завжди сьогоднішнє</string>
-    <string name="wp_builtin">Вбудовані</string>
     <string name="wp_live">Аерозйомка · запускається через 10 секунд на головному екрані</string>
-    <string name="wp_photos">Мої фото</string>
     <string name="wp_photos_rotate">Одне на день</string>
+    <string name="wp_daily_note">Фото дня від Bing, щодня нове.</string>
+    <string name="wp_photos_rotate_note">Щодня інше з ваших фото.</string>
+    <string name="wp_photo_note">Ваше фото. Відскануйте код праворуч, щоб надіслати ще з телефона.</string>
+    <string name="wp_auto_note">Світло береться з обкладинки вибраного застосунку.</string>
     <string name="wp_screensaver">Заставка</string>
+    <string name="ss_follow_hint">Ще не вибрано, тож відповідає шпалерам: аерозйомка зі шпалерами аерозйомки, фото з картинкою, починаючи з неї. Виберіть, щоб закріпити.</string>
     <string name="ss_aerial">Аерозйомка</string>
     <string name="ss_photos">Фото</string>
     <string name="ss_clock">Годинник</string>
@@ -93,6 +95,7 @@
     <string name="ss_start">Запустити зараз</string>
     <string name="ss_delay">Запускати через</string>
     <string name="ss_minutes">%d хв</string>
+    <string name="ss_never">Ніколи</string>
     <string name="ss_back_hint">Порада: натисніть «Назад» у верхньому ряду головного екрана, щоб запустити заставку.</string>
     <string name="ss_back">Кнопка «Назад»</string>
     <string name="ss_back_on">Запускає її</string>
@@ -193,4 +196,14 @@
     <string name="weather_snow">Сніг</string>
     <string name="weather_thunder">Грози</string>
     <string name="weather_high_low">Макс.: %1$d°  Мін.: %2$d°</string>
+    <string name="st_peek">Другий ряд</string>
+    <string name="st_peek_show">Визирає</string>
+    <string name="st_peek_hide">Прихований</string>
+    <string name="st_peek_hint">З одним рядом верх другого ряду визирає з-під першого, показуючи, що нижче є ще. «Прихований» ховає його, доки ви не натиснете вниз.</string>
+    <string name="menu_boot_on">Відкривати під час увімкнення ТБ</string>
+    <string name="menu_boot_off">Не відкривати під час увімкнення ТБ</string>
+    <string name="cc_boot">Під час увімкнення ТБ</string>
+    <string name="notice_boot_on">%1$s відкриється під час увімкнення телевізора</string>
+    <string name="notice_boot_switch">%1$s відкриється під час увімкнення телевізора замість %2$s</string>
+    <string name="notice_boot_off">%1$s більше не відкриватиметься під час увімкнення телевізора</string>
 </resources>

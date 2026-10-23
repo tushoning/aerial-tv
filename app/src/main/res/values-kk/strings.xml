@@ -77,13 +77,15 @@
     <string name="wx_rain">Жаңбыр</string>
     <string name="wx_snow">Қар</string>
     <string name="wx_thunder">Нөсер</string>
-    <string name="wp_daily">Күннің фотолары</string>
     <string name="wp_daily_latest">Әрқашан бүгінгісі</string>
-    <string name="wp_builtin">Кіріктірілген</string>
     <string name="wp_live">Аэрожиын · басты экранда 10 секундтан кейін ойнайды</string>
-    <string name="wp_photos">Менің фотоларым</string>
     <string name="wp_photos_rotate">Күніне біреуі</string>
+    <string name="wp_daily_note">Bing күн суреті, күн сайын жаңасына ауысады.</string>
+    <string name="wp_photos_rotate_note">Күн сайын фотоларыңыздың басқасы.</string>
+    <string name="wp_photo_note">Сіздің фотоңыз. Телефоннан тағы жіберу үшін оң жақтағы кодты сканерлеңіз.</string>
+    <string name="wp_auto_note">Жарық таңдалған қолданбаның суретінен алынады.</string>
     <string name="wp_screensaver">Экран қорғаушы</string>
+    <string name="ss_follow_hint">Әлі таңдалмаған, сондықтан түсқағазға ілеседі: аэрожиын түсқағазымен аэрожиын, сурет түсқағазымен фотолар, сол суреттен бастап. Бекіту үшін біреуін таңдаңыз.</string>
     <string name="ss_aerial">Аэрожиын</string>
     <string name="ss_photos">Фотолар</string>
     <string name="ss_clock">Сағат</string>
@@ -93,6 +95,7 @@
     <string name="ss_start">Қазір бастау</string>
     <string name="ss_delay">Бастау уақыты</string>
     <string name="ss_minutes">%d мин</string>
+    <string name="ss_never">Ешқашан</string>
     <string name="ss_back_hint">Кеңес: экран қорғауышты бастау үшін басты экранның жоғарғы қатарында «Артқа» түймесін басыңыз.</string>
     <string name="ss_back">«Артқа» түймесі</string>
     <string name="ss_back_on">Бастайды</string>
@@ -193,4 +196,14 @@
     <string name="weather_snow">Қар</string>
     <string name="weather_thunder">Найзағай</string>
     <string name="weather_high_low">Макс.: %1$d°  Мин.: %2$d°</string>
+    <string name="st_peek">Екінші қатар</string>
+    <string name="st_peek_show">Көрінеді</string>
+    <string name="st_peek_hide">Жасырын</string>
+    <string name="st_peek_hint">Бір қатар болғанда екінші қатардың жоғарғы жиегі біріншінің астынан көрініп, төменде тағы бар екенін білдіреді. «Жасырын» төмен басқанша оны көрсетпейді.</string>
+    <string name="menu_boot_on">Теледидар қосылғанда ашу</string>
+    <string name="menu_boot_off">Теледидар қосылғанда ашпау</string>
+    <string name="cc_boot">Теледидар қосылғанда</string>
+    <string name="notice_boot_on">Теледидар қосылғанда %1$s ашылады</string>
+    <string name="notice_boot_switch">Теледидар қосылғанда %2$s орнына %1$s ашылады</string>
+    <string name="notice_boot_off">Теледидар қосылғанда %1$s енді ашылмайды</string>
 </resources>

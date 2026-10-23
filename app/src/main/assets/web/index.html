@@ -99,6 +99,8 @@
     color: var(--label); background: var(--card); border: 0; border-radius: 12px; padding: 10px; box-shadow: var(--shadow);
   }
   .row { display: flex; gap: 8px; margin-top: 10px; }
+  /* A display rule would otherwise show what is hidden (the diagnostics box and its buttons). */
+  [hidden] { display: none !important; }
   .row .upload { flex: 1; padding: 13px; }
   .row .upload.plain { background: var(--fill); color: var(--tint); text-decoration: none; }
   .link { appearance: none; border: 0; background: none; color: var(--tint); font: inherit; font-size: 13px; padding: 0; }
@@ -166,7 +168,7 @@ let state = null;
 
 // The language: ?lang=ru in the address, else the one picked with the button at the top right (kept on
 // the phone), else the first of the phone's preferred languages that has a table, else English. Keys are in KEYS, one array of texts per language.
-const KEYS = ["personalize", "screensaver", "screensaver_short", "ss_aerial", "ss_photos", "ss_clock", "focus", "focus_high", "focus_standard", "weather", "city_ph", "set", "add_h", "upload_label", "icons_h", "icons_hint", "feedback_h", "feedback_hint", "diag_show", "diag_copy", "diag_github", "hint_aerial", "hint_photos", "hint_clock", "g_live", "g_live_sub", "g_daily", "g_daily_sub", "g_photo", "g_builtin", "g_auto", "toast_wallpaper", "aria_delete", "confirm_delete", "wx_clear", "wx_partlycloudy", "wx_cloudy", "wx_fog", "wx_rain", "wx_snow", "wx_thunder", "wx_chosen", "wx_auto_btn", "toast_auto", "wx_guessed", "wx_none", "tag_source", "tag_custom", "aria_rename", "prompt_rename", "toast_renamed", "toast_name_reset", "toast_rename_fail", "aria_reset_icon", "confirm_reset_icon", "toast_icon_reset", "focus_hint_standard", "focus_hint_high", "daily_title", "daily_caption", "rotate_title", "rotate_caption", "empty_photos", "add_second", "toast_tv_updated", "sending_n", "toast_added", "toast_no_photos", "toast_send_fail", "toast_city_set", "toast_city_nf", "toast_set_fail", "toast_sending_icon", "toast_icon_set", "toast_icon_bad", "diag_collecting", "toast_diag_fail", "toast_copied", "toast_copy_manual", "language"];
+const KEYS = ["personalize", "screensaver", "screensaver_short", "ss_aerial", "ss_photos", "ss_clock", "focus", "focus_high", "focus_standard", "weather", "city_ph", "set", "add_h", "upload_label", "icons_h", "icons_hint", "feedback_h", "feedback_hint", "diag_show", "diag_copy", "diag_github", "hint_aerial", "hint_photos", "hint_clock", "g_live", "g_live_sub", "g_daily", "g_daily_sub", "g_photo", "g_builtin", "g_auto", "toast_wallpaper", "aria_delete", "confirm_delete", "wx_clear", "wx_partlycloudy", "wx_cloudy", "wx_fog", "wx_rain", "wx_snow", "wx_thunder", "wx_chosen", "wx_auto_btn", "toast_auto", "wx_guessed", "wx_none", "tag_source", "tag_custom", "aria_rename", "prompt_rename", "toast_renamed", "toast_name_reset", "toast_rename_fail", "aria_reset_icon", "confirm_reset_icon", "toast_icon_reset", "focus_hint_standard", "focus_hint_high", "daily_title", "daily_caption", "rotate_title", "rotate_caption", "empty_photos", "add_second", "toast_tv_updated", "sending_n", "toast_added", "toast_no_photos", "toast_send_fail", "toast_city_set", "toast_city_nf", "toast_set_fail", "toast_sending_icon", "toast_icon_set", "toast_icon_bad", "diag_collecting", "toast_diag_fail", "toast_copied", "toast_copy_manual", "language", "hint_follows"];
 const TEXTS = {
  "zh": [
   "个性化",
@@ -248,7 +250,8 @@ const TEXTS = {
   "没有取到，请重试",
   "已复制",
   "请长按文本框全选后复制",
-  "语言"
+  "语言",
+  "还没选过，跟随壁纸：航拍壁纸配航拍，其他壁纸配照片，并从这张壁纸开始。选一个就固定下来。"
  ],
  "en": [
   "Personalize",
@@ -330,7 +333,8 @@ const TEXTS = {
   "Could not get it, try again",
   "Copied",
   "Long-press the text box, select all and copy",
-  "Language"
+  "Language",
+  "Not chosen yet, so it follows the wallpaper: aerial films with the aerial wallpaper, photos with a picture, starting from that picture. Choose one to keep it."
  ],
  "ru": [
   "Персонализация",
@@ -412,7 +416,8 @@ const TEXTS = {
   "Не удалось получить, повторите",
   "Скопировано",
   "Удерживайте текстовое поле, выделите всё и скопируйте",
-  "Язык"
+  "Язык",
+  "Пока не выбрано, поэтому следует за обоями: аэросъёмка с обоями аэросъёмки, фото с картинкой, начиная с неё. Выберите, чтобы закрепить."
  ],
  "uk": [
   "Персоналізація",
@@ -494,7 +499,8 @@ const TEXTS = {
   "Не вдалося отримати, повторіть",
   "Скопійовано",
   "Утримуйте текстове поле, виділіть усе й скопіюйте",
-  "Мова"
+  "Мова",
+  "Ще не вибрано, тож відповідає шпалерам: аерозйомка зі шпалерами аерозйомки, фото з картинкою, починаючи з неї. Виберіть, щоб закріпити."
  ],
  "kk": [
   "Жекелендіру",
@@ -576,7 +582,8 @@ const TEXTS = {
   "Алуға болмады, қайталап көріңіз",
   "Көшірілді",
   "Мәтін өрісін ұзақ басып, барлығын таңдап, көшіріңіз",
-  "Тіл"
+  "Тіл",
+  "Әлі таңдалмаған, сондықтан түсқағазға ілеседі: аэрожиын түсқағазымен аэрожиын, сурет түсқағазымен фотолар, сол суреттен бастап. Бекіту үшін біреуін таңдаңыз."
  ]
 };
 const LANGS = Object.keys(TEXTS);
@@ -724,7 +731,7 @@ function render() {
   document.querySelectorAll('#ss button').forEach(b =>
     b.setAttribute('aria-pressed', b.dataset.mode === state.screensaver ? 'true' : 'false'));
   $('#ssHint').textContent = state.screensaverFollows
-    ? '还没选过，跟随壁纸：航拍壁纸配航拍，其他壁纸配照片，并从这张壁纸开始。选一个就固定下来。'
+    ? t('hint_follows')
     : (hints[state.screensaver] || '');
   document.querySelectorAll('#focus button').forEach(b =>
     b.setAttribute('aria-pressed', b.dataset.style === state.focusStyle ? 'true' : 'false'));
