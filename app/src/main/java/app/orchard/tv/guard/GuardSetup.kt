@@ -12,6 +12,7 @@ import android.os.SystemClock
 import android.os.UserManager
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import androidx.core.content.getSystemService
 import android.util.Log
 import app.orchard.tv.dream.AerialDream
 
@@ -86,7 +87,8 @@ object GuardSetup {
     fun noteRevival(context: Context) {
         // Brought back with the screen off: a standby kill (Xiaomi), not eUI stopping Aerial in use.
         // Counting those, a few standbys in a row made the guard leave PatchWall in front at wake.
-        if (context.getSystemService(PowerManager::class.java)?.isInteractive == false) return
+        // Not getSystemService(Class): that is Android 6.0, and LeTV and old VIDAA TVs revive on 5.x.
+        if (context.getSystemService<PowerManager>()?.isInteractive == false) return
         val now = System.currentTimeMillis()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val recent = recentRevivals(context, now) + now

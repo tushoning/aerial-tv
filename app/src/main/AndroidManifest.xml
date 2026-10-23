@@ -32,9 +32,11 @@
     <!-- RevivalSync: the sync adapter that restarts Aerial after a force-stop. -->
     <uses-permission android:name="android.permission.READ_SYNC_SETTINGS" />
     <uses-permission android:name="android.permission.WRITE_SYNC_SETTINGS" />
-    <!-- Up to Android 5.1 RevivalSync's account lookup needs it; without it the sync revival was
-         never set up (LeTV X3-55 Pro, Android 5.0.1, issue #328). Granted at install there. -->
+    <!-- Up to Android 5.1 RevivalSync's account lookup and the account it adds need these; without
+         them the sync revival was never set up (LeTV X3-55 Pro, Android 5.0.1, issue #328).
+         Granted at install there. -->
     <uses-permission android:name="android.permission.GET_ACCOUNTS" android:maxSdkVersion="22" />
+    <uses-permission android:name="android.permission.AUTHENTICATE_ACCOUNTS" android:maxSdkVersion="22" />
     <!-- A home screen lists every launchable app by definition. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />

@@ -422,11 +422,12 @@ object Wallpapers {
                 val market = if (Locale.getDefault().language == "zh") "zh-CN" else "en-US"
                 // Each market has its own photo for a given date, and the files are named by date.
                 val marketFile = File(dailyDir, "market")
-                if (marketFile.takeIf { it.exists() }?.readText() != market) {
-                    dailyDir.listFiles { f -> f.extension == "jpg" }?.forEach { it.delete() }
-                    marketFile.writeText(market)
-                }
+                // No file: kept before markets were told apart, which was always zh-CN.
+                val before = marketFile.takeIf { it.exists() }?.readText() ?: "zh-CN"
                 val json = JSONObject(get("https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=$market").decodeToString())
+                // Only once the new market's list is here: offline, the photos on hand stay.
+                if (before != market) dailyDir.listFiles { f -> f.extension == "jpg" }?.forEach { it.delete() }
+                if (before != market || !marketFile.exists()) marketFile.writeText(market)
                 val images = json.getJSONArray("images")
                 val index = JSONArray()
                 for (i in 0 until images.length()) {
