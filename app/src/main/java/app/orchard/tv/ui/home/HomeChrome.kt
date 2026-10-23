@@ -322,9 +322,9 @@ private fun bakePlate(glass: ImageBitmap, screen: Size, plate: Rect, radius: Flo
 }
 
 /**
- * What Home shows behind Control Center and folders unless AerialSettings.liveBlur: the grid's
- * frosted background fading over it [progress] of the way, one full-screen draw of a small
- * picture; in "Follow App" mode, which has no frosted picture, a dark veil.
+ * What Home shows behind Control Center and folders, [progress] of the way in: with [frosted]
+ * (AerialSettings.panelBehind Frost) the grid's frosted background fading over it, one
+ * full-screen draw of a small picture; otherwise a dark veil over Home as it is.
  */
 @Composable
 fun PanelBackdrop(frosted: ImageBitmap?, progress: () -> Float) {
@@ -333,7 +333,7 @@ fun PanelBackdrop(frosted: ImageBitmap?, progress: () -> Float) {
         val a = progress()
         if (a < 0.01f) return@Canvas
         if (dark == null) {
-            drawRect(Color.Black, alpha = 0.55f * a)
+            drawRect(Color.Black, alpha = 0.45f * a)
             return@Canvas
         }
         drawImage(dark, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()), filterQuality = FilterQuality.Low, alpha = a)

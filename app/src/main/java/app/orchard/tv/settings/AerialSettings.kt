@@ -30,6 +30,20 @@ enum class FocusStyle(val key: String) {
  * Where interface sounds come from. The TV's own are silent wherever its key sound setting is off,
  * which many TVs ship with (Sony, issue #160; #169), so that is not the default there.
  */
+/**
+ * What Home looks like behind Control Center and folders. Dim keeps it sharp under a dark veil, as
+ * tvOS does; Frost fades the frosted wallpaper over it (1.41's default, which owners took for Home
+ * gone blurry); Blur blurs it live (Android 12+), 20–77 ms of GPU a frame on Xiaomi MiTV-MFTR0
+ * while anything under it moves (issue #354).
+ */
+enum class PanelBehind(val key: String) {
+    Dim("dim"), Frost("frost"), Blur("blur");
+
+    companion object {
+        fun of(key: String?) = entries.firstOrNull { it.key == key }
+    }
+}
+
 enum class UiSounds(val key: String) {
     Tv("tv"), Aerial("aerial"), Off("off");
 
@@ -46,12 +60,7 @@ object AerialSettings {
 
     var focusStyle by mutableStateOf(FocusStyle.HighContrast); private set
 
-    /**
-     * Home blurred live behind Control Center and folders (Android 12+), rather than the frosted
-     * wallpaper fading over it. The live blur redoes a full-screen blur on every frame anything
-     * under it moves: 20–77 ms of GPU a frame on Xiaomi MiTV-MFTR0, about 15 fps (issue #354).
-     */
-    var liveBlur by mutableStateOf(false); private set
+    var panelBehind by mutableStateOf(PanelBehind.Dim); private set
 
     /** TV inputs pinned to Home as tiles, by TvInputInfo id. */
     var pinnedSources by mutableStateOf<Set<String>>(emptySet()); private set
@@ -131,7 +140,9 @@ object AerialSettings {
         app = context.applicationContext
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         focusStyle = FocusStyle.of(prefs.getString("focus_style", null))
-        liveBlur = prefs.getBoolean("live_blur", false)
+        // 1.41 kept only whether live blur was chosen; frost was the default then, and is no more.
+        panelBehind = PanelBehind.of(prefs.getString("panel_behind", null))
+            ?: if (prefs.getBoolean("live_blur", false)) PanelBehind.Blur else PanelBehind.Dim
         pinnedSources = prefs.getStringSet("pinned_sources", null)?.toSet() ?: emptySet()
         bootSource = prefs.getString("boot_source", null)
         bootApp = prefs.getString("boot_app", null)
@@ -254,8 +265,8 @@ object AerialSettings {
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("focus_style", style.key) }
     }
 
-    fun chooseLiveBlur(on: Boolean) {
-        liveBlur = on
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean("live_blur", on) }
+    fun choosePanelBehind(mode: PanelBehind) {
+        panelBehind = mode
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("panel_behind", mode.key) }
     }
 }

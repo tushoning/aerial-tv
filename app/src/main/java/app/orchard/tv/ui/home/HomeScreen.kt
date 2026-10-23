@@ -70,6 +70,7 @@ import app.orchard.tv.HomeViewModel
 import app.orchard.tv.Overlay
 import app.orchard.tv.R
 import app.orchard.tv.settings.AerialSettings
+import app.orchard.tv.settings.PanelBehind
 import app.orchard.tv.apps.AppEntry
 import app.orchard.tv.ui.control.ControlCenter
 import app.orchard.tv.ui.wallpaper.WallpaperSheet
@@ -403,15 +404,17 @@ fun HomeScreen(
         // The folder open, or under its app's menu.
         val openFolder = (overlay as? Overlay.Folder)?.id ?: (overlay as? Overlay.AppMenu)?.inFolder
         val panelOpen = overlay is Overlay.ControlCenter || overlay is Overlay.HiddenApps || openFolder != null
-        val liveBlur = AerialSettings.liveBlur && Build.VERSION.SDK_INT >= 31
+        val behind = AerialSettings.panelBehind.let { if (it == PanelBehind.Blur && Build.VERSION.SDK_INT < 31) PanelBehind.Dim else it }
         val backdropBlur by animateDpAsState(
-            if (panelOpen && liveBlur) 30.dp else 0.dp,
+            if (panelOpen && behind == PanelBehind.Blur) 30.dp else 0.dp,
             tween(320, easing = Motion.EaseOut), label = "backdrop-blur",
         )
+        // How far the panel's backdrop is in: the frost over Home, or the veil.
         val backdropFrost by animateFloatAsState(
-            if (panelOpen && !liveBlur) 1f else 0f,
+            if (panelOpen && behind != PanelBehind.Blur) 1f else 0f,
             tween(320, easing = Motion.EaseOut), label = "backdrop-frost",
         )
+        val frostBehind = behind == PanelBehind.Frost
 
         val ambientApp = apps.getOrNull(focusedIndex) ?: apps.firstOrNull()
 
@@ -437,7 +440,7 @@ fun HomeScreen(
                     renderEffect = if (r > 0.5f && Build.VERSION.SDK_INT >= 31) BlurEffect(r, r, TileMode.Clamp) else null
                     // Under the frost once it is whole, Home is not drawn at all: on MFTR0 the
                     // picture, plate and tiles cost the GPU as much again as the panel over them.
-                    alpha = if (backdropFrost > 0.999f) 0f else 1f
+                    alpha = if (frostBehind && backdropFrost > 0.999f) 0f else 1f
                 },
         ) {
             // The glass plate under the top row (tvOS 26), the row's full width however few apps
@@ -583,7 +586,7 @@ fun HomeScreen(
             }
         }
 
-        PanelBackdrop(Wallpapers.frosted.takeIf { Wallpapers.backdrop != null }) { backdropFrost }
+        PanelBackdrop(Wallpapers.frosted.takeIf { frostBehind && Wallpapers.backdrop != null }) { backdropFrost }
 
         // Rows that scroll up under the status pill fade out instead of colliding with it.
         Canvas(

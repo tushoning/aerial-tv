@@ -142,7 +142,8 @@
     <string name="st_sounds">Sounds</string>
     <string name="st_sounds_hint">A sound as focus moves, and on select and Back, as on Apple TV.</string>
     <string name="st_blur">Behind Panels</string>
-    <string name="st_blur_hint">How Home looks behind Control Center and folders. Live blur looks most like Apple TV, but slows older TVs.</string>
+    <string name="st_blur_hint">How Home looks behind Control Center and folders. Dimmed keeps it sharp; frosted and live blur blur it, and live blur slows older TVs.</string>
+    <string name="st_blur_dim">Dimmed</string>
     <string name="st_blur_frost">Frosted</string>
     <string name="st_blur_live">Live Blur</string>
     <string name="st_sounds_tv_hint">The TV\'s own key sounds, as in its menus. Silent if key sounds are off in the TV\'s settings: choose Aerial then.</string>
