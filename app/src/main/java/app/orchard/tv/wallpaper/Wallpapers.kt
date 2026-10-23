@@ -417,7 +417,16 @@ object Wallpapers {
         lastDailyRefresh = System.currentTimeMillis()
         val added = withContext(Dispatchers.IO) {
             runCatching {
-                val json = JSONObject(get("https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN").decodeToString())
+                // The market sets the language of the captions; Bing has no Russian or Ukrainian ones
+                // (it answers those markets in English), so everything but Chinese asks for English.
+                val market = if (Locale.getDefault().language == "zh") "zh-CN" else "en-US"
+                // Each market has its own photo for a given date, and the files are named by date.
+                val marketFile = File(dailyDir, "market")
+                if (marketFile.takeIf { it.exists() }?.readText() != market) {
+                    dailyDir.listFiles { f -> f.extension == "jpg" }?.forEach { it.delete() }
+                    marketFile.writeText(market)
+                }
+                val json = JSONObject(get("https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=$market").decodeToString())
                 val images = json.getJSONArray("images")
                 val index = JSONArray()
                 for (i in 0 until images.length()) {
