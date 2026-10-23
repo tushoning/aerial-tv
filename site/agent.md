@@ -52,7 +52,7 @@ adb devices
 
 电视的 IP 一般在 设置 → 网络 → 已连接的网络 里（OPPO S1 在这一页最下面）。
 
-**打不开 ADB 的机型**：极米 H3、老乐视、荣耀智慧屏、老康佳（看不到版本号）等，目前没有办法，直接告诉用户不支持，不要反复尝试。当贝投影 F5 等机器，有用户用第三方工具 https://github.com/BuddhaYi/android-tv-developer-enabler 打开过 ADB，但那不是本项目的工具、也不是官方推荐，让用户自行评估风险，本项目不担保。
+**打不开 ADB 的机型**：极米 H3、老乐视、荣耀智慧屏、老康佳（看不到版本号）等，目前没有办法，直接告诉用户不支持，不要反复尝试。
 
 **用户没有电脑**：有用户用手机上的「甲壳虫 ADB 助手」「超级小爱」装成功过，本项目没有逐一实测。可以让用户照本说明第 2、3 步在手机上操作（手机 ADB 工具一般不能执行全部命令），装好后尽量再用电脑或你跑一遍「验收」。
 
@@ -229,7 +229,6 @@ adb shell cmd role remove-role-holder --user 0 android.app.role.HOME app.orchard
 
 - **会员和 App 还在吗？** 在。Aerial 只换桌面，电视里的 App、账号和会员都不变，从 Aerial 里打开即可。小米 / TCL 的会员、小爱同学、小米账号、有线电视都不受影响。
 - **原来的桌面还能用吗？** 能。原来的桌面作为一个 App 留在 Aerial 的 App 列表里（小米的 PatchWall 也在，从「桌面」磁贴进入），打开就是原来的界面和推荐内容。小米影视、PatchWall 的内容都在。
-- **Netflix、YouTube 能用吗？** Netflix 要电视本身通过 Netflix 认证（TCL 部分机型有，小米没有），换桌面不会改变这一点。YouTube 装 Fire TV 版即可，不需要谷歌服务。
 - **开机广告能去掉吗？** 不能。开机广告是固件在 Aerial 启动之前播的。
 - **以后怎么升级？** 1.32 起，电视上控制中心出现「有新版本」时点「下载并安装」，在系统安装界面确认即可（小米上验证过）。电视不让 App 安装应用时，再运行一次同样的安装命令（Windows 重复第 3 步的 1、2、3、6 条），设置都会保留。
 - **电视上有问题，想反馈给作者**：macOS / Linux 运行 `curl -fsSL https://aerial.qust.me/tools/report.sh | TV=<IP> bash`，它只读不改，生成 `aerial-report-<机型>.md`；读一遍，再贴进 https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml 。没有电脑时，用手机扫个性化里的二维码，在手机页底部「反馈问题」复制诊断信息。

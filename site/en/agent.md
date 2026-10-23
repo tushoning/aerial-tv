@@ -52,7 +52,7 @@ The TV is connected once `adb devices` lists it as `device`.
 
 The TV's IP address is usually under Settings → Network → the connected network (at the bottom of that page on OPPO S1).
 
-**TVs that cannot open ADB**: XGIMI H3, old LeTV sets, Honor Vision, old Konka models (no version number to tap) and similar. There is no way yet; tell the user it is not supported and don't keep trying. On machines such as the Dangbei F5 projector, some users opened ADB with the third-party https://github.com/BuddhaYi/android-tv-developer-enabler . That is not this project's tool and not an official recommendation: ask the user to judge the risk themselves; this project can't vouch for it.
+**TVs that cannot open ADB**: XGIMI H3, old LeTV sets, Honor Vision, old Konka models (no version number to tap) and similar. There is no way yet; tell the user it is not supported and don't keep trying.
 
 **Users without a computer**: some users installed Aerial with the phone apps 甲壳虫 ADB 助手 (Beetle ADB) and 超级小爱 (Super Xiaoai); we have not tested each one. They can follow steps 2 and 3 here on a phone (phone ADB tools usually can't run every command); once installed, run "Check" again from a computer or an agent where possible.
 
@@ -229,7 +229,6 @@ Then:
 
 - **Do my apps and subscriptions stay?** Yes. Aerial only replaces the home screen; apps, accounts and memberships are unchanged, and open from Aerial. Xiaomi / TCL subscriptions, Xiaoai, the Xiaomi account and cable TV are unaffected.
 - **Can I still use the old home screen?** Yes. It stays in Aerial's app list (including Xiaomi's PatchWall, opened from the 桌面 tile) and opens as before, with its recommendations. Xiaomi Video and PatchWall content are still there.
-- **Does Netflix or YouTube work?** Netflix needs the TV itself to be certified for it (some TCL models are, Xiaomi models are not); a home screen does not change that. YouTube works through the Fire TV build, with no Google services.
 - **Can it remove the boot ad?** No. The firmware plays it before Aerial starts.
 - **How do I update later?** From 1.32, when Control Center shows New Version, choose Download and Install and confirm in the system installer (checked on Xiaomi). On TVs that do not let apps install apps, run the same install command again (on Windows, repeat items 1, 2, 3 and 6 of step 3); every setting is kept.
 - **Something is wrong on the TV and the user wants to report it**: on macOS / Linux run `curl -fsSL https://aerial.qust.me/tools/report.sh | TV=<IP> bash`. It only reads, and writes `aerial-report-<model>.md`; read it, then paste it into https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml . Without a computer: scan the QR code in Personalize and use 反馈问题 (Report a problem) at the bottom of the phone page to copy the diagnostics.
