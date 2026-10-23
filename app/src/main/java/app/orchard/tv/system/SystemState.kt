@@ -15,6 +15,7 @@ import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
+import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import app.orchard.tv.BuildConfig
 import app.orchard.tv.R
@@ -340,6 +341,7 @@ object SystemProbe {
     // ---- Inputs ----
 
     private const val XIAOMI_PLAYER = "com.xiaomi.mitv.tvplayer"
+    private const val DROIDLOGIC_PLAYER = "com.droidlogic.tvsource"
 
     /** CEC logical-device placeholders some input services report instead of the device's name. */
     private val GENERIC_CEC_NAME = Regex("^(Playback|Recorder|Tuner|Audio ?System|Audio|TV|Reserved)[ _]?\\d*$", RegexOption.IGNORE_CASE)
@@ -383,6 +385,7 @@ object SystemProbe {
         val tim = context.getSystemService<TvInputManager>() ?: return emptyList()
         val infos = runCatching { tim.tvInputList }.getOrNull() ?: return emptyList()
         val xiaomi = isInstalled(context, XIAOMI_PLAYER)
+        val droidLogic = isInstalled(context, DROIDLOGIC_PLAYER)
         val profile = DeviceProfile.current()
 
         return infos
@@ -405,6 +408,8 @@ object SystemProbe {
                 // only switches the picture (Sony BRAVIA XR90 with an Apple TV and a PS5, issue #259).
                 val cec = infos.firstOrNull { it.parentId == info.id }
                 val intent = (if (xiaomi) xiaomiRoute(info, kind, label, profile) else null)
+                    ?: genericRoute(cec ?: info, kind).takeIf { !droidLogic || resolves(context, it) }
+                    ?: droidLogicRoute(context, info)
                     ?: genericRoute(cec ?: info, kind)
                 val device = cec
                     ?.let { runCatching { it.loadLabel(context).toString() }.getOrNull() }
@@ -420,6 +425,26 @@ object SystemProbe {
             }
             .sortedWith(compareBy({ it.kind.ordinal }, { it.label }))
     }
+
+    /**
+     * Amlogic's DroidLogic player, for firmware where nothing handles the framework's passthrough
+     * VIEW intent: it takes the input id as an extra. OBE_NEW X7 projector (Android 9): HDMI2 opened
+     * with its HW id. Only the port's id is verified there, not a CEC child's.
+     */
+    private fun droidLogicRoute(context: Context, info: TvInputInfo): Intent? {
+        if (info.type != TvInputInfo.TYPE_HDMI) return null
+        val intent = Intent(Intent.ACTION_MAIN).setComponent(
+            ComponentName(DROIDLOGIC_PLAYER, "$DROIDLOGIC_PLAYER.DroidLogicTv"),
+        ).putExtra("id", info.id)
+        val activity = context.packageManager.resolveActivity(intent, 0)?.activityInfo ?: return null
+        return intent.takeIf {
+            activity.exported && activity.enabled && activity.applicationInfo.enabled &&
+                (activity.permission == null || ContextCompat.checkSelfPermission(context, activity.permission) == PackageManager.PERMISSION_GRANTED)
+        }
+    }
+
+    private fun resolves(context: Context, intent: Intent) =
+        runCatching { context.packageManager.resolveActivity(intent, 0) != null }.getOrDefault(false)
 
     private const val TCL_PLAYER = "com.tcl.tv"
 
