@@ -98,7 +98,9 @@ object Brightness {
         val percent = Math.round(current * 100)
         val next = (if (direction > 0) (percent / 5 + 1) * 5 else ((percent + 4) / 5 - 1) * 5).coerceIn(1, 100)
         val r = context.contentResolver
-        if (MitvPanel.usable(context)) {
+        // The same order as level(): TCL's SDK and picture_backlight come first, so a Xiaomi that
+        // has both never has its panel probed or moved this way.
+        if (!isTcl(context) && !usesXiaomiBacklight(context) && MitvPanel.usable(context)) {
             runCatching {
                 // Start the relative step from the level Aerial set last: the middleware's getter is
                 // animated, so a panel reading taken mid-step is only the seed of the first step
