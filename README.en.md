@@ -64,14 +64,15 @@ The menus on Chinese firmware are in Chinese; their names are in brackets.
 | **Xiaomi / Redmi** | Settings (设置) → About (关于) → press Model (产品型号) until developer mode is on, then Settings → Account & Security (账号与安全): turn on ADB debugging (ADB 调试) and Install unknown apps (安装未知来源的应用) |
 | **TCL / FFALCON** | Settings (设置) → About (关于) → Device info (本机信息), quickly press Up Down Left Right, then turn on ADB under More (更多) |
 | **Haier / MOOKA** | Press Source on the TV itself, then Left Left Up Right on the remote; in the factory menu turn on ADB 调试开关 and change nothing else |
-| **OPPO** | Settings (设置) → System (系统) → About (关于本机) → Model (设备型号), press Up Up Right Right, then OK |
+| **OPPO (S1 included)** | Settings (设置) → System (系统) → About (关于本机) → Model (设备型号), press Up Up Right Right, then OK. Then Settings → System → Developer options (开发者选项): turn on USB debugging (USB 调试). The IP address is at the bottom of Settings → Network → the connected network |
 | **Other Android TVs** | Settings → Device Preferences → About → press Build 7 times, then turn on USB debugging in Developer options |
 
-The TV's IP address is under Settings → Network. The first time you connect, the TV asks whether to allow debugging: choose Always allow.
+The TV's IP address is under Settings → Network → the connected network. The first time you connect, the TV asks whether to allow debugging: choose Always allow.
+A more detailed guide by brand, including TVs that cannot open ADB, is in [docs/devices/adb-by-brand.md](docs/devices/adb-by-brand.md) (Chinese).
 
 ### 2. Install
 
-**With an agent (recommended)**: paste this into an agent that can run commands on your computer (Claude Code, Codex, WorkBuddy, Trae, Cursor…):
+**With an agent (recommended)**: paste this into an agent that can run commands on your computer (Claude Code, Codex, WorkBuddy, Trae, Cursor, Doubao for desktop…):
 
 ```text
 Please install Aerial, an open-source home screen for Android TV, on my TV, and make it the home screen the TV starts into.
@@ -82,10 +83,15 @@ The install guide is here: https://aerial.qust.me/en/agent.md
 (If you can't open it, use https://raw.githubusercontent.com/pengchujin/aerial-tv/main/site/en/agent.md)
 
 Read the whole guide before you start. Then run the commands yourself on my computer; don't just tell me the steps. Tell me when I need to do something on the TV.
-At the end, paste the raw output of the commands under "Check" in the guide.
+At the end, paste the raw output of these commands from the "Check" section, not just "it worked":
+- adb shell "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME"
+- adb shell settings get secure enabled_accessibility_services
+- adb shell "dumpsys window | grep mCurrentFocus" after pressing Home
 ```
 
-Phone apps and web chats can't install it. When the agent says it's done, check that its output includes `app.orchard.tv`.
+Phone apps and web chats, including Doubao on a phone, only tell you the steps; they can't run anything. Use a desktop build that can (Doubao for desktop or Doubao Work, WorkBuddy, Qwen for desktop, Trae, Claude Code, Codex…). When the agent says it's done, check that the `mCurrentFocus` output it pastes includes `app.orchard.tv`.
+
+**Without a computer**: users have installed Aerial with the phone apps Beetle ADB (甲壳虫 ADB 助手) and Super Xiaoai (超级小爱); we haven't tested each one. The steps are the same as the Windows ones above; once it's installed, run the check from a computer if you can (see [Check](site/en/agent.md#check-required)).
 
 **One command (macOS / Linux)**:
 
@@ -116,6 +122,13 @@ curl -fsSL https://aerial.qust.me/install.sh | TV=192.168.1.20 bash -s restore
 
 Add `--uninstall` (`bash -s restore --uninstall`) to remove Aerial as well. Without bash (Windows), the adb commands one by one are under [Undo in the install guide](site/en/agent.md#undo).
 
+To have an AI do it (it needs to run commands on a computer), paste this:
+
+```text
+Please follow the "Undo" section of https://aerial.qust.me/en/agent.md to give my TV (IP address: <TV-IP>) its original home screen back, without uninstalling Aerial.
+Run the commands yourself on my computer, and at the end paste the raw output of settings get secure enabled_accessibility_services and of dumpsys window | grep mCurrentFocus after pressing Home.
+```
+
 ### Troubleshooting
 
 - **Installed only the APK from a USB stick**: from 1.32 Aerial has an icon in the TV's app list and, when opened, shows how to make it the Home screen. With the APK alone, Home, power-on and wake still go to the old launcher; run the command above or hand it to an agent once more (it installs over, settings stay).
@@ -123,8 +136,9 @@ Add `--uninstall` (`bash -s restore --uninstall`) to remove Aerial as well. With
 - **Skyworth: `adb install` fails with `INSTALL_FAILED_USER_RESTRICTED`**: run `adb shell settings put global verifier_verify_adb_installs 0`, then install again (from a user's report; see the [agent guide](site/en/agent.md#common-cases)).
 - **The firmware won't install home-screen apps**: add `-s guard` to the end of the command, or use [aerial-guard.apk](https://aerial.qust.me/download/aerial-guard.apk).
 - **What `KEEP_ADB=1` does**: Xiaomi turns ADB off after standby; with it, Aerial turns it back on so you can update later.
-- **Do my apps, subscriptions and old home screen stay?** Yes. The old home screen is in the app list. A boot ad comes from the firmware and stays.
-- **Not supported**: LG, Samsung, Huawei Vision, and Android 4.4 or older.
+- **Do my apps, subscriptions, Xiaoai, account and cable TV stay?** Yes. Aerial only replaces the home screen. The old home screen is in the app list (Xiaomi Video and PatchWall open from the 桌面 tile), and Xiaoai, the Xiaomi account and cable TV work as before. A boot ad comes from the firmware and stays.
+- **What about Netflix and YouTube?** Netflix needs the TV itself to be certified for it (some TCL models are, Xiaomi models are not); a home screen does not change that. YouTube works through the Fire TV build, with no Google services.
+- **Not supported**: LG webOS, Samsung Tizen, Huawei Vision (HarmonyOS), and Android 4.4 or older. TVs that cannot open ADB, such as XGIMI H3, old LeTV sets, Honor Vision and old Konka models (no version number to tap), can't be used yet.
 
 ## How it stays your home screen
 
