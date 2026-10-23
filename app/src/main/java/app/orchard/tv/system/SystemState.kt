@@ -305,6 +305,16 @@ object SystemProbe {
             }.getOrNull() != null
             if (shown) return true
         }
+        val intent = tclInputPanel(context) ?: return false
+        return runCatching { context.startService(intent) }.getOrNull() != null
+    }
+
+    /**
+     * TCL's own input panel, where the firmware has one. The remote's input key opens it by itself,
+     * before Home sees the key (TCL MT5879, PR #334; issue #108).
+     */
+    fun tclInputPanel(context: Context): Intent? {
+        val pm = context.packageManager
         val intent = if (pm.hasSystemFeature("com.tcl.software.systemui_custom_tv_source")) {
             Intent("com.tcl.tvstatusbar.action.SHOW_WINDOW").setPackage("com.android.systemui")
                 .putExtra("TvStatusBar_Type", "Source")
@@ -312,8 +322,7 @@ object SystemProbe {
         } else {
             Intent("com.tcl.insrc.SHOW_WINDOW").setPackage("com.tcl.settings")
         }
-        if (pm.resolveService(intent, 0) == null) return false
-        return runCatching { context.startService(intent) }.getOrNull() != null
+        return intent.takeIf { runCatching { pm.resolveService(it, 0) }.getOrNull() != null }
     }
 
     private fun firstResolvable(context: Context, vararg intents: Intent): Intent {

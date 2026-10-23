@@ -58,6 +58,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
@@ -81,6 +82,7 @@ import app.orchard.tv.ui.theme.Motion
 import app.orchard.tv.ui.theme.Type
 import androidx.compose.runtime.snapshotFlow
 import app.orchard.tv.system.DiagLog
+import app.orchard.tv.system.SystemProbe
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.CoroutineStart
@@ -179,6 +181,8 @@ fun HomeScreen(
     val requesters = remember { HashMap<String, FocusRequester>() }
     fun requester(key: String) = requesters.getOrPut(key) { FocusRequester() }
     val pillRequester = remember { FocusRequester() }
+    val appContext = LocalContext.current
+    val firmwareInputPanel = remember { SystemProbe.tclInputPanel(appContext) != null }
 
     var focusedKey by remember { mutableStateOf<String?>(null) }
     // Where focus goes when the overlay closes, when that is not the tile it was on. Kept apart
@@ -368,6 +372,9 @@ fun HomeScreen(
                         true
                     }
                     NativeKeyEvent.KEYCODE_TV_INPUT -> {
+                        // TCL's firmware opens its own input panel on this key; answering it here
+                        // as well drew both panels at once (TCL MT5879, PR #334).
+                        if (firmwareInputPanel) return@onPreviewKeyEvent false
                         vm.overlay = Overlay.ControlCenter(CcPage.Inputs)
                         true
                     }
