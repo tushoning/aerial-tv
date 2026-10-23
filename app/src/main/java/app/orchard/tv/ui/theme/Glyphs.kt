@@ -6,11 +6,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.PathParser
@@ -78,14 +77,7 @@ fun DrawScope.drawGlyph(glyph: Glyph, color: Color, level: Float = 1f) {
     }
     val s = size.minDimension
     if (data == null) {
-        // Two toggles, the Control Center glyph; Material has no close match.
-        val w = s * 0.085f
-        val h = 0.3f * s
-        val stroke = Stroke(width = w)
-        drawRoundRect(color, Offset(0.06f * s, 0.14f * s), Size(0.88f * s, h), CornerRadius(h / 2), style = stroke)
-        drawCircle(color, radius = h * 0.32f, center = Offset(0.21f * s, 0.29f * s))
-        drawRoundRect(color, Offset(0.06f * s, 0.56f * s), Size(0.88f * s, h), CornerRadius(h / 2), style = stroke)
-        drawCircle(color, radius = h * 0.32f, center = Offset(0.79f * s, 0.71f * s))
+        drawPath(switches.getOrPut(s) { switchesPath(s) }, color)
         return
     }
     val path = parsed.getOrPut(data) { PathParser().parsePathString(data).toPath() }
@@ -97,3 +89,36 @@ fun DrawScope.drawGlyph(glyph: Glyph, color: Color, level: Float = 1f) {
 
 // Tiles are drawn off the main thread while the UI draws glyphs on it.
 private val parsed = java.util.concurrent.ConcurrentHashMap<String, Path>()
+private val switches = java.util.concurrent.ConcurrentHashMap<Float, Path>()
+
+/**
+ * Two toggles, the Control Center glyph, as SF Symbols' switch.2 draws it (Material has no close
+ * match): an outlined track with its knob solid on the left over a solid track with its knob cut
+ * out on the right. At 17dp it is 34 px on a 1080p UI, so every edge is placed on whole pixels and
+ * the tracks keep a clear gap; the earlier strokes fell between pixels and the tracks ran together
+ * (Xiaomi MiTV-MFTR0). One path, so a translucent color does not darken where parts overlap.
+ */
+private fun switchesPath(s: Float): Path {
+    val line = maxOf(1f, kotlin.math.round(s / 16f))
+    val h = kotlin.math.round(s * 0.36f)
+    val gap = kotlin.math.round(s * 0.12f)
+    val left = kotlin.math.round(s * 0.04f)
+    val right = s - left
+    val top = kotlin.math.round((s - 2 * h - gap) / 2f)
+    val bottom = top + h + gap
+    val r = h / 2f
+    fun pill(l: Float, t: Float, w: Float, ht: Float) = Path().apply {
+        addRoundRect(androidx.compose.ui.geometry.RoundRect(l, t, l + w, t + ht, CornerRadius(ht / 2f)))
+    }
+    fun disc(cx: Float, cy: Float, radius: Float) = Path().apply {
+        addOval(androidx.compose.ui.geometry.Rect(cx - radius, cy - radius, cx + radius, cy + radius))
+    }
+    val outline = Path.combine(
+        PathOperation.Difference,
+        pill(left, top, right - left, h),
+        pill(left + line, top + line, right - left - 2 * line, h - 2 * line),
+    )
+    val upper = Path.combine(PathOperation.Union, outline, disc(left + r, top + r, r))
+    val lower = Path.combine(PathOperation.Difference, pill(left, bottom, right - left, h), disc(right - r, bottom + r, r - line))
+    return Path.combine(PathOperation.Union, upper, lower)
+}
