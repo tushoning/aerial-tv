@@ -89,6 +89,16 @@ class PhoneServer private constructor(private val context: Context, private val 
                     if (source != null) runBlocking(Dispatchers.Main) { SourceLooks.rename(source.id, f["name"]) }
                     json(state())
                 }
+                session.method == Method.POST && path == "/api/folder/name" -> {
+                    val f = form(session)
+                    val id = f["id"].orEmpty()
+                    val name = f["name"].orEmpty().trim().take(FOLDER_NAME_MAX)
+                    val rename = AppCatalog.renameFolder
+                    val known = AppCatalog.folders.any { it.folder?.id == id }
+                    // On the main thread before answering, so the state sent back has the new name.
+                    if (known && name.isNotEmpty() && rename != null) runBlocking(Dispatchers.Main) { rename(id, name) }
+                    json(state().put("saved", known && name.isNotEmpty() && rename != null))
+                }
                 session.method == Method.POST && path == "/api/icon/reset" -> {
                     val pkg = form(session)["app"].orEmpty()
                     if (installed(pkg)) { CustomIcons.clear(pkg); onMain { CustomIcons.changed() } }
@@ -143,6 +153,12 @@ class PhoneServer private constructor(private val context: Context, private val 
                         .apply { a.source?.let { put("source", true).put("port", it.label).put("name", SourceLooks.of(it.id)?.name ?: "").put("look", SourceLooks.of(it.id).hashCode()) } })
                 }
             })
+            .put("folders", JSONArray().apply {
+                AppCatalog.folders.forEach { e ->
+                    val f = e.folder ?: return@forEach
+                    put(JSONObject().put("id", f.id).put("key", e.key).put("name", f.name).put("count", f.apps.size).put("stamp", e.art.hashCode()))
+                }
+            })
             .put("weather", JSONObject().apply {
                 put("place", Weather.place ?: "")
                 put("chosen", Weather.chosen)
@@ -155,7 +171,7 @@ class PhoneServer private constructor(private val context: Context, private val 
         (CustomIcons.isValidKey(pkg) && AppCatalog.loaded.any { it.key == pkg }) || AppCatalog.pinnedSources.any { it.key == pkg }
 
     private fun tile(pkg: String): Response {
-        val app = (AppCatalog.pinnedSources + AppCatalog.loaded).firstOrNull { it.key == pkg } ?: return text(Response.Status.NOT_FOUND, "")
+        val app = (AppCatalog.pinnedSources + AppCatalog.loaded + AppCatalog.folders).firstOrNull { it.key == pkg } ?: return text(Response.Status.NOT_FOUND, "")
         val bmp = TileArtFactory.flatten(app.art)
         val out = ByteArrayOutputStream()
         bmp.compress(Bitmap.CompressFormat.JPEG, 85, out)
@@ -239,6 +255,8 @@ class PhoneServer private constructor(private val context: Context, private val 
         private const val TAG = "AerialPhone"
         /** Enough for a batch of phone photos at full size. */
         private const val MAX_UPLOAD = 200L * 1024 * 1024
+        /** As for an input's name: Home's caption has room for about this much. */
+        private const val FOLDER_NAME_MAX = 24
 
         @Volatile
         private var running: PhoneServer? = null

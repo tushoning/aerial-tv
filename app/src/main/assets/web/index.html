@@ -8,15 +8,17 @@
 <title>Aerial</title>
 <style>
   :root {
-    --bg: #f2f2f7; --card: #ffffff; --label: #000; --secondary: rgba(60,60,67,.6);
-    --sep: rgba(60,60,67,.18); --segment: #fff; --tint: #007aff; --fill: rgba(118,118,128,.12); --danger: #ff3b30;
-    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.06);
+    --bg: #f2f2f7; --card: #ffffff; --label: #000; --secondary: rgba(60,60,67,.6); --tertiary: rgba(60,60,67,.3);
+    --sep: rgba(60,60,67,.18); --tint: #007aff; --fill: rgba(118,118,128,.12); --danger: #ff3b30;
+    --bar: rgba(249,249,249,.82); --bar-line: rgba(0,0,0,.14); --scrim: rgba(0,0,0,.32); --sheet: #f2f2f7;
+    --ease-out: cubic-bezier(.23,1,.32,1); --ease-drawer: cubic-bezier(.32,.72,0,1);
+    --tabbar: calc(50px + env(safe-area-inset-bottom));
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #000; --card: #1c1c1e; --label: #fff; --secondary: rgba(235,235,245,.6);
-      --sep: rgba(84,84,88,.6); --segment: #636366; --tint: #0a84ff; --fill: rgba(118,118,128,.24); --danger: #ff453a;
-      --shadow: none;
+      --bg: #000; --card: #1c1c1e; --label: #fff; --secondary: rgba(235,235,245,.6); --tertiary: rgba(235,235,245,.3);
+      --sep: rgba(84,84,88,.6); --tint: #0a84ff; --fill: rgba(118,118,128,.24); --danger: #ff453a;
+      --bar: rgba(22,22,22,.82); --bar-line: rgba(255,255,255,.12); --scrim: rgba(0,0,0,.5); --sheet: #1c1c1e;
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -24,169 +26,265 @@
   body {
     margin: 0; background: var(--bg); color: var(--label);
     font: 17px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "HarmonyOS Sans SC", "MiSans", system-ui, sans-serif;
-    padding: env(safe-area-inset-top) 16px calc(32px + env(safe-area-inset-bottom));
-    max-width: 720px; margin-inline: auto;
   }
-  header { padding: 28px 4px 8px; position: relative; }
+  button { font: inherit; color: inherit; }
+  /* A display rule would otherwise show what is hidden. */
+  [hidden] { display: none !important; }
+
+  main { max-width: 720px; margin: 0 auto; padding: env(safe-area-inset-top) 16px calc(var(--tabbar) + 32px); }
+  header { padding: 28px 4px 4px; }
   header h1 { font-size: 34px; font-weight: 700; letter-spacing: -.02em; margin: 0; }
-  header p { margin: 4px 0 0; color: var(--secondary); font-size: 15px; }
-  .lang { position: absolute; top: 24px; right: 4px; max-width: 46%; appearance: auto; border: 0; border-radius: 999px; background: var(--fill); color: var(--tint); font: inherit; font-size: 14px; font-weight: 600; padding: 7px 10px; cursor: pointer; }
-  h2 { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: .02em; color: var(--secondary); margin: 28px 4px 8px; }
-  .group { background: var(--card); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
-  .segmented { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--fill); border-radius: 10px; padding: 2px; gap: 2px; }
-  .segmented.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .video-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
-  .video-row + .video-row { border-top: 1px solid var(--fill); }
-  .video-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .video-row button { flex-shrink: 0; }
-  .segmented.two { grid-template-columns: repeat(2, 1fr); }
-  .segmented button {
-    appearance: none; border: 0; background: transparent; color: var(--label); font: inherit; font-size: 15px; font-weight: 500;
-    padding: 9px 0; border-radius: 8px; transition: background .2s ease, box-shadow .2s ease;
+  header p { margin: 2px 0 0; color: var(--secondary); font-size: 15px; }
+
+  h2 { font-size: 13px; font-weight: 400; color: var(--secondary); margin: 28px 16px 7px; }
+  h2.big { font-size: 20px; font-weight: 700; text-transform: none; letter-spacing: -.01em; color: var(--label); margin: 28px 4px 10px; }
+  .foot { color: var(--secondary); font-size: 13px; margin: 7px 16px 0; }
+  .foot .link { font-size: 13px; }
+  #sections .foot { margin: 8px 4px 0; }
+  section > .list:first-child, section > .hero:first-child { margin-top: 14px; }
+
+  /* Inset grouped list, as in iOS Settings. */
+  .list { background: var(--card); border-radius: 12px; overflow: hidden; }
+  .item {
+    position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 11px 16px;
+    border: 0; background: none; text-align: left; transition: background-color .2s ease;
   }
-  .segmented button[aria-pressed="true"] { background: var(--segment); box-shadow: 0 1px 4px rgba(0,0,0,.12); font-weight: 600; }
-  .segmented button:active { transform: scale(.97); }
-  .hint { color: var(--secondary); font-size: 13px; margin: 8px 4px 0; }
-  .upload {
-    display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
-    padding: 15px; border: 0; border-radius: 14px; background: var(--tint); color: #fff;
-    font: inherit; font-weight: 600; transition: transform .16s ease-out, opacity .2s ease;
+  .item + .item::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--sep); }
+  button.item:active, label.item:active { background: var(--fill); transition-duration: 0s; }
+  .item .txt { flex: 1; min-width: 0; }
+  .item .sub { display: block; font-size: 13px; color: var(--secondary); margin-top: 2px; }
+  .item .val { color: var(--secondary); white-space: nowrap; }
+  .item .chev { color: var(--tertiary); flex-shrink: 0; }
+  .item.tint { color: var(--tint); }
+  .item.danger { color: var(--danger); }
+  .item.center { justify-content: center; font-weight: 500; }
+  .item .thumb { width: 64px; aspect-ratio: 16 / 9; border-radius: 6px; object-fit: cover; background: var(--fill); flex-shrink: 0; }
+  .item:has(.thumb) + .item::before { left: 92px; }
+  .tick { color: var(--tint); flex-shrink: 0; opacity: 0; transform: scale(.8); transition: opacity .15s ease, transform .2s var(--ease-out); }
+  [aria-checked="true"] .tick { opacity: 1; transform: none; }
+  .item[disabled] { opacity: .5; }
+  .item select { position: absolute; inset: 0; opacity: 0; width: 100%; font-size: 16px; }
+
+  /* Wallpaper cards. */
+  .hero { position: relative; margin-top: 14px; border-radius: 16px; overflow: hidden; background: var(--fill); aspect-ratio: 16 / 9; }
+  .hero img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .hero .cap {
+    position: absolute; left: 0; right: 0; bottom: 0; padding: 32px 16px 12px; color: #fff;
+    background: linear-gradient(to top, rgba(0,0,0,.6), rgba(0,0,0,0));
   }
-  .upload:active { transform: scale(.98); }
-  .upload[disabled] { opacity: .6; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
-  .wp { position: relative; border: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: left; }
-  .wp img, .wp .ph {
-    display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; background: var(--fill);
-    transition: transform .2s ease-out, box-shadow .2s ease;
+  .hero .cap small { display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; opacity: .8; }
+  .hero .cap b { font-size: 20px; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 12px; }
+  .wp { position: relative; display: block; border: 0; padding: 0; background: none; text-align: left; min-width: 0; }
+  .wp .pic {
+    position: relative; border-radius: 12px; overflow: hidden; background: var(--fill); aspect-ratio: 16 / 9;
+    transition: transform .16s var(--ease-out), box-shadow .2s ease;
   }
-  .wp:active img { transform: scale(.97); }
-  .wp .t { font-size: 14px; font-weight: 500; margin: 6px 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wp .pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .wp:active .pic { transform: scale(.97); }
+  .wp[aria-selected="true"] .pic { box-shadow: 0 0 0 2.5px var(--bg), 0 0 0 5px var(--tint); }
+  .wp .t { font-size: 14px; font-weight: 500; margin: 7px 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .wp .c { font-size: 12px; color: var(--secondary); margin: 1px 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .wp[aria-selected="true"] img { box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--tint); }
   .check {
-    position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; border-radius: 50%;
-    background: var(--tint); color: #fff; display: none; align-items: center; justify-content: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,.3);
+    position: absolute; top: 7px; right: 7px; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--tint); color: #fff; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,.3); opacity: 0; transform: scale(.8);
+    transition: opacity .15s ease, transform .2s var(--ease-out);
   }
-  .wp[aria-selected="true"] .check { display: flex; }
-  .del {
-    position: absolute; top: 8px; left: 8px; width: 26px; height: 26px; border-radius: 50%; border: 0;
-    background: rgba(0,0,0,.55); color: #fff; font-size: 15px; line-height: 26px; padding: 0;
-    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  .wp[aria-selected="true"] .check { opacity: 1; transform: none; }
+  .badge {
+    position: absolute; top: 7px; left: 7px; width: 28px; height: 28px; border-radius: 50%; border: 0; padding: 0;
+    background: rgba(0,0,0,.5); color: #fff; display: flex; align-items: center; justify-content: center;
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); transition: transform .16s var(--ease-out);
   }
-  .ren { left: auto; right: 8px; }
+  .badge:active { transform: scale(.9); }
+  .tag { position: absolute; left: 7px; bottom: 7px; font-size: 11px; font-weight: 600; color: #fff; padding: 2px 7px; border-radius: 6px; background: rgba(0,0,0,.5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px; border: 0; border-radius: 12px;
+    background: var(--tint); color: #fff; font-weight: 600; text-decoration: none; cursor: pointer;
+    transition: transform .16s var(--ease-out), opacity .2s ease;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn[disabled] { opacity: .6; pointer-events: none; }
+  .btn.plain { background: var(--card); color: var(--tint); }
+  .row { display: flex; gap: 10px; margin-top: 10px; }
+  .row .btn { flex: 1; }
+  .add { margin-bottom: 14px; }
+  .empty { color: var(--secondary); font-size: 15px; padding: 4px 4px 0; margin: 0; }
+  .link { appearance: none; border: 0; background: none; color: var(--tint); padding: 0; cursor: pointer; }
+
+  .wx { display: flex; align-items: baseline; gap: 10px; }
+  .wx b { font-size: 28px; font-weight: 600; letter-spacing: -.01em; }
+  .wx span { color: var(--secondary); font-size: 15px; }
+  .field { display: flex; align-items: center; gap: 8px; }
+  .field input {
+    flex: 1; min-width: 0; font: inherit; font-size: 17px; color: var(--label); background: none; border: 0; outline: none; padding: 0;
+  }
+  .field input::placeholder { color: var(--tertiary); }
+  .field .link { font-weight: 600; }
+  .field .link[disabled] { opacity: .4; }
+  .diag {
+    display: block; width: 100%; height: 220px; margin-top: 10px; font: 12px/1.4 ui-monospace, Menlo, monospace;
+    color: var(--label); background: var(--card); border: 0; border-radius: 12px; padding: 10px;
+  }
+
+  /* Tab bar. */
+  nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; height: var(--tabbar); padding-bottom: env(safe-area-inset-bottom);
+    display: flex; justify-content: center; background: var(--bar); box-shadow: 0 -.5px 0 var(--bar-line);
+    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  }
+  nav button {
+    flex: 1; max-width: 160px; border: 0; background: none; padding: 6px 0 0; color: var(--secondary);
+    display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10.5px; font-weight: 500; cursor: pointer;
+  }
+  nav button svg { transition: transform .16s var(--ease-out); }
+  nav button:active svg { transform: scale(.88); }
+  nav button[aria-selected="true"] { color: var(--tint); }
+
+  /* Bottom sheet. Enters on the drawer curve; leaves faster than it came. */
+  .sheet-wrap { position: fixed; inset: 0; z-index: 20; }
+  .scrim { position: absolute; inset: 0; background: var(--scrim); opacity: 0; transition: opacity .2s ease; }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; max-width: 520px; margin: 0 auto; background: var(--sheet);
+    border-radius: 14px 14px 0 0; padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+    transform: translateY(100%); transition: transform .2s ease-in-out;
+  }
+  .sheet-wrap.open .scrim { opacity: 1; transition-duration: .3s; }
+  .sheet-wrap.open .sheet { transform: none; transition: transform .38s var(--ease-drawer); }
+  .grab { width: 36px; height: 5px; border-radius: 3px; background: var(--tertiary); margin: 0 auto 14px; }
+  .sheet .pic { border-radius: 12px; overflow: hidden; aspect-ratio: 16 / 9; background: var(--fill); width: 62%; margin: 0 auto; }
+  .sheet .pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .sheet h3 { text-align: center; font-size: 17px; font-weight: 600; margin: 12px 0 2px; }
+  .sheet .meta { text-align: center; font-size: 13px; color: var(--secondary); margin: 0 0 16px; }
+  .sheet .list { background: var(--card); }
+  @media (prefers-color-scheme: dark) { .sheet .list { background: #2c2c2e; } }
+  .sheet .list + .list { margin-top: 10px; }
+
   .toast {
-    position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px);
-    background: rgba(30,30,30,.92); color: #fff; padding: 10px 18px; border-radius: 22px; font-size: 15px;
-    opacity: 0; transition: opacity .2s ease, transform .3s cubic-bezier(.23,1,.32,1); pointer-events: none;
+    position: fixed; z-index: 30; left: 50%; bottom: calc(var(--tabbar) + 16px); transform: translate(-50%, 12px);
+    background: rgba(30,30,30,.92); color: #fff; padding: 10px 18px; border-radius: 22px; font-size: 15px; max-width: calc(100% - 32px);
+    opacity: 0; transition: opacity .2s ease, transform .3s var(--ease-out); pointer-events: none;
     -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
   }
   .toast.on { opacity: 1; transform: translate(-50%, 0); }
-  .empty { color: var(--secondary); font-size: 15px; padding: 4px; }
-  .wx { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px; }
-  .wx b { font-size: 28px; font-weight: 600; letter-spacing: -.01em; }
-  .wx span { color: var(--secondary); font-size: 15px; }
-  .city { display: flex; gap: 8px; margin-top: 10px; }
-  .city input {
-    flex: 1; min-width: 0; font: inherit; font-size: 16px; color: var(--label); background: var(--card);
-    border: 0; border-radius: 10px; padding: 11px 12px; box-shadow: var(--shadow); outline: none;
+  @media (prefers-reduced-motion: reduce) {
+    .sheet, .sheet-wrap.open .sheet { transition: none; }
+    .toast { transform: translate(-50%, 0); }
   }
-  .city input:focus { box-shadow: 0 0 0 2px var(--tint); }
-  .city button {
-    font: inherit; font-weight: 600; font-size: 15px; border: 0; border-radius: 10px; padding: 0 16px;
-    background: var(--tint); color: #fff; transition: transform .16s ease-out, opacity .2s ease;
-  }
-  .city button:active { transform: scale(.97); }
-  .city button[disabled] { opacity: .6; }
-  .diag {
-    display: block; width: 100%; height: 220px; margin-top: 10px; font: 12px/1.4 ui-monospace, Menlo, monospace;
-    color: var(--label); background: var(--card); border: 0; border-radius: 12px; padding: 10px; box-shadow: var(--shadow);
-  }
-  .row { display: flex; gap: 8px; margin-top: 10px; }
-  /* A display rule would otherwise show what is hidden (the diagnostics box and its buttons). */
-  [hidden] { display: none !important; }
-  .row .upload { flex: 1; padding: 13px; }
-  .row .upload.plain { background: var(--fill); color: var(--tint); text-decoration: none; }
-  .link { appearance: none; border: 0; background: none; color: var(--tint); font: inherit; font-size: 13px; padding: 0; }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
+<main>
 <header>
-  <h1>Aerial</h1>
-  <p>{{DEVICE}} · <span data-i18n="personalize"></span></p>
-  <select class="lang" id="lang" data-i18n-aria-label="language"></select>
+  <h1 id="title"></h1>
+  <p>{{DEVICE}}</p>
 </header>
 
-<h2 data-i18n="screensaver"></h2>
-<div class="segmented four" id="ss" role="group" data-i18n-aria-label="screensaver_short">
-  <button data-mode="aerial" data-i18n="ss_aerial"></button>
-  <button data-mode="photos" data-i18n="ss_photos"></button>
-  <button data-mode="clock" data-i18n="ss_clock"></button>
-  <button data-mode="videos" data-i18n="ss_videos"></button>
-</div>
-<p class="hint" id="ssHint"></p>
-<section id="videos" hidden>
-  <h2 data-i18n="videos_h"></h2>
-  <label class="upload" id="videoUploadBtn">
-    <span id="videoUploadLabel" data-i18n="videos_upload"></span>
-    <input id="videoFile" type="file" accept=".mp4,.mov,video/mp4,video/quicktime" multiple hidden>
-  </label>
-  <p class="hint" data-i18n="videos_hint"></p>
-  <div id="videoList" class="group" style="margin-top: 12px"></div>
+<!-- Wallpaper -->
+<section data-tab="wallpaper">
+  <div class="hero" id="hero"><img id="heroImg" alt=""><div class="cap"><small data-i18n="current_wp"></small><b id="heroTitle"></b></div></div>
+  <div id="sections"></div>
 </section>
 
-<h2 data-i18n="focus"></h2>
-<div class="segmented two" id="focus" role="group" data-i18n-aria-label="focus">
-  <button data-style="high_contrast" data-i18n="focus_high"></button>
-  <button data-style="standard" data-i18n="focus_standard"></button>
-</div>
-<p class="hint" id="focusHint"></p>
+<!-- Screensaver -->
+<section data-tab="screensaver" hidden>
+  <div class="list" id="ss" role="radiogroup" data-i18n-aria-label="screensaver_short">
+    <button class="item" role="radio" data-mode="aerial"><span class="txt"><span data-i18n="ss_aerial"></span><span class="sub" data-i18n="hint_aerial"></span></span><svg class="tick" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>
+    <button class="item" role="radio" data-mode="photos"><span class="txt"><span data-i18n="ss_photos"></span><span class="sub" data-i18n="hint_photos"></span></span><svg class="tick" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>
+    <button class="item" role="radio" data-mode="clock"><span class="txt"><span data-i18n="ss_clock"></span><span class="sub" data-i18n="hint_clock"></span></span><svg class="tick" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>
+    <button class="item" role="radio" data-mode="videos"><span class="txt"><span data-i18n="ss_videos"></span><span class="sub" data-i18n="hint_videos"></span></span><svg class="tick" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>
+  </div>
+  <p class="foot" id="ssFoot"></p>
+  <div id="videos" hidden>
+    <h2 data-i18n="videos_h"></h2>
+    <div class="list" id="videoList"></div>
+    <div class="list" style="margin-top:10px">
+      <label class="item tint center" id="videoUploadBtn">
+        <span id="videoUploadLabel" data-i18n="videos_upload"></span>
+        <input id="videoFile" type="file" accept=".mp4,.mov,video/mp4,video/quicktime" multiple hidden>
+      </label>
+    </div>
+    <p class="foot" data-i18n="videos_hint"></p>
+  </div>
+</section>
 
-<h2 data-i18n="weather"></h2>
-<div class="group wx"><b id="wxNow">—</b><span id="wxPlace"></span></div>
-<form class="city" id="cityForm">
-  <input id="city" type="text" data-i18n-placeholder="city_ph" enterkeyhint="done" autocomplete="off">
-  <button id="cityBtn" data-i18n="set"></button>
-</form>
-<p class="hint" id="wxHint"></p>
+<!-- Home screen -->
+<section data-tab="home" hidden>
+  <h2 data-i18n="focus"></h2>
+  <div class="list" id="focus" role="radiogroup" data-i18n-aria-label="focus">
+    <button class="item" role="radio" data-style="high_contrast"><span class="txt"><span data-i18n="focus_high"></span><span class="sub" data-i18n="focus_hint_high"></span></span><svg class="tick" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>
+    <button class="item" role="radio" data-style="standard"><span class="txt"><span data-i18n="focus_standard"></span><span class="sub" data-i18n="focus_hint_standard"></span></span><svg class="tick" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>
+  </div>
 
-<h2 data-i18n="add_h"></h2>
-<label class="upload" id="uploadBtn">
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
-  <span id="uploadLabel" data-i18n="upload_label"></span>
-  <input id="file" type="file" accept="image/*" multiple hidden>
-</label>
+  <h2 data-i18n="weather"></h2>
+  <div class="list">
+    <div class="item wx"><b id="wxNow">—</b><span id="wxPlace"></span></div>
+    <form class="item field" id="cityForm">
+      <input id="city" type="text" data-i18n-placeholder="city_ph" enterkeyhint="done" autocomplete="off">
+      <button class="link" id="cityBtn" data-i18n="set" disabled></button>
+    </form>
+  </div>
+  <p class="foot" id="wxHint"></p>
 
-<div id="sections"></div>
+  <div id="foldersBox" hidden>
+    <h2 data-i18n="folders_h"></h2>
+    <div class="list" id="folders"></div>
+  </div>
 
-<h2 data-i18n="icons_h"></h2>
-<p class="hint" style="margin-top:0;margin-bottom:12px" data-i18n="icons_hint"></p>
-<div class="grid" id="apps"></div>
-<input id="iconFile" type="file" accept="image/*" hidden>
+  <h2 data-i18n="icons_h"></h2>
+  <div class="grid" id="apps"></div>
+  <p class="foot" data-i18n="icons_hint"></p>
+  <input id="iconFile" type="file" accept="image/*" hidden>
+</section>
 
-<h2 data-i18n="feedback_h"></h2>
-<p class="hint" style="margin-top:0;margin-bottom:12px" data-i18n="feedback_hint"></p>
-<button class="upload" id="diagBtn" data-i18n="diag_show"></button>
-<textarea class="diag" id="diag" readonly hidden></textarea>
-<div class="row" id="diagActions" hidden>
-  <button class="upload" id="diagCopy" data-i18n="diag_copy"></button>
-  <a class="upload plain" href="https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml" target="_blank" rel="noopener" data-i18n="diag_github"></a>
+<!-- More -->
+<section data-tab="more" hidden>
+  <h2 data-i18n="this_tv"></h2>
+  <div class="list">
+    <div class="item"><span class="txt" data-i18n="tv_model"></span><span class="val">{{DEVICE}}</span></div>
+    <div class="item"><span class="txt" data-i18n="language"></span><span class="val" id="langName"></span><svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l6 6-6 6"/></svg><select id="lang" data-i18n-aria-label="language"></select></div>
+  </div>
+
+  <h2 data-i18n="feedback_h"></h2>
+  <div class="list"><button class="item tint center" id="diagBtn" data-i18n="diag_show"></button></div>
+  <textarea class="diag" id="diag" readonly hidden></textarea>
+  <div class="row" id="diagActions" hidden>
+    <button class="btn" id="diagCopy" data-i18n="diag_copy"></button>
+    <a class="btn plain" href="https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml" target="_blank" rel="noopener" data-i18n="diag_github"></a>
+  </div>
+  <p class="foot" data-i18n="feedback_hint"></p>
+</section>
+</main>
+
+<nav role="tablist">
+  <button role="tab" data-go="wallpaper"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M3.5 17l5-5 4 4 2.5-2.5 5.5 5"/></svg><span data-i18n="tab_wallpaper"></span></button>
+  <button role="tab" data-go="screensaver"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></svg><span data-i18n="screensaver_short"></span></button>
+  <button role="tab" data-go="home"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="7" height="6" rx="1.8"/><rect x="13.5" y="4.5" width="7" height="6" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="6" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="6" rx="1.8"/></svg><span data-i18n="tab_home"></span></button>
+  <button role="tab" data-go="more"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="8" cy="12" r=".6" fill="currentColor"/><circle cx="12" cy="12" r=".6" fill="currentColor"/><circle cx="16" cy="12" r=".6" fill="currentColor"/></svg><span data-i18n="tab_more"></span></button>
+</nav>
+
+<div class="sheet-wrap" id="sheet" hidden>
+  <div class="scrim" id="scrim"></div>
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="grab"></div>
+    <div id="sheetBody"></div>
+  </div>
 </div>
 <div class="toast" id="toast"></div>
 
 <script>
 const base = location.pathname.replace(/\/?$/, '/');
 const $ = s => document.querySelector(s);
-let state = null;
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+let state = null, stateJson = '';
 
-// The language: ?lang=ru in the address, else the one picked with the button at the top right (kept on
-// the phone), else the first of the phone's preferred languages that has a table, else English. Keys are in KEYS, one array of texts per language.
-const KEYS = ["personalize", "screensaver", "screensaver_short", "ss_aerial", "ss_photos", "ss_clock", "focus", "focus_high", "focus_standard", "weather", "city_ph", "set", "add_h", "upload_label", "icons_h", "icons_hint", "feedback_h", "feedback_hint", "diag_show", "diag_copy", "diag_github", "hint_aerial", "hint_photos", "hint_clock", "g_live", "g_live_sub", "g_daily", "g_daily_sub", "g_photo", "g_builtin", "g_auto", "toast_wallpaper", "aria_delete", "confirm_delete", "wx_clear", "wx_partlycloudy", "wx_cloudy", "wx_fog", "wx_rain", "wx_snow", "wx_thunder", "wx_chosen", "wx_auto_btn", "toast_auto", "wx_guessed", "wx_none", "tag_source", "tag_custom", "aria_rename", "prompt_rename", "toast_renamed", "toast_name_reset", "toast_rename_fail", "aria_reset_icon", "confirm_reset_icon", "toast_icon_reset", "focus_hint_standard", "focus_hint_high", "daily_title", "daily_caption", "rotate_title", "rotate_caption", "empty_photos", "add_second", "toast_tv_updated", "sending_n", "toast_added", "toast_no_photos", "toast_send_fail", "toast_city_set", "toast_city_nf", "toast_set_fail", "toast_sending_icon", "toast_icon_set", "toast_icon_bad", "diag_collecting", "toast_diag_fail", "toast_copied", "toast_copy_manual", "language", "hint_follows", "ss_videos", "hint_videos", "videos_h", "videos_upload", "videos_hint", "videos_empty", "confirm_video_delete", "toast_videos_added", "toast_video_bad", "sending_video", "hint_system"];
+// The language: ?lang=ru in the address, else the one picked under More (kept on the phone), else the
+// first of the phone's preferred languages that has a table, else English. Keys are in KEYS, one array of texts per language.
+const KEYS = ["screensaver", "screensaver_short", "ss_aerial", "ss_photos", "ss_clock", "focus", "focus_high", "focus_standard", "weather", "city_ph", "set", "upload_label", "icons_h", "icons_hint", "feedback_h", "feedback_hint", "diag_show", "diag_copy", "diag_github", "hint_aerial", "hint_photos", "hint_clock", "g_live", "g_live_sub", "g_daily", "g_daily_sub", "g_photo", "g_builtin", "g_auto", "toast_wallpaper", "aria_delete", "confirm_delete", "wx_clear", "wx_partlycloudy", "wx_cloudy", "wx_fog", "wx_rain", "wx_snow", "wx_thunder", "wx_chosen", "wx_auto_btn", "toast_auto", "wx_guessed", "wx_none", "tag_source", "tag_custom", "aria_rename", "toast_renamed", "toast_name_reset", "toast_rename_fail", "aria_reset_icon", "toast_icon_reset", "focus_hint_standard", "focus_hint_high", "daily_title", "daily_caption", "rotate_title", "rotate_caption", "empty_photos", "add_second", "toast_tv_updated", "sending_n", "toast_added", "toast_no_photos", "toast_send_fail", "toast_city_set", "toast_city_nf", "toast_set_fail", "toast_sending_icon", "toast_icon_set", "toast_icon_bad", "diag_collecting", "toast_diag_fail", "toast_copied", "toast_copy_manual", "language", "hint_follows", "ss_videos", "hint_videos", "videos_h", "videos_upload", "videos_hint", "videos_empty", "confirm_video_delete", "toast_videos_added", "toast_video_bad", "sending_video", "hint_system", "tab_wallpaper", "tab_home", "tab_more", "current_wp", "cancel", "save", "name_ph", "rename_hint", "change_icon", "this_tv", "folders_h", "folder_count", "folder_ph", "folder_rename_hint", "toast_folder_renamed", "tv_model"];
 const TEXTS = {
  "zh": [
-  "个性化",
   "屏幕保护程序",
   "屏保",
   "航拍",
@@ -198,10 +296,9 @@ const TEXTS = {
   "天气",
   "输入城市，例如 杭州",
   "设置",
-  "从手机添加",
-  "选择照片，设为电视壁纸",
+  "添加照片",
   "App 图标",
-  "点一个 App，从手机选一张图片换掉它在电视上的图标。图片会裁成 16:9；横图效果最好。固定到主屏幕的信号源（HDMI 等）也在这里，点右上角的 ✎ 给它起名字，比如「客厅 Apple TV」。",
+  "点一个 App，从手机选一张图片换掉它在电视上的图标。图片会裁成 16:9，横图效果最好。固定到主屏幕的信号源（HDMI 等）也在这里，还可以起名字。",
   "反馈问题",
   "这台电视上 Aerial 有问题，或者想让 Aerial 适配它：复制诊断信息，贴进 GitHub 的「机型适配」反馈里。里面是机型、系统版本、桌面接管状态、信号源和 Aerial 的日志，不含账号、Wi-Fi 名称、IP 地址和照片。",
   "显示诊断信息",
@@ -235,12 +332,10 @@ const TEXTS = {
   "信号源",
   "自定义图标",
   "起名字",
-  "给「{port}」起个名字（留空恢复默认）",
   "电视上已改名",
   "已恢复默认名字",
   "改名失败，请重试",
   "恢复默认图标",
-  "恢复「{label}」的默认图标？",
   "已恢复默认图标",
   "与 Apple TV 默认一致：选中的 App 只放大浮起。",
   "选中的 App 外面加一圈白色描边，离得远也看得清。",
@@ -277,10 +372,25 @@ const TEXTS = {
   "视频：添加 {n} 段，失败 {failed} 段",
   "无法保存，请检查视频格式和电视剩余空间",
   "正在发送 {n} / {total}…",
-  "在电视的个性化里选了「系统内置」：用电视自带的屏保。在这里选一种就改回 Aerial 的屏保。"
+  "在电视的个性化里选了「系统内置」：用电视自带的屏保。在这里选一种就改回 Aerial 的屏保。",
+  "壁纸",
+  "主屏幕",
+  "更多",
+  "当前壁纸",
+  "取消",
+  "保存",
+  "例如 客厅 Apple TV",
+  "给信号源起个名字，留空恢复默认名字。",
+  "从手机选一张图片",
+  "这台电视",
+  "文件夹",
+  "{n} 个 App",
+  "文件夹名字",
+  "改好后电视上马上更新。",
+  "文件夹已改名",
+  "型号"
  ],
  "en": [
-  "Personalize",
   "Screensaver",
   "Screensaver",
   "Aerial",
@@ -292,10 +402,9 @@ const TEXTS = {
   "Weather",
   "Enter a city, e.g. London",
   "Set",
-  "Add from Phone",
-  "Choose photos to use as TV wallpaper",
+  "Add Photos",
   "App Icons",
-  "Tap an app and pick a picture from your phone to replace its icon on the TV. The picture is cropped to 16:9; wide pictures work best. Inputs pinned to Home (HDMI and the like) are here too: tap ✎ at the top right to name one, for example “Living Room Apple TV”.",
+  "Tap an app to replace its icon on the TV with a picture from your phone. Pictures are cropped to 16:9; wide ones work best. Inputs pinned to Home (HDMI and the like) are here too, and can be renamed.",
   "Report a Problem",
   "Something is wrong with Aerial on this TV, or you want Aerial to support it: copy the diagnostics and paste them into a GitHub “Device” issue. They hold the model, the system version, the Home takeover status, the inputs and Aerial’s log, and no accounts, Wi-Fi names, IP addresses or photos.",
   "Show Diagnostics",
@@ -329,12 +438,10 @@ const TEXTS = {
   "Input",
   "Custom icon",
   "Rename",
-  "Name “{port}” (leave empty to restore the default)",
   "Renamed on the TV",
   "Default name restored",
   "Could not rename, try again",
   "Restore default icon",
-  "Restore the default icon of “{label}”?",
   "Default icon restored",
   "As on Apple TV: the selected app only lifts.",
   "A white frame around the selected app, easy to see from across the room.",
@@ -371,10 +478,25 @@ const TEXTS = {
   "Videos: {n} added, {failed} failed",
   "Could not save; check the format and free space on the TV",
   "Sending {n} / {total}…",
-  "“System” is chosen on the TV: the TV's own screensaver. Choose one here to use Aerial's again."
+  "“System” is chosen on the TV: the TV's own screensaver. Choose one here to use Aerial's again.",
+  "Wallpaper",
+  "Home Screen",
+  "More",
+  "Current Wallpaper",
+  "Cancel",
+  "Save",
+  "e.g. Living Room Apple TV",
+  "Name this input; leave it empty to restore the default name.",
+  "Choose a Picture",
+  "This TV",
+  "Folders",
+  "{n} apps",
+  "Folder name",
+  "The TV updates right away.",
+  "Folder renamed",
+  "Model"
  ],
  "ru": [
-  "Персонализация",
   "Заставка",
   "Заставка",
   "Аэросъёмка",
@@ -386,10 +508,9 @@ const TEXTS = {
   "Погода",
   "Введите город, например Москва",
   "Задать",
-  "Добавить с телефона",
-  "Выберите фото для обоев телевизора",
+  "Добавить фото",
   "Значки приложений",
-  "Нажмите на приложение и выберите на телефоне картинку, чтобы заменить его значок на телевизоре. Картинка обрезается до 16:9; лучше всего подходят широкие. Здесь же источники, закреплённые на главном экране (HDMI и подобные): нажмите ✎ в правом верхнем углу, чтобы назвать источник, например «Apple TV в гостиной».",
+  "Нажмите на приложение, чтобы заменить его значок на телевизоре картинкой с телефона. Картинка обрезается до 16:9; лучше всего подходят широкие. Здесь же источники, закреплённые на главном экране (HDMI и подобные), их можно переименовать.",
   "Сообщить о проблеме",
   "С Aerial на этом телевизоре что-то не так, или вы хотите, чтобы Aerial его поддерживал: скопируйте диагностику и вставьте её в обращение GitHub о моделях. В ней модель, версия системы, статус перехвата главного экрана, источники и журнал Aerial, без учётных записей, названий Wi-Fi, IP-адресов и фото.",
   "Показать диагностику",
@@ -423,12 +544,10 @@ const TEXTS = {
   "Источник",
   "Свой значок",
   "Переименовать",
-  "Назовите «{port}» (оставьте пустым, чтобы вернуть название по умолчанию)",
   "Переименовано на телевизоре",
   "Название по умолчанию восстановлено",
   "Не удалось переименовать, повторите",
   "Вернуть значок по умолчанию",
-  "Вернуть значок «{label}» по умолчанию?",
   "Значок по умолчанию возвращён",
   "Как на Apple TV: выбранное приложение лишь приподнимается.",
   "Белая рамка вокруг выбранного приложения, хорошо заметная с другого конца комнаты.",
@@ -465,10 +584,25 @@ const TEXTS = {
   "Видео: добавлено {n}, не удалось {failed}",
   "Не удалось сохранить; проверьте формат и свободное место на ТВ",
   "Отправка {n} / {total}…",
-  "На телевизоре выбрана «Системная»: заставка самого телевизора. Выберите здесь, чтобы вернуть заставку Aerial."
+  "На телевизоре выбрана «Системная»: заставка самого телевизора. Выберите здесь, чтобы вернуть заставку Aerial.",
+  "Обои",
+  "Главный экран",
+  "Ещё",
+  "Текущие обои",
+  "Отмена",
+  "Сохранить",
+  "например, Apple TV в гостиной",
+  "Назовите источник; оставьте пустым, чтобы вернуть название по умолчанию.",
+  "Выбрать картинку",
+  "Этот телевизор",
+  "Папки",
+  "Приложений: {n}",
+  "Название папки",
+  "На телевизоре изменится сразу.",
+  "Папка переименована",
+  "Модель"
  ],
  "uk": [
-  "Персоналізація",
   "Заставка",
   "Заставка",
   "Аерозйомка",
@@ -480,10 +614,9 @@ const TEXTS = {
   "Погода",
   "Введіть місто, наприклад Київ",
   "Задати",
-  "Додати з телефона",
-  "Виберіть фото для шпалер телевізора",
+  "Додати фото",
   "Значки застосунків",
-  "Натисніть на застосунок і виберіть на телефоні зображення, щоб замінити його значок на телевізорі. Зображення обрізається до 16:9; найкраще підходять широкі. Тут же джерела, закріплені на головному екрані (HDMI тощо): натисніть ✎ у правому верхньому куті, щоб назвати джерело, наприклад «Apple TV у вітальні».",
+  "Натисніть на застосунок, щоб замінити його значок на телевізорі зображенням з телефона. Зображення обрізається до 16:9; найкраще підходять широкі. Тут же джерела, закріплені на головному екрані (HDMI тощо), їх можна перейменувати.",
   "Повідомити про проблему",
   "З Aerial на цьому телевізорі щось не так, або ви хочете, щоб Aerial його підтримував: скопіюйте діагностику й вставте її в звернення GitHub про моделі. У ній модель, версія системи, статус перехоплення головного екрана, джерела та журнал Aerial, без облікових записів, назв Wi-Fi, IP-адрес і фото.",
   "Показати діагностику",
@@ -517,12 +650,10 @@ const TEXTS = {
   "Джерело",
   "Власний значок",
   "Перейменувати",
-  "Назвіть «{port}» (залиште порожнім, щоб повернути назву за замовчуванням)",
   "Перейменовано на телевізорі",
   "Назву за замовчуванням відновлено",
   "Не вдалося перейменувати, повторіть",
   "Повернути значок за замовчуванням",
-  "Повернути значок «{label}» за замовчуванням?",
   "Значок за замовчуванням повернуто",
   "Як на Apple TV: вибраний застосунок лише трохи підіймається.",
   "Біла рамка навколо вибраного застосунку, добре помітна з іншого кінця кімнати.",
@@ -559,10 +690,25 @@ const TEXTS = {
   "Відео: додано {n}, не вдалося {failed}",
   "Не вдалося зберегти; перевірте формат і вільне місце на ТБ",
   "Надсилання {n} / {total}…",
-  "На телевізорі вибрано «Системна»: заставка самого телевізора. Виберіть тут, щоб повернути заставку Aerial."
+  "На телевізорі вибрано «Системна»: заставка самого телевізора. Виберіть тут, щоб повернути заставку Aerial.",
+  "Шпалери",
+  "Головний екран",
+  "Ще",
+  "Поточні шпалери",
+  "Скасувати",
+  "Зберегти",
+  "наприклад, Apple TV у вітальні",
+  "Назвіть джерело; залиште порожнім, щоб повернути назву за замовчуванням.",
+  "Вибрати зображення",
+  "Цей телевізор",
+  "Папки",
+  "Застосунків: {n}",
+  "Назва папки",
+  "На телевізорі зміниться одразу.",
+  "Папку перейменовано",
+  "Модель"
  ],
  "kk": [
-  "Жекелендіру",
   "Экран қорғаушы",
   "Экран қорғаушы",
   "Аэрожиын",
@@ -574,10 +720,9 @@ const TEXTS = {
   "Ауа райы",
   "Қаланы енгізіңіз, мысалы Алматы",
   "Орнату",
-  "Телефоннан қосу",
-  "Теледидар түсқағазы үшін фото таңдаңыз",
+  "Фото қосу",
   "Қолданба белгішелері",
-  "Қолданбаны түртіп, телефоннан сурет таңдаңыз, сонда оның теледидардағы белгішесі ауысады. Сурет 16:9 өлшеміне қиылады; ең жақсы нәтижені кең суреттер береді. Басты экранға бекітілген көздер (HDMI және т.б.) де осында: атау беру үшін жоғарғы оң жақтағы ✎ түймесін басыңыз, мысалы «Қонақ бөлмедегі Apple TV».",
+  "Теледидардағы белгішесін телефондағы суретпен ауыстыру үшін қолданбаны түртіңіз. Сурет 16:9 өлшеміне қиылады; ең жақсы нәтижені кең суреттер береді. Басты экранға бекітілген көздер (HDMI және т.б.) де осында, олардың атын өзгертуге болады.",
   "Мәселе туралы хабарлау",
   "Осы теледидардағы Aerial-де ақау бар немесе Aerial-дің оны қолдағанын қалайсыз: диагностиканы көшіріп, GitHub-тағы құрылғы туралы өтінішке қойыңыз. Онда модель, жүйе нұсқасы, басты экранды басып алу күйі, көздер және Aerial журналы бар, есептік жазбалар, Wi-Fi атаулары, IP мекенжайлар және фотолар жоқ.",
   "Диагностиканы көрсету",
@@ -611,12 +756,10 @@ const TEXTS = {
   "Көз",
   "Өз белгішесі",
   "Атын өзгерту",
-  "«{port}» атауын беріңіз (әдепкі атау үшін бос қалдырыңыз)",
   "Теледидарда аты өзгертілді",
   "Әдепкі атау қайтарылды",
   "Атын өзгертуге болмады, қайталап көріңіз",
   "Әдепкі белгішені қайтару",
-  "«{label}» әдепкі белгішесін қайтару керек пе?",
   "Әдепкі белгіше қайтарылды",
   "Apple TV сияқты: таңдалған қолданба тек көтеріледі.",
   "Таңдалған қолданбаның айналасындағы ақ жақтау, бөлменің арғы шетінен де жақсы көрінеді.",
@@ -653,7 +796,23 @@ const TEXTS = {
   "Бейне: {n} қосылды, {failed} сәтсіз",
   "Сақтау мүмкін емес; пішімді және теледидардағы бос орынды тексеріңіз",
   "Жіберілуде {n} / {total}…",
-  "Теледидарда «Жүйелік» таңдалған: теледидардың өз экран сақтағышы. Aerial-дікіне қайту үшін осы жерден таңдаңыз."
+  "Теледидарда «Жүйелік» таңдалған: теледидардың өз экран сақтағышы. Aerial-дікіне қайту үшін осы жерден таңдаңыз.",
+  "Түсқағаз",
+  "Басты экран",
+  "Тағы",
+  "Ағымдағы түсқағаз",
+  "Бас тарту",
+  "Сақтау",
+  "мысалы, Қонақ бөлмедегі Apple TV",
+  "Көзге атау беріңіз; әдепкі атауды қайтару үшін бос қалдырыңыз.",
+  "Сурет таңдау",
+  "Осы теледидар",
+  "Қалталар",
+  "{n} қолданба",
+  "Қалта атауы",
+  "Теледидарда бірден жаңарады.",
+  "Қалтаның аты өзгертілді",
+  "Модель"
  ]
 };
 const LANGS = Object.keys(TEXTS);
@@ -677,6 +836,7 @@ function initLangSwitch() {
   const s = $('#lang');
   for (const l of LANGS) { const o = document.createElement('option'); o.value = l; o.textContent = NAMES[l] || l; s.appendChild(o); }
   s.value = LANG;
+  $('#langName').textContent = NAMES[LANG] || LANG;
   s.onchange = () => {
     try { localStorage.setItem('aerial-lang', s.value); } catch (e) {}
     const u = new URL(location.href); u.searchParams.set('lang', s.value); location.replace(u.toString());
@@ -689,13 +849,8 @@ function applyI18n() {
   document.querySelectorAll('[data-i18n-placeholder]').forEach(e => e.setAttribute('placeholder', t(e.dataset.i18nPlaceholder)));
 }
 
-const hints = {
-  aerial: t('hint_aerial'),
-  photos: t('hint_photos'),
-  clock: t('hint_clock'),
-  videos: t('hint_videos'),
-  system: t('hint_system')
-};
+
+const hints = { aerial: t('hint_aerial'), photos: t('hint_photos'), clock: t('hint_clock'), videos: t('hint_videos'), system: t('hint_system') };
 const groups = [
   ['live', t('g_live'), t('g_live_sub')],
   ['daily', t('g_daily'), t('g_daily_sub')],
@@ -703,10 +858,16 @@ const groups = [
   ['builtin', t('g_builtin'), ''],
   ['auto', t('g_auto'), '']
 ];
+const ICON = {
+  check: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  close: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  chev: '<svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l6 6-6 6"/></svg>',
+  plus: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'
+};
 
 function toast(msg) {
-  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
-  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove('on'), 1800);
+  const box = $('#toast'); box.textContent = msg; box.classList.add('on');
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => box.classList.remove('on'), 1800);
 }
 
 async function api(path, body) {
@@ -715,199 +876,280 @@ async function api(path, body) {
   if (!r.ok) throw new Error(r.status);
   return r.json();
 }
+function take(next) { state = next; stateJson = ''; render(); }
 
-function card(w, selected, extraClass) {
-  const b = document.createElement('button');
-  b.className = 'wp ' + (extraClass || '');
-  b.setAttribute('aria-selected', selected ? 'true' : 'false');
-  b.innerHTML = `<img loading="lazy" alt="" src="${base}thumb/${encodeURIComponent(w.id)}">
-    <span class="check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
-    <div class="t"></div><div class="c"></div>`;
+/* Tabs. The tab is kept in the address (#home) and on the phone, and each tab keeps its own scroll. */
+const TABS = ['wallpaper', 'screensaver', 'home', 'more'];
+const TITLES = { wallpaper: 'tab_wallpaper', screensaver: 'screensaver', home: 'tab_home', more: 'tab_more' };
+const scrolls = {};
+let tab = null;
+function show(next, keepScroll) {
+  if (!TABS.includes(next)) next = 'wallpaper';
+  if (tab === next) { if (!keepScroll) window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+  if (tab) scrolls[tab] = window.scrollY;
+  tab = next;
+  document.querySelectorAll('section[data-tab]').forEach(s => s.hidden = s.dataset.tab !== tab);
+  document.querySelectorAll('nav button').forEach(b => b.setAttribute('aria-selected', b.dataset.go === tab ? 'true' : 'false'));
+  $('#title').textContent = t(TITLES[tab]);
+  window.scrollTo(0, scrolls[tab] || 0);
+  try { localStorage.setItem('aerial-tab', tab); } catch (e) {}
+  history.replaceState(null, '', '#' + tab);
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.go));
+
+/* Bottom sheet. */
+const sheet = $('#sheet');
+function openSheet(build) {
+  const body = $('#sheetBody'); body.replaceChildren(); build(body);
+  clearTimeout(openSheet.timer);
+  sheet.hidden = false;
+  requestAnimationFrame(() => requestAnimationFrame(() => sheet.classList.add('open')));
+}
+function closeSheet() {
+  sheet.classList.remove('open');
+  clearTimeout(openSheet.timer); openSheet.timer = setTimeout(() => sheet.hidden = true, 220);
+}
+$('#scrim').onclick = closeSheet;
+function action(list, text, cls, fn) {
+  const b = el('button', 'item center ' + (cls || 'tint'), text); b.onclick = fn; list.appendChild(b); return b;
+}
+
+/* Wallpaper tab. */
+function titleOf(id) {
+  if (id === state.latestDaily) return t('daily_title');
+  if (id === state.rotatePhotos) return t('rotate_title');
+  const w = state.wallpapers.find(w => w.id === id);
+  return w ? w.title : '';
+}
+function card(w) {
+  const b = el('button', 'wp');
+  b.setAttribute('aria-selected', w.id === state.selected ? 'true' : 'false');
+  b.innerHTML = `<div class="pic"><img loading="lazy" alt=""><span class="check">${ICON.check}</span></div><div class="t"></div><div class="c"></div>`;
+  b.querySelector('img').src = `${base}thumb/${encodeURIComponent(w.id)}`;
   b.querySelector('.t').textContent = w.title;
   b.querySelector('.c').textContent = w.caption || '';
   b.onclick = async () => {
-    state = await api('api/wallpaper', { id: w.id }); render(); toast(t('toast_wallpaper'));
+    if (w.id === state.selected) return;
+    try { take(await api('api/wallpaper', { id: w.id })); toast(t('toast_wallpaper')); } catch (e) { toast(t('toast_set_fail')); }
   };
   if (w.kind === 'photo') {
-    const d = document.createElement('button');
-    d.className = 'del'; d.textContent = '✕'; d.setAttribute('aria-label', t('aria_delete'));
-    d.onclick = async e => {
+    const d = el('button', 'badge'); d.innerHTML = ICON.close; d.setAttribute('aria-label', t('aria_delete'));
+    d.onclick = e => {
       e.stopPropagation();
-      if (!confirm(t('confirm_delete'))) return;
-      state = await api('api/delete', { id: w.id }); render();
+      openSheet(body => {
+        const pic = el('div', 'pic'); const img = el('img'); img.src = `${base}thumb/${encodeURIComponent(w.id)}`; pic.appendChild(img); body.appendChild(pic);
+        body.appendChild(el('h3', '', t('confirm_delete')));
+        body.appendChild(el('p', 'meta', w.title));
+        const l = el('div', 'list'); body.appendChild(l);
+        action(l, t('aria_delete'), 'danger', async () => { closeSheet(); try { take(await api('api/delete', { id: w.id })); } catch (err) { toast(t('toast_set_fail')); } });
+        const c = el('div', 'list'); body.appendChild(c);
+        action(c, t('cancel'), 'tint', closeSheet).style.fontWeight = '600';
+      });
     };
-    b.appendChild(d);
+    b.querySelector('.pic').appendChild(d);
   }
   return b;
 }
-
-const weatherNames = { clear: t('wx_clear'), partlycloudy: t('wx_partlycloudy'), cloudy: t('wx_cloudy'), fog: t('wx_fog'), rain: t('wx_rain'), snow: t('wx_snow'), thunder: t('wx_thunder') };
-
-function renderWeather() {
-  const w = state.weather || {};
-  $('#wxNow').textContent = w.celsius !== undefined ? `${w.celsius}° ${weatherNames[w.kind] || ''}` : '—';
-  $('#wxPlace').textContent = w.place || '';
-  const hint = $('#wxHint'); hint.innerHTML = '';
-  if (w.chosen) {
-    hint.append(t('wx_chosen', { place: w.place }));
-    const b = document.createElement('button'); b.className = 'link'; b.textContent = t('wx_auto_btn');
-    b.onclick = async () => { state = await api('api/weather/auto', {}); render(); toast(t('toast_auto')); };
-    hint.append(b);
-  } else {
-    hint.textContent = w.place
-      ? t('wx_guessed', { place: w.place })
-      : t('wx_none');
+function renderWallpapers() {
+  $('#heroImg').src = `${base}thumb/${encodeURIComponent(state.selected)}`;
+  $('#heroTitle').textContent = titleOf(state.selected);
+  const root = $('#sections'); root.replaceChildren();
+  for (const [kind, title, sub] of groups) {
+    let list = state.wallpapers.filter(w => w.kind === kind);
+    if (kind === 'daily' && list.length) list = [{ id: state.latestDaily, kind: 'daily', title: t('daily_title'), caption: t('daily_caption') }, ...list];
+    // Two or more photos: one a day, as on the TV (#27, #194).
+    if (kind === 'photo' && list.length > 1) list = [{ id: state.rotatePhotos, kind: 'photos', title: t('rotate_title'), caption: t('rotate_caption') }, ...list];
+    if (!list.length && kind !== 'photo') continue;
+    root.appendChild(el('h2', 'big', title));
+    if (kind === 'photo') {
+      const up = el('label', 'btn add');
+      up.innerHTML = `${ICON.plus}<span id="uploadLabel"></span><input id="file" type="file" accept="image/*" multiple hidden>`;
+      up.querySelector('span').textContent = uploading ? t('sending_n', { n: uploading }) : t('upload_label');
+      if (uploading) up.setAttribute('disabled', '');
+      up.querySelector('input').onchange = uploadPhotos;
+      root.appendChild(up);
+      if (!list.length) { root.appendChild(el('p', 'empty', t('empty_photos'))); continue; }
+    }
+    const g = el('div', 'grid');
+    list.forEach(w => g.appendChild(card(w)));
+    root.appendChild(g);
+    if (sub) root.appendChild(el('p', 'foot', sub));
+    if (kind === 'photo' && list.length === 1) root.appendChild(el('p', 'foot', t('add_second')));
   }
 }
-
-let iconFor = null;
-function renderApps() {
-  const g = $('#apps'); g.innerHTML = '';
-  for (const a of state.apps || []) {
-    const b = document.createElement('button');
-    b.className = 'wp';
-    b.innerHTML = `<img loading="lazy" alt=""><div class="t"></div><div class="c"></div>`;
-    b.querySelector('img').src = `${base}tile/${encodeURIComponent(a.key)}?v=${a.stamp}-${a.look || 0}`;
-    b.querySelector('.t').textContent = a.label;
-    b.querySelector('.c').textContent = a.source ? (a.label === a.port ? t('tag_source') : a.port) : a.custom ? t('tag_custom') : '';
-    if (a.source) {
-      const n = document.createElement('button');
-      n.className = 'del ren'; n.textContent = '✎'; n.setAttribute('aria-label', t('aria_rename'));
-      n.onclick = async e => {
-        e.stopPropagation();
-        const name = prompt(t('prompt_rename', { port: a.port }), a.name || '');
-        if (name === null) return;
-        try { state = await api('api/source/name', { app: a.key, name }); render(); toast(t(name.trim() ? 'toast_renamed' : 'toast_name_reset')); }
-        catch (err) { toast(t('toast_rename_fail')); }
-      };
-      b.appendChild(n);
-    }
-    b.onclick = () => { iconFor = a; $('#iconFile').click(); };
-    if (a.custom) {
-      const r = document.createElement('button');
-      r.className = 'del'; r.textContent = '↺'; r.setAttribute('aria-label', t('aria_reset_icon'));
-      r.onclick = async e => {
-        e.stopPropagation();
-        if (!confirm(t('confirm_reset_icon', { label: a.label }))) return;
-        state = await api('api/icon/reset', { app: a.key }); render(); toast(t('toast_icon_reset'));
-      };
-      b.appendChild(r);
-    }
-    g.appendChild(b);
-  }
+let uploading = 0;
+async function uploadPhotos(e) {
+  const files = [...e.target.files]; if (!files.length) return;
+  uploading = files.length; stateJson = ''; render();
+  try {
+    const fd = new FormData(); files.forEach((f, i) => fd.append('photo' + i, f, f.name));
+    const r = await fetch(base + 'api/upload', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error(r.status);
+    const next = await r.json(); uploading = 0; take(next);
+    toast(next.added ? t('toast_added', { n: next.added }) : t('toast_no_photos'));
+  } catch (err) { uploading = 0; stateJson = ''; render(); toast(t('toast_send_fail')); }
 }
 
-function renderVideos() {
+/* Screensaver tab. */
+let sendingVideo = '';
+function renderScreensaver() {
+  document.querySelectorAll('#ss [data-mode]').forEach(b => b.setAttribute('aria-checked', b.dataset.mode === state.screensaver ? 'true' : 'false'));
+  $('#ssFoot').textContent = state.screensaverFollows ? t('hint_follows') : state.screensaver === 'system' ? hints.system : '';
+  $('#ssFoot').hidden = !$('#ssFoot').textContent;
   $('#videos').hidden = state.screensaver !== 'videos';
   const list = $('#videoList'); list.replaceChildren();
   const videos = state.videos || [];
-  if (!videos.length) {
-    const p = document.createElement('p'); p.className = 'empty'; p.textContent = t('videos_empty'); list.appendChild(p);
-  }
+  if (!videos.length) { const row = el('div', 'item'); row.appendChild(el('span', 'txt', t('videos_empty'))).style.color = 'var(--secondary)'; list.appendChild(row); }
   for (const video of videos) {
-    const row = document.createElement('div'); row.className = 'video-row';
-    const name = document.createElement('span'); name.textContent = video.name; row.appendChild(name);
-    const button = document.createElement('button'); button.className = 'link'; button.textContent = t('aria_delete');
-    button.onclick = async () => {
+    const row = el('div', 'item');
+    row.appendChild(el('span', 'txt', video.name));
+    const del = el('button', 'link', t('aria_delete')); del.style.color = 'var(--danger)';
+    del.onclick = async () => {
       if (!confirm(t('confirm_video_delete', { name: video.name }))) return;
-      button.disabled = true;
-      try { state = await api('api/videos/delete', { id: video.id }); render(); }
-      catch (err) { button.disabled = false; toast(t('toast_video_bad')); }
+      del.disabled = true;
+      try { take(await api('api/videos/delete', { id: video.id })); } catch (err) { del.disabled = false; toast(t('toast_video_bad')); }
     };
-    row.appendChild(button); list.appendChild(row);
+    row.appendChild(del); list.appendChild(row);
   }
+  $('#videoUploadLabel').textContent = sendingVideo || t('videos_upload');
 }
-
+document.querySelectorAll('#ss [data-mode]').forEach(b => b.onclick = async () => {
+  if (b.dataset.mode === state.screensaver && !state.screensaverFollows) return;
+  try { take(await api('api/screensaver', { mode: b.dataset.mode })); toast(t('toast_tv_updated')); } catch (e) { toast(t('toast_set_fail')); }
+});
 $('#videoFile').onchange = async e => {
   const input = e.target; const files = [...input.files]; if (!files.length) return;
-  const btn = $('#videoUploadBtn'); const label = $('#videoUploadLabel');
+  const btn = $('#videoUploadBtn');
   input.disabled = true; btn.setAttribute('disabled', '');
   let added = 0;
   for (const [i, file] of files.entries()) {
-    label.textContent = t('sending_video', { n: i + 1, total: files.length });
+    sendingVideo = t('sending_video', { n: i + 1, total: files.length }); $('#videoUploadLabel').textContent = sendingVideo;
     if (!file.size || file.size > 200 * 1024 * 1024) continue;
     try {
       const fd = new FormData(); fd.append('video', file, file.name);
       const r = await fetch(base + 'api/videos/upload', { method: 'POST', body: fd });
       if (!r.ok) throw new Error(r.status);
-      state = await r.json(); if (state.saved) added++; render();
+      const next = await r.json(); if (next.saved) added++; take(next);
     } catch (err) { /* Keep going: a failed film should not discard the rest of the batch. */ }
   }
-  input.disabled = false; input.value = ''; btn.removeAttribute('disabled'); label.textContent = t('videos_upload');
+  sendingVideo = ''; input.disabled = false; input.value = ''; btn.removeAttribute('disabled'); stateJson = ''; render();
   toast(t('toast_videos_added', { n: added, failed: files.length - added }));
 };
 
-function render() {
-  renderVideos();
-  renderWeather();
+/* Home screen tab. */
+const weatherNames = { clear: t('wx_clear'), partlycloudy: t('wx_partlycloudy'), cloudy: t('wx_cloudy'), fog: t('wx_fog'), rain: t('wx_rain'), snow: t('wx_snow'), thunder: t('wx_thunder') };
+function renderHome() {
+  document.querySelectorAll('#focus [data-style]').forEach(b => b.setAttribute('aria-checked', b.dataset.style === state.focusStyle ? 'true' : 'false'));
+  const w = state.weather || {};
+  $('#wxNow').textContent = w.celsius !== undefined ? `${w.celsius}° ${weatherNames[w.kind] || ''}` : '—';
+  $('#wxPlace').textContent = w.place || '';
+  const hint = $('#wxHint'); hint.replaceChildren();
+  if (w.chosen) {
+    hint.append(t('wx_chosen', { place: w.place }) + ' ');
+    const b = el('button', 'link', t('wx_auto_btn'));
+    b.onclick = async () => { try { take(await api('api/weather/auto', {})); toast(t('toast_auto')); } catch (e) { toast(t('toast_set_fail')); } };
+    hint.append(b);
+  } else hint.textContent = w.place ? t('wx_guessed', { place: w.place }) : t('wx_none');
+  renderFolders();
   renderApps();
-  document.querySelectorAll('#ss button').forEach(b =>
-    b.setAttribute('aria-pressed', b.dataset.mode === state.screensaver ? 'true' : 'false'));
-  $('#ssHint').textContent = state.screensaverFollows
-    ? t('hint_follows')
-    : (hints[state.screensaver] || '');
-  document.querySelectorAll('#focus button').forEach(b =>
-    b.setAttribute('aria-pressed', b.dataset.style === state.focusStyle ? 'true' : 'false'));
-  $('#focusHint').textContent = state.focusStyle === 'standard'
-    ? t('focus_hint_standard')
-    : t('focus_hint_high');
-  const root = $('#sections'); root.innerHTML = '';
-  for (const [kind, title, sub] of groups) {
-    let list = state.wallpapers.filter(w => w.kind === kind);
-    if (kind === 'daily' && list.length) {
-      list = [{ id: state.latestDaily, kind: 'daily', title: t('daily_title'), caption: t('daily_caption') }, ...list];
-    }
-    // Two or more photos: one a day, as on the TV (#27, #194).
-    if (kind === 'photo' && list.length > 1) {
-      list = [{ id: state.rotatePhotos, kind: 'photos', title: t('rotate_title'), caption: t('rotate_caption') }, ...list];
-    }
-    if (!list.length && kind !== 'photo') continue;
-    const h = document.createElement('h2'); h.textContent = title; root.appendChild(h);
-    if (!list.length) {
-      const p = document.createElement('p'); p.className = 'empty'; p.textContent = t('empty_photos'); root.appendChild(p);
-      continue;
-    }
-    const g = document.createElement('div'); g.className = 'grid';
-    list.forEach(w => g.appendChild(card(w, w.id === state.selected)));
-    root.appendChild(g);
-    if (kind === 'photo' && list.length === 1) {
-      const p = document.createElement('p'); p.className = 'empty'; p.textContent = t('add_second'); root.appendChild(p);
-    }
+}
+function renderFolders() {
+  const folders = state.folders || [];
+  $('#foldersBox').hidden = !folders.length;
+  const list = $('#folders'); list.replaceChildren();
+  for (const f of folders) {
+    const b = el('button', 'item');
+    const img = el('img', 'thumb'); img.alt = ''; img.src = `${base}tile/${encodeURIComponent(f.key)}?v=${f.stamp}`;
+    const txt = el('span', 'txt', f.name); txt.appendChild(el('span', 'sub', t('folder_count', { n: f.count })));
+    b.append(img, txt); b.insertAdjacentHTML('beforeend', ICON.chev);
+    b.onclick = () => folderSheet(f);
+    list.appendChild(b);
   }
 }
-
-document.querySelectorAll('#ss button').forEach(b => b.onclick = async () => {
-  state = await api('api/screensaver', { mode: b.dataset.mode }); render();
+function folderSheet(f) {
+  openSheet(body => {
+    const pic = el('div', 'pic'); const img = el('img'); img.src = `${base}tile/${encodeURIComponent(f.key)}?v=${f.stamp}`; pic.appendChild(img); body.appendChild(pic);
+    body.appendChild(el('h3', '', f.name));
+    body.appendChild(el('p', 'meta', t('folder_count', { n: f.count })));
+    const l = el('div', 'list'); body.appendChild(l);
+    const form = el('form', 'item field');
+    const input = el('input'); input.type = 'text'; input.value = f.name; input.placeholder = t('folder_ph'); input.maxLength = 24;
+    input.setAttribute('enterkeyhint', 'done'); input.autocomplete = 'off'; input.setAttribute('aria-label', t('folder_ph'));
+    const save = el('button', 'link', t('save'));
+    const sync = () => save.disabled = !input.value.trim() || input.value.trim() === f.name;
+    input.oninput = sync; sync();
+    form.append(input, save); l.appendChild(form);
+    form.onsubmit = async e => {
+      e.preventDefault(); const name = input.value.trim(); if (!name) return; closeSheet();
+      try { const next = await api('api/folder/name', { id: f.id, name }); take(next); toast(t(next.saved ? 'toast_folder_renamed' : 'toast_rename_fail')); }
+      catch (err) { toast(t('toast_rename_fail')); }
+    };
+    body.appendChild(el('p', 'foot', t('folder_rename_hint'))).style.marginBottom = '16px';
+    const c = el('div', 'list'); body.appendChild(c);
+    action(c, t('cancel'), 'tint', closeSheet).style.fontWeight = '600';
+  });
+}
+document.querySelectorAll('#focus [data-style]').forEach(b => b.onclick = async () => {
+  if (b.dataset.style === state.focusStyle) return;
+  try { take(await api('api/focus', { style: b.dataset.style })); toast(t('toast_tv_updated')); } catch (e) { toast(t('toast_set_fail')); }
 });
-document.querySelectorAll('#focus button').forEach(b => b.onclick = async () => {
-  state = await api('api/focus', { style: b.dataset.style }); render(); toast(t('toast_tv_updated'));
-});
-
-$('#file').onchange = async e => {
-  const files = [...e.target.files]; if (!files.length) return;
-  const btn = $('#uploadBtn'); const label = $('#uploadLabel');
-  btn.setAttribute('disabled', ''); label.textContent = t('sending_n', { n: files.length });
-  try {
-    const fd = new FormData(); files.forEach((f, i) => fd.append('photo' + i, f, f.name));
-    const r = await fetch(base + 'api/upload', { method: 'POST', body: fd });
-    state = await r.json(); render();
-    toast(state.added ? t('toast_added', { n: state.added }) : t('toast_no_photos'));
-  } catch (err) { toast(t('toast_send_fail')); }
-  btn.removeAttribute('disabled'); label.textContent = t('upload_label'); e.target.value = '';
-};
-
+$('#city').oninput = () => $('#cityBtn').disabled = !$('#city').value.trim();
 $('#cityForm').onsubmit = async e => {
   e.preventDefault();
   const name = $('#city').value.trim(); if (!name) return;
-  const btn = $('#cityBtn'); btn.setAttribute('disabled', '');
+  const btn = $('#cityBtn'); btn.disabled = true; $('#city').blur();
   try {
-    state = await api('api/weather/city', { name }); render();
-    toast(state.found ? t('toast_city_set', { place: state.weather.place }) : t('toast_city_nf', { name }));
-    if (state.found) $('#city').value = '';
+    const next = await api('api/weather/city', { name }); take(next);
+    toast(next.found ? t('toast_city_set', { place: next.weather.place }) : t('toast_city_nf', { name }));
+    if (next.found) $('#city').value = '';
   } catch (err) { toast(t('toast_set_fail')); }
-  btn.removeAttribute('disabled');
+  btn.disabled = !$('#city').value.trim();
 };
 
+function tileSrc(a) { return `${base}tile/${encodeURIComponent(a.key)}?v=${a.stamp}-${a.look || 0}`; }
+function renderApps() {
+  const g = $('#apps'); g.replaceChildren();
+  for (const a of state.apps || []) {
+    const b = el('button', 'wp');
+    b.innerHTML = `<div class="pic"><img loading="lazy" alt=""></div><div class="t"></div><div class="c"></div>`;
+    b.querySelector('img').src = tileSrc(a);
+    b.querySelector('.t').textContent = a.label;
+    b.querySelector('.c').textContent = a.source ? (a.label === a.port ? t('tag_source') : a.port) : a.custom ? t('tag_custom') : '';
+    b.onclick = () => appSheet(a);
+    g.appendChild(b);
+  }
+}
+let iconFor = null;
+function appSheet(a) {
+  openSheet(body => {
+    const pic = el('div', 'pic'); const img = el('img'); img.src = tileSrc(a); pic.appendChild(img); body.appendChild(pic);
+    body.appendChild(el('h3', '', a.label));
+    body.appendChild(el('p', 'meta', a.source ? (a.label === a.port ? t('tag_source') : a.port) : a.custom ? t('tag_custom') : ''));
+    if (a.source) {
+      const l = el('div', 'list'); body.appendChild(l);
+      const f = el('form', 'item field');
+      const input = el('input'); input.type = 'text'; input.value = a.name || ''; input.placeholder = t('name_ph');
+      input.setAttribute('enterkeyhint', 'done'); input.autocomplete = 'off'; input.setAttribute('aria-label', t('aria_rename'));
+      const save = el('button', 'link', t('save'));
+      f.append(input, save); l.appendChild(f);
+      f.onsubmit = async e => {
+        e.preventDefault(); const name = input.value; closeSheet();
+        try { take(await api('api/source/name', { app: a.key, name })); toast(t(name.trim() ? 'toast_renamed' : 'toast_name_reset')); }
+        catch (err) { toast(t('toast_rename_fail')); }
+      };
+      body.appendChild(el('p', 'foot', t('rename_hint'))).style.marginBottom = '16px';
+    }
+    const l = el('div', 'list'); body.appendChild(l);
+    // The picker opens from this tap, so iOS treats it as the user's own gesture.
+    action(l, t('change_icon'), 'tint', () => { iconFor = a; $('#iconFile').click(); closeSheet(); });
+    if (a.custom) action(l, t('aria_reset_icon'), 'danger', async () => {
+      closeSheet();
+      try { take(await api('api/icon/reset', { app: a.key })); toast(t('toast_icon_reset')); } catch (e) { toast(t('toast_set_fail')); }
+    });
+    const c = el('div', 'list'); body.appendChild(c);
+    action(c, t('cancel'), 'tint', closeSheet).style.fontWeight = '600';
+  });
+}
 $('#iconFile').onchange = async e => {
   const f = e.target.files[0]; const a = iconFor; e.target.value = '';
   if (!f || !a) return;
@@ -916,34 +1158,47 @@ $('#iconFile').onchange = async e => {
     const fd = new FormData(); fd.append('app', a.key); fd.append('picture', f, f.name);
     const r = await fetch(base + 'api/icon', { method: 'POST', body: fd });
     if (!r.ok) throw new Error(r.status);
-    state = await r.json(); render();
-    toast(t(state.saved ? 'toast_icon_set' : 'toast_icon_bad'));
+    const next = await r.json(); take(next);
+    toast(t(next.saved ? 'toast_icon_set' : 'toast_icon_bad'));
   } catch (err) { toast(t('toast_send_fail')); }
 };
 
+/* More tab. */
 $('#diagBtn').onclick = async () => {
   const b = $('#diagBtn'); b.disabled = true; b.textContent = t('diag_collecting');
   try {
     const r = await fetch(base + 'api/diagnostics');
     if (!r.ok) throw new Error(r.status);
     $('#diag').value = await r.text();
-    $('#diag').hidden = false; $('#diagActions').hidden = false; b.hidden = true;
+    $('#diag').hidden = false; $('#diagActions').hidden = false; b.parentElement.hidden = true;
   } catch (e) { toast(t('toast_diag_fail')); b.textContent = t('diag_show'); }
   b.disabled = false;
 };
 // The page is plain HTTP on the LAN, where browsers offer no navigator.clipboard.
 $('#diagCopy').onclick = () => {
-  const t = $('#diag'); t.focus(); t.select(); t.setSelectionRange(0, t.value.length);
+  const box = $('#diag'); box.focus(); box.select(); box.setSelectionRange(0, box.value.length);
   let ok = false;
   try { ok = document.execCommand('copy'); } catch (e) {}
   toast(t(ok ? 'toast_copied' : 'toast_copy_manual'));
 };
 
+function render() {
+  if (!state) return;
+  // The page polls; skip the rebuild when nothing changed, so pictures do not flicker and taps are not lost.
+  const json = JSON.stringify(state);
+  if (json === stateJson) return;
+  stateJson = json;
+  renderWallpapers();
+  renderScreensaver();
+  renderHome();
+}
+
 initLangSwitch();
 applyI18n();
+show((location.hash || '').slice(1) || (() => { try { return localStorage.getItem('aerial-tab'); } catch (e) { return null; } })(), true);
 async function refresh() { try { state = await api('api/state'); render(); } catch (e) {} }
 refresh();
-setInterval(() => { if (!document.hidden) refresh(); }, 6000);
+setInterval(() => { if (!document.hidden && sheet.hidden) refresh(); }, 6000);
 </script>
 </body>
 </html>

@@ -100,6 +100,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private var loadJob: Job? = null
 
     init {
+        AppCatalog.renameFolder = ::renameFolder
         reload()
         // A tile picture set or removed from the phone page.
         viewModelScope.launch { snapshotFlow { CustomIcons.version }.drop(1).collect { reload() } }
@@ -194,6 +195,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             folderEntry(folder, art)
         }
         apps = arrangement.home
+        AppCatalog.folders = arrangement.home.filter { it.folder != null }
         folderApps = arrangement.folders
         hiddenApps = arrangement.hidden
     }
@@ -388,4 +390,9 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         movingKey = null
         if (resetFocus) homeResetPending = true
     }
+
+    override fun onCleared() {
+        if (AppCatalog.renameFolder == ::renameFolder) AppCatalog.renameFolder = null
+    }
 }
+

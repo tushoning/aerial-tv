@@ -35,7 +35,7 @@
 </p>
 
 - **首页**：常用的一排 App 放在屏幕下方的玻璃底板上，往下是全部 App。小米「应用中心」「米家」这类藏起来的系统 App 也在。
-- **整理**：长按 OK 键（或按菜单键）可以移动、放进文件夹、隐藏、卸载。固定到主屏幕的 HDMI 可以选接的是 Apple TV、PlayStation、Switch、Xbox、电脑等，换成对应的图标，也能在手机上起名字。
+- **整理**：长按 OK 键（或按菜单键）可以移动、放进文件夹、隐藏、卸载。固定到主屏幕的 HDMI 可以选接的是 Apple TV、PlayStation、Switch、Xbox、电脑等，换成对应的图标，也能在手机上起名字；文件夹也可以在手机上改名。
 - **控制中心**：在第一排按上键到右上角打开，有信号源、网络、设置、音量、亮度和个性化。
 - **屏保**：Apple TV 的 114 段航拍影片，电视支持时播 4K 或 4K 杜比视界，也可以换成照片、时钟或从手机添加的本地视频（[说明](docs/SCREENSAVER_VIDEOS.md)）。
 - **壁纸**：必应每日精选、14 张内置壁纸、用手机扫码传的照片，或者航拍：停在主屏幕 10 秒后在磁贴后面播放，按任意键停在当前画面。
@@ -159,7 +159,7 @@ curl -fsSL https://aerial.qust.me/install.sh | TV=192.168.1.20 bash -s restore
 | 康佳 2861、PPTV K55U27、极米 m7642、腾讯极光盒子 7S | Android 5–9 | 用户验证，各有小问题，见 [Issues](https://github.com/pengchujin/aerial-tv/issues) |
 | 雷鸟 55S595C Ultra | Android 11 | 能装，但接管不了 HOME（[#52](https://github.com/pengchujin/aerial-tv/issues/52)） |
 
-能装但开机进不了 Aerial 的：Vidda、海信、雷鸟鹤 6 2025 Ultra。你的电视能用，或者有问题，欢迎用[机型适配模板](https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml)告诉我们，附上诊断信息：电脑上运行 `curl -fsSL https://aerial.qust.me/tools/report.sh | TV=<电视IP> bash`（只读，不改电视），或者在手机配置页最下面「反馈问题」里复制。诊断信息不含账号、IP、Wi-Fi 名称和 App 列表。
+能装但开机进不了 Aerial 的：Vidda、海信、雷鸟鹤 6 2025 Ultra。你的电视能用，或者有问题，欢迎用[机型适配模板](https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml)告诉我们，附上诊断信息：电脑上运行 `curl -fsSL https://aerial.qust.me/tools/report.sh | TV=<电视IP> bash`（只读，不改电视），或者在手机配置页「更多 → 反馈问题」里复制。诊断信息不含账号、IP、Wi-Fi 名称和 App 列表。
 
 ## 开发
 
