@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import app.orchard.tv.apps.TileSheet
 import app.orchard.tv.settings.AerialSettings
+import app.orchard.tv.settings.PanelBehind
 import app.orchard.tv.system.DiagLog
 import app.orchard.tv.update.Updates
 import app.orchard.tv.wallpaper.ScreensaverMode
@@ -71,6 +72,11 @@ class ConfigReceiver : BroadcastReceiver() {
         }
         if (intent.hasExtra("keep_adb")) GuardSetup.setKeepAdb(context, intent.getBooleanExtra("keep_adb", false))
         if (intent.hasExtra("own_screensaver")) GuardSetup.setOwnScreensaver(context, intent.getBooleanExtra("own_screensaver", false))
+        // dim, frost or blur.
+        intent.getStringExtra("panel_behind")?.let { key ->
+            AerialSettings.init(context)
+            PanelBehind.of(key)?.let { AerialSettings.choosePanelBehind(it) }
+        }
         // aerial, photos, clock, videos or system.
         intent.getStringExtra("screensaver")?.let { key ->
             Wallpapers.init(context)

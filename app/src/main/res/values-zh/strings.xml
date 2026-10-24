@@ -141,7 +141,7 @@
     <string name="st_sounds">按键声音</string>
     <string name="st_sounds_hint">移动焦点、确认、返回时发出声音，像 Apple TV 一样。</string>
     <string name="st_blur">面板背后</string>
-    <string name="st_blur_hint">打开控制中心和文件夹时主屏幕的样子。变暗会保持清晰；磨砂和实时模糊会把它模糊掉，实时模糊还会让较慢的电视卡顿。</string>
+    <string name="st_blur_hint">打开控制中心和文件夹时主屏幕的样子。变暗：桌面压暗；磨砂：桌面保持清晰，只有菜单是磨砂玻璃；实时模糊：整个桌面模糊，较慢的电视会卡顿。</string>
     <string name="st_blur_dim">变暗</string>
     <string name="st_blur_frost">磨砂</string>
     <string name="st_blur_live">实时模糊</string>

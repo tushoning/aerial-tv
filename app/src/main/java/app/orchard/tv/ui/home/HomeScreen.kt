@@ -422,12 +422,11 @@ fun HomeScreen(
             if (panelOpen && behind == PanelBehind.Blur) 30.dp else 0.dp,
             tween(320, easing = Motion.EaseOut), label = "backdrop-blur",
         )
-        // How far the panel's backdrop is in: the frost over Home, or the veil.
+        // How far the dark veil over Home is in. Frost has none: only the panel is frosted glass.
         val backdropFrost by animateFloatAsState(
-            if (panelOpen && behind != PanelBehind.Blur) 1f else 0f,
-            tween(320, easing = Motion.EaseOut), label = "backdrop-frost",
+            if (panelOpen && behind == PanelBehind.Dim) 1f else 0f,
+            tween(320, easing = Motion.EaseOut), label = "backdrop-veil",
         )
-        val frostBehind = behind == PanelBehind.Frost
 
         val ambientApp = apps.getOrNull(focusedIndex) ?: apps.firstOrNull()
 
@@ -451,9 +450,6 @@ fun HomeScreen(
                 .graphicsLayer {
                     val r = backdropBlur.toPx()
                     renderEffect = if (r > 0.5f && Build.VERSION.SDK_INT >= 31) BlurEffect(r, r, TileMode.Clamp) else null
-                    // Under the frost once it is whole, Home is not drawn at all: on MFTR0 the
-                    // picture, plate and tiles cost the GPU as much again as the panel over them.
-                    alpha = if (frostBehind && backdropFrost > 0.999f) 0f else 1f
                 },
         ) {
             // The glass plate under the top row (tvOS 26), the row's full width however few apps
@@ -599,7 +595,7 @@ fun HomeScreen(
             }
         }
 
-        PanelBackdrop(Wallpapers.frosted.takeIf { frostBehind && Wallpapers.backdrop != null }) { backdropFrost }
+        PanelBackdrop { backdropFrost }
 
         // Rows that scroll up under the status pill fade out instead of colliding with it.
         Canvas(
