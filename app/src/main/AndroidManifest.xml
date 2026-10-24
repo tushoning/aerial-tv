@@ -45,6 +45,13 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
 
+    <!-- Android 11 package visibility for the Skyworth/Coocaa source API: the TV's SDK provider
+         lists the ports and its TV activity opens one (SystemProbe.skyworthSources). -->
+    <queries>
+        <package android:name="com.skyworth.tv" />
+        <provider android:authorities="com.skyworth.tv.sdk.provider" />
+    </queries>
+
     <!-- largeHeap: up to Android 7 bitmaps live on the Java heap, and LeTV X3-55 Pro (Android 5.0.1)
          ran out of it drawing Home (issue #328). -->
     <application

@@ -7,9 +7,20 @@
 | 65G60 / 酷开 9S60 | Android 8.0，MStar MSD6A848 | 主页键能回 Aerial；开机一定进酷开桌面：`sky_launcher`（在 system_server 里）读 `/system/pcfg/9S60_G60/config/general_config.xml` 的 `DEFAULT_HOMEPAGE` 按组件启动，不走 HOME 解析；守护在开机时的 `startActivity` 被 `CooCaaCheckDialogPermission` 丢掉（调用方没有可见 Activity）；`skyRMService` 切前台时会 force-stop 上一个第三方 App；开机把第三方 App 置成 stopped。报告人用 root 改 `DEFAULT_HOMEPAGE` 为 `app.orchard.tv/app.orchard.tv.MainActivity` 才开机直达。开机广告是 `com.tianci.ad`，`pm uninstall --user 0` 就没了 | #316 |
 | 7T641（mt9633） | Android 13 | 冷启动约 60 秒黑屏：Aerial 早已画完，但 SurfaceFlinger 里它的窗口 `crop=[0,0,0,0]`；遥控器「播放」键在这台上发的是 Home，看视频时按到会被守护拉回 Aerial，然后又是 60 秒黑屏 | #321、#326 |
 | 75A6E（8R710_A6E，Realtek RTD2885P） | Android 13 | standard 版是唯一的 HOME 候选，按主页键整机卡死；创维电视应用 `com.skyworth.tv` 一直占着输入焦点，Aerial 的窗口 `NOT_VISIBLE`、`focus false`，guard 版也一样。目前没有办法 | #365 |
+| 75A7D（8R134_A7D，Realtek RTD2885N） | Android 11，酷开 CCOS 9.0 | `TvInputManager` 一个信号源都没有；改为从 `com.skyworth.tv.sdk.provider` 读列表、用 `com.skyworth.tv` 的 `SkyTVMainActivity` 切换，报告人在真机上验证通过，接口见下（1.45 起用上） | #444 |
 | 酷开 8R710_P8F（同一机芯 titanite） | Android 13 | 只有诊断报告，现象待补，估计同 #365 | #358 |
 | 松下 TH-55HX560C（创维代工，天赐系统，GX580C，m7221） | Android 8.0 | 主页键、返回都能回 Aerial；`TvInputManager` 一个信号源都没有，控制中心显示「没有可用的信号源」。还不知道天赐切信号源的接口 | #370 |
 | 8R134 / 8R145、K3 Pro 等 | Android 11 | 见 #43、#155：开机先进自家桌面，切信号源时经过 `com.tianci.tv/.SkyLauncher` | #43、#155 |
+
+## 75A7D 的信号源接口
+
+2026-10-24，报告人在 75A7D（`8R134_A7D`，RTD2885N，酷开 CCOS 9.0 / Android 11）上实测：
+
+- `TvInputManager` 里没有任何输入，`dumpsys tv_input` 的 `mHardwareList`、`mHdmiDeviceList`、`mInputMap` 都是空的。
+- 源列表在 `com.skyworth.tv`（uid 1000，系统应用）的 `TVSDKContentProvider` 里：`content://com.skyworth.tv.sdk.provider/system/source_list`，当前源是 `.../system/current_source`。provider 导出、无权限；**查询必须带 projection**，不带时返回 null cursor。列有 `sourceName`、`sourceIndex`、`displayName`、`signalState`、`sourceId`。
+- 这台机器的 6 个源：`AV` / -1 / 视频、`VOD` / -1 / 电视、`HDMI` 0–3 /「4K HDMI1 2.0」「4K HDMI2 2.1/ARC」「4K HDMI3 2.1」「4K HDMI4 2.0」。`signalState` 全是 1，没接线也是 1，不能当「已连接」用。
+- 切换：`Intent().setComponent("com.skyworth.tv/.activity.SkyTVMainActivity").putExtra("source", Bundle().apply { putString("name", …); putString("displayname", …); putInt("index", …); putInt("signal", …) })`。`SkyTVMainActivity.p(Intent)` 把这个 Bundle 交给 `SkyTVManager.J2`，`onCreate` 和 `onNewIntent` 都会读。activity 在系统 APK 里没有写 `android:exported`（targetSdk 26，带 intent-filter 默认导出），`cmd package resolve-activity` 能解析。
+- 清单里本来就有 `QUERY_ALL_PACKAGES`，包可见性已经覆盖；补丁另外加了 `<queries>` 把 `com.skyworth.tv` 和这个 provider authority 显式写出来，免得以后去掉全量可见性时静默失效。
 
 ## 共同点
 

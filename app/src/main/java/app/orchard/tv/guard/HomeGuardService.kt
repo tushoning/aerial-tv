@@ -777,8 +777,8 @@ class HomeGuardService : AccessibilityService() {
 
         /** VIDAA's assistant and its launcher (聚好看), on the two VIDAA builds reported (issues #7, #40). */
         private val VIDAA_PACKAGES = listOf("com.hisense.vidaaassistant", "com.jamdeo.tv.vod")
-        /** The apps that play the TV's inputs (SystemProbe's TCL and Xiaomi routes). */
-        private val INPUT_PLAYERS = setOf("com.tcl.tv", "com.xiaomi.mitv.tvplayer")
+        /** The apps that play the TV's inputs (SystemProbe's TCL, Xiaomi and Skyworth routes). */
+        private val INPUT_PLAYERS = setOf("com.tcl.tv", "com.xiaomi.mitv.tvplayer", "com.skyworth.tv")
         /**
          * Packages that declare Home but are no launcher to keep away. LeTV's app daemon shows its
          * DaemonActivity on the way into apps, and every app the viewer opened was taken back

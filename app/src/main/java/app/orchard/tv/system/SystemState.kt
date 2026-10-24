@@ -14,6 +14,7 @@ import android.net.NetworkCapabilities
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
@@ -362,7 +363,8 @@ object SystemProbe {
     fun sources(context: Context): List<TvSource> = frameworkSources(context)
         .ifEmpty { KonkaSources.load(context) }
         .ifEmpty { tclSources(context) }
-        .ifEmpty { whaleySources(context) } + listOfNotNull(usbSource(context))
+        .ifEmpty { whaleySources(context) }
+        .ifEmpty { skyworthSources(context) } + listOfNotNull(usbSource(context))
 
     /**
      * The TV's own player for USB drives, offered as one more input: owners switch the TV on to
@@ -535,6 +537,72 @@ object SystemProbe {
             source(6, SourceKind.Hdmi, "HDMI 3"),
             source(7, SourceKind.Av, context.getString(R.string.input_av)),
         )
+    }
+
+    private const val SKYWORTH_PLAYER = "com.skyworth.tv"
+    private val SKYWORTH_SOURCES = Uri.parse("content://com.skyworth.tv.sdk.provider/system/source_list")
+
+    /**
+     * Skyworth's Coocaa firmware (75A7D, RTD2885N, Android 11) lists no framework inputs either.
+     * Its TV SDK provider keeps the ports (a projection is required or it returns no cursor), and
+     * its TV activity switches when started with the source's name and index in a "source" bundle
+     * (SkyTVMainActivity.p hands it to SkyTVManager.J2).
+     */
+    private fun skyworthSources(context: Context): List<TvSource> {
+        val player = ComponentName(SKYWORTH_PLAYER, "$SKYWORTH_PLAYER.activity.SkyTVMainActivity")
+        val activity = runCatching { context.packageManager.getActivityInfo(player, 0) }.getOrNull()
+            ?: return emptyList()
+        if (!activity.exported || !activity.enabled || !activity.applicationInfo.enabled) return emptyList()
+        return runCatching {
+            val sources = mutableListOf<TvSource>()
+            context.contentResolver.query(
+                SKYWORTH_SOURCES,
+                arrayOf("sourceName", "sourceIndex", "displayName", "signalState"),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                val name = cursor.getColumnIndexOrThrow("sourceName")
+                val index = cursor.getColumnIndexOrThrow("sourceIndex")
+                val display = cursor.getColumnIndexOrThrow("displayName")
+                val signal = cursor.getColumnIndexOrThrow("signalState")
+                while (cursor.moveToNext()) {
+                    val sourceName = cursor.getString(name)?.takeIf { it.isNotBlank() }
+                    if (sourceName != null) {
+                        val sourceIndex = cursor.getInt(index)
+                        val label = cursor.getString(display)?.takeIf { it.isNotBlank() } ?: sourceName
+                        sources += TvSource(
+                            id = "skyworth:$sourceName:$sourceIndex",
+                            label = label,
+                            kind = skyworthKind(sourceName),
+                            // signalState is 1 for every listed port, connected or not.
+                            connected = false,
+                            deviceName = null,
+                            intent = Intent().setComponent(player)
+                                .putExtra("source", Bundle().apply {
+                                    putString("name", sourceName)
+                                    putString("displayname", label)
+                                    putInt("index", sourceIndex)
+                                    putInt("signal", cursor.getInt(signal))
+                                })
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                }
+            }
+            sources.distinctBy { it.id }.sortedWith(compareBy({ it.kind.ordinal }, { it.label }))
+        }.getOrDefault(emptyList())
+    }
+
+    /** VOD is Skyworth's name for the tuner source its TV activity opens as 电视. */
+    private fun skyworthKind(name: String): SourceKind = when {
+        name.startsWith("HDMI") -> SourceKind.Hdmi
+        name == "DP" -> SourceKind.DisplayPort
+        name == "VOD" || name.startsWith("DTV") || name.startsWith("ATV") || name.startsWith("DVB") ||
+            name == "DTMB" -> SourceKind.Tuner
+        name.startsWith("AV") || name.startsWith("YUV") || name.startsWith("YPBPR") || name.startsWith("VGA") ||
+            name.startsWith("SVIDEO") -> SourceKind.Av
+        else -> SourceKind.Other
     }
 
     private fun hw(id: String): Int? = Regex("/HW(\\d+)$").find(id)?.groupValues?.get(1)?.toIntOrNull()
