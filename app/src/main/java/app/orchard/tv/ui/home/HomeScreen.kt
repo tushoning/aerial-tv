@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -46,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlurEffect
@@ -54,6 +56,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -74,6 +78,8 @@ import app.orchard.tv.R
 import app.orchard.tv.settings.AerialSettings
 import app.orchard.tv.settings.PanelBehind
 import app.orchard.tv.apps.AppEntry
+import app.orchard.tv.ui.components.GlassBackdrop
+import app.orchard.tv.ui.components.LocalGlassBackdrop
 import app.orchard.tv.ui.control.ControlCenter
 import app.orchard.tv.ui.wallpaper.WallpaperSheet
 import app.orchard.tv.wallpaper.ScreensaverMode
@@ -88,6 +94,7 @@ import app.orchard.tv.system.SystemProbe
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
@@ -162,6 +169,12 @@ private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, val nameRoo
 
 /** How long the screensaver waits for the wallpaper's film to move before playing its own. */
 private const val FILM_SAVER_WAIT_MS = 10_000L
+
+/** How long Control Center takes to come in before a picture of Home stands in for it. */
+private const val HOME_SHOT_AFTER_MS = 450L
+
+/** How often that picture is taken again while Control Center stays open, for the clock. */
+private const val HOME_SHOT_EVERY_MS = 30_000L
 
 @Composable
 fun HomeScreen(
@@ -415,17 +428,41 @@ fun HomeScreen(
 
         // The folder open, or under its app's menu.
         val openFolder = (overlay as? Overlay.Folder)?.id ?: (overlay as? Overlay.AppMenu)?.inFolder
-        val panelOpen = overlay is Overlay.ControlCenter || overlay is Overlay.HiddenApps || openFolder != null
+        val folderOpen = overlay is Overlay.HiddenApps || openFolder != null
+        val ccOpen = overlay is Overlay.ControlCenter
         val behind = AerialSettings.panelBehind.let { if (it == PanelBehind.Blur && Build.VERSION.SDK_INT < 31) PanelBehind.Dim else it }
+        // Folders open on Home blurred, as on tvOS: live where chosen, else the frosted picture.
+        // Control Center keeps Home sharp: dimmed (Dim), as it is (Frost), or a little dimmed with
+        // only its panel blurring live what lies behind it (Blur).
         val backdropBlur by animateDpAsState(
-            if (panelOpen && behind == PanelBehind.Blur) 30.dp else 0.dp,
+            if (folderOpen && behind == PanelBehind.Blur) 30.dp else 0.dp,
             tween(320, easing = Motion.EaseOut), label = "backdrop-blur",
         )
-        // How far the dark veil over Home is in. Frost has none: only the panel is frosted glass.
         val backdropFrost by animateFloatAsState(
-            if (panelOpen && behind == PanelBehind.Dim) 1f else 0f,
+            if (folderOpen && behind != PanelBehind.Blur) 1f else 0f,
+            tween(320, easing = Motion.EaseOut), label = "backdrop-frost",
+        )
+        val veilAlpha = if (behind == PanelBehind.Blur) 0.2f else 0.45f
+        val backdropVeil by animateFloatAsState(
+            if (ccOpen && behind != PanelBehind.Frost) 1f else 0f,
             tween(320, easing = Motion.EaseOut), label = "backdrop-veil",
         )
+        val glassLive = ccOpen && behind == PanelBehind.Blur
+        // With Control Center open, Home is still: once the panel is in, a picture of it stands in
+        // for it, one full-screen image a frame instead of every tile again under the panel
+        // (MiTV-MFTR0: GPU 18-21 ms a frame drawing Home under it, as against 9-15 ms frosted).
+        // Taken again now and then for the clock.
+        val homeLayer = rememberGraphicsLayer()
+        var homeShot by remember { mutableStateOf<ImageBitmap?>(null) }
+        LaunchedEffect(ccOpen) {
+            homeShot = null
+            if (!ccOpen) return@LaunchedEffect
+            delay(HOME_SHOT_AFTER_MS)
+            while (true) {
+                homeShot = runCatching { homeLayer.toImageBitmap() }.getOrNull()
+                delay(HOME_SHOT_EVERY_MS)
+            }
+        }
 
         val ambientApp = apps.getOrNull(focusedIndex) ?: apps.firstOrNull()
 
@@ -449,6 +486,16 @@ fun HomeScreen(
                 .graphicsLayer {
                     val r = backdropBlur.toPx()
                     renderEffect = if (r > 0.5f && Build.VERSION.SDK_INT >= 31) BlurEffect(r, r, TileMode.Clamp) else null
+                    // Under the frost once it is whole, Home is not drawn at all: on MFTR0 the
+                    // picture, plate and tiles cost the GPU as much again as the panel over them.
+                    alpha = if (backdropFrost > 0.999f || homeShot != null) 0f else 1f
+                }
+                // Recorded while Control Center is open: for its picture and for its panel to blur.
+                .drawWithContent {
+                    if (ccOpen) {
+                        homeLayer.record { this@drawWithContent.drawContent() }
+                        drawLayer(homeLayer)
+                    } else drawContent()
                 },
         ) {
             // The glass plate under the top row (tvOS 26), the row's full width however few apps
@@ -594,7 +641,8 @@ fun HomeScreen(
             }
         }
 
-        PanelBackdrop { backdropFrost }
+        homeShot?.let { shot -> Canvas(Modifier.fillMaxSize()) { drawImage(shot) } }
+        PanelBackdrop(Wallpapers.frosted.takeIf { Wallpapers.backdrop != null }, { backdropFrost }, { backdropVeil }, veilAlpha)
 
         // Rows that scroll up under the status pill fade out instead of colliding with it.
         Canvas(
@@ -673,14 +721,16 @@ fun HomeScreen(
             )
         }
 
-        ControlCenter(
-            visible = overlay is Overlay.ControlCenter,
-            page = (overlay as? Overlay.ControlCenter)?.page ?: CcPage.Main,
-            vm = vm,
-            now = now,
-            onOpen = { vm.overlay = Overlay.None; onOpen(it) },
-            onClose = { vm.overlay = Overlay.None },
-        )
+        CompositionLocalProvider(LocalGlassBackdrop provides GlassBackdrop(homeLayer, homeShot).takeIf { glassLive }) {
+            ControlCenter(
+                visible = overlay is Overlay.ControlCenter,
+                page = (overlay as? Overlay.ControlCenter)?.page ?: CcPage.Main,
+                vm = vm,
+                now = now,
+                onOpen = { vm.overlay = Overlay.None; onOpen(it) },
+                onClose = { vm.overlay = Overlay.None },
+            )
+        }
 
         FolderView(
             name = openFolder?.let { id -> apps.firstOrNull { it.folder?.id == id }?.label },

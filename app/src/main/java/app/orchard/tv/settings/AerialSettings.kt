@@ -31,11 +31,12 @@ enum class FocusStyle(val key: String) {
  * which many TVs ship with (Sony, issue #160; #169), so that is not the default there.
  */
 /**
- * What Home looks like behind Control Center and folders. Dim keeps it sharp under a dark veil, as
- * tvOS does; Frost leaves it as it is, with only the panel frosted glass (1.41 faded a frosted
- * wallpaper over all of Home, which owners took for everything gone blurry); Blur blurs it live
- * (Android 12+), 20–77 ms of GPU a frame on Xiaomi MiTV-MFTR0 while anything under it moves
- * (issue #354).
+ * What Home looks like behind Control Center. Dim keeps it sharp under a dark veil, as tvOS does;
+ * Frost leaves it as it is, with the panel frosted glass (1.41 faded a frosted wallpaper over all
+ * of Home, which owners took for everything gone blurry); Blur (Android 12+) dims it a little and
+ * the panel blurs live what lies behind it, the panel only: blurring all of Home live cost 20–77 ms
+ * of GPU a frame on Xiaomi MiTV-MFTR0 while anything under it moved (issue #354). Folders open on
+ * Home blurred whatever is chosen: live with Blur, else the frosted picture (HomeScreen).
  */
 enum class PanelBehind(val key: String) {
     Dim("dim"), Frost("frost"), Blur("blur");

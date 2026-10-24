@@ -28,7 +28,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import app.orchard.tv.settings.AerialSettings
 import app.orchard.tv.system.DiagLog
 import app.orchard.tv.ui.theme.Motion
 import app.orchard.tv.wallpaper.Aerial
@@ -77,27 +76,15 @@ class LiveFilm {
     fun spot(): Pair<String, Long>? = film?.id?.takeIf { player != null }?.let { it to positionMs }
 
     /**
-     * Puts the paused film where the screensaver left off, so Home wakes on the moment the
-     * screensaver was showing (FilmCarry) rather than where it took over. A film not in its list
-     * is left as it is.
-     */
-    fun moveTo(filmId: String, atMs: Long) {
-        val p = player ?: return
-        val index = (0 until p.mediaItemCount).firstOrNull { p.getMediaItemAt(it).mediaId == filmId } ?: return
-        p.pause()
-        p.seekTo(index, atMs)
-    }
-
-    /**
-     * Lets the decoder go, keeping the film and its place: a TV may have one 4K decoder only, and
-     * the screensaver's better copy needs it (Xiaomi MiTV-MFTR0: opening Dolby Vision beside the
-     * wallpaper's HEVC failed both). The film plays again from here when Home asks for it.
+     * Lets the decoder go, keeping the film and its place: these TVs have one 4K decoder, and a
+     * screensaver of its own needs it (Xiaomi MiTV-MFTR0, TCL MT5879: a second film failed to open
+     * beside the wallpaper's). The film plays again from here when Home asks for it.
      */
     fun letDecoderGo() {
         player?.run { pause(); stop() }
     }
 
-    /** After [letDecoderGo], when the better copy could not play: the film goes on. */
+    /** After [letDecoderGo], when nothing else came to need it: the film goes on. */
     fun goOn() {
         player?.run { if (playbackState == Player.STATE_IDLE) prepare(); play() }
     }
@@ -161,8 +148,7 @@ fun LiveWallpaper(
     }
 
     fun open(): ExoPlayer {
-        val quality = AerialFormats.resolve(context, AerialSettings.aerialQuality)
-            .let { if (it == AerialQuality.DolbyVision) AerialQuality.Uhd else it }
+        val quality = AerialFormats.forWallpaper(context)
         val overHttp = Build.VERSION.SDK_INT < Build.VERSION_CODES.N
         val all = Aerials.all(context).shuffled()
         // The film the picture on screen came from, at that moment; else one fetched ahead.

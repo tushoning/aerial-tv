@@ -322,14 +322,22 @@ private fun bakePlate(glass: ImageBitmap, screen: Size, plate: Rect, radius: Flo
 }
 
 /**
- * The dark veil over Home behind Control Center and folders, [progress] of the way in
- * (AerialSettings.panelBehind Dim). Home stays sharp under it, as on tvOS.
+ * What Home shows behind panels. Folders and Hidden Apps open on Home frosted, as on tvOS: the
+ * grid's frosted background fading over it [frost] of the way, one full-screen draw of a small
+ * picture (in "Follow App" mode, which has none, a dark veil). Control Center keeps Home as it is
+ * under a dark [veil] (0 to 1, of [veilAlpha]), its own panel the glass.
  */
 @Composable
-fun PanelBackdrop(progress: () -> Float) {
+fun PanelBackdrop(frosted: ImageBitmap?, frost: () -> Float, veil: () -> Float, veilAlpha: Float) {
+    val dark = remember(frosted) { frosted?.let { darkened(it, GRID_SHADE) } }
     Canvas(Modifier.fillMaxSize()) {
-        val a = progress()
-        if (a >= 0.01f) drawRect(Color.Black, alpha = 0.45f * a)
+        val f = frost()
+        if (f >= 0.01f) {
+            if (dark == null) drawRect(Color.Black, alpha = 0.55f * f)
+            else drawImage(dark, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()), filterQuality = FilterQuality.Low, alpha = f)
+        }
+        val v = veil()
+        if (v >= 0.01f) drawRect(Color.Black, alpha = veilAlpha * v)
     }
 }
 

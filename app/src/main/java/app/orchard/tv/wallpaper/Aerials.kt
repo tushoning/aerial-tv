@@ -1,6 +1,7 @@
 package app.orchard.tv.wallpaper
 
 import android.content.Context
+import app.orchard.tv.settings.AerialSettings
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaFormat
@@ -68,6 +69,14 @@ object AerialFormats {
         else listOf(AerialQuality.DolbyVision, AerialQuality.Uhd).firstOrNull { it in ok && (chosen == AerialQuality.Auto || it.ordinal < chosen.ordinal) }
             ?: AerialQuality.Hd
     }
+
+    /**
+     * What the aerial wallpaper plays: as chosen, but never Dolby Vision. A TV in Dolby Vision mode
+     * shows the tiles over the film with Dolby's picture settings. A screensaver that carries the
+     * wallpaper's film on plays this too (Screensaver), so the two are one, with no switch.
+     */
+    fun forWallpaper(context: Context): AerialQuality =
+        resolve(context, AerialSettings.aerialQuality).let { if (it == AerialQuality.DolbyVision) AerialQuality.Uhd else it }
 
     /** One step down, after a decoder failed on [quality]. */
     fun lower(quality: AerialQuality): AerialQuality = when (quality) {

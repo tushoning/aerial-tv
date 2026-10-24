@@ -50,7 +50,6 @@ import app.orchard.tv.apps.SourceLooks
 import app.orchard.tv.apps.TileArtFactory
 import app.orchard.tv.guard.GuardSetup
 import app.orchard.tv.guard.HomeGuardService
-import app.orchard.tv.ui.home.AerialStart
 import app.orchard.tv.ui.home.HomeScreen
 import app.orchard.tv.ui.home.LiveFilm
 import app.orchard.tv.ui.theme.LocalReducedMotion
@@ -400,11 +399,11 @@ class MainActivity : ComponentActivity() {
             if (asked && !SystemScreensaver.startFirmware(this)) DiagLog.i("no system screensaver to start")
             return
         }
-        // The aerial wallpaper's film and moment, for a screensaver that cannot carry Home's player on.
-        if (Wallpapers.selectedId == Wallpapers.LIVE && Wallpapers.screensaver == ScreensaverMode.Aerial) {
-            AerialStart.set(LiveFilm.onHome?.spot() ?: Wallpapers.liveSpot())
-        }
-        if (SystemScreensaver.isAerials(this)) {
+        // Aerials over the aerial wallpaper: Home carries the wallpaper's film on, the same player in
+        // the same format, so there is no black between them; the dream would be a new player in a
+        // new window, and showed black even in 4K (TCL MT5879).
+        val carry = Wallpapers.selectedId == Wallpapers.LIVE && Wallpapers.screensaver == ScreensaverMode.Aerial
+        if (!carry && SystemScreensaver.isAerials(this)) {
             // The dream's film needs the decoder the wallpaper's holds: TCL MT5879 failed Dolby
             // Vision beside it and the dream fell back to 4K HEVC.
             LiveFilm.onHome?.letDecoderGo()
@@ -463,7 +462,11 @@ class MainActivity : ComponentActivity() {
 
     private fun idleBeforeScreensaver(): Long {
         val chosen = AerialSettings.screensaverMinutes * 60_000L
-        val firmware = runCatching { Settings.System.getLong(contentResolver, "screen_saver_timeout") }.getOrNull()
+        // Where Aerial's dream is the TV's screensaver, the TV starts it on its own after
+        // screen_off_timeout (TCL MT5879: 2 minutes); Home starts its own first, so that the
+        // aerial wallpaper's film can carry on (startScreensaver).
+        val dream = if (SystemScreensaver.isAerials(this)) runCatching { Settings.System.getLong(contentResolver, Settings.System.SCREEN_OFF_TIMEOUT) }.getOrNull() else null
+        val firmware = runCatching { Settings.System.getLong(contentResolver, "screen_saver_timeout") }.getOrNull()?.takeIf { it > 0 } ?: dream
         return if (firmware != null && firmware > 0) minOf(chosen, maxOf(30_000L, firmware - 15_000L))
         else chosen
     }
