@@ -16,3 +16,8 @@
 - 开机自启基本做不到：桌面是固件按组件或配置文件拉起的，不看 HOME 解析。
 - logcat 常常看不到第三方 App 的日志，看 `dumpsys activity app.orchard.tv/.MainActivity` 末尾的 DiagLog。
 - `adb install -r` 之后系统会删掉本包的无障碍登记，重装后要先打开一次 Aerial（#316）。
+
+## 补充（2026-10-24）
+
+- 9S52_Q4A（Android 6）：开机时固件按组件拉起 `com.tianci.movieplatform/com.ccos.cooui.movieplatform.MainActivity`（intent 带私有类别 `android.intent.category.HOME.CC`），Aerial 约 1.8 秒后接管（#397）。1.43 的 standard 版声明了 `HOME.CC`，是否能让固件开机直接选 Aerial 还没验证。
+- 8R734_Q7H（titanite，Android 13）：和 8R710 一样，Aerial 拿不到窗口焦点，5 秒后 ANR 被杀（#421）。目前没有办法。

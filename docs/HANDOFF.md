@@ -4,6 +4,7 @@
 
 ## 现状（2026-10-24）
 
+- **1.43（versionCode 46），2026-10-24**：按 issue 修适配和 bug。① 小米 Android 6（MiTV4-ANSM0、4A、4X、盒子 4、MDZ-19-AA 等，#81 #209 #220 #318 #355 #381 #402 #413）：PatchWall 在无障碍里不发窗口事件，守护在 Android 6 及以下改为每秒读一次用量统计（`GET_USAGE_STATS`，`install.sh`/`agent.md` 授予，Android 5 的 appops 只认 `android:get_usage_stats`），只认原桌面的主页那个 Activity，同一次前台事件只拉一次；开机时原桌面列表为空会重查（#318）；聋绑定检查不只在开机窗口（#381）。思路和验证来自 #81 一位用户在 ANSM0 上的本地补丁；我们没有 Android 6 小米，只在 Android 5.0 模拟器上确认轮询不报错（那台模拟器的用量统计返回空）。② App 磁贴画不出来时不再整个丢掉，改用图标或默认图标并记日志（TCL #415）；开机后 1 分钟、3 分钟各再扫一次 App，有变化才更新（#394 #170）。③ 雷鸟 T966D5（Android 14）框架列出了信号源但没人接直通 intent，改走 `com.tcl.tv/.TVActivity`（序号同 MT5879，按名字里的数字，没验证，#395）；MiTV4 固件 22.x 的 HDMI 编号按通用规则（#375）。④ 乐视 `com.stv.appdaemon`、`com.letv.lekids` 不算原桌面（#328：每开一个 App 都被拉回）。⑤ standard 版加酷开私有类别 `HOME.CC`（#397，没验证）。⑥ 合入 PR #418（唤醒、校时后时钟立即刷新，#419）和 PR #399（下载源卡住换源，改成 30 秒不到 256 KB 才放弃，#390）。小米 MFTR0（standard）和 TCL MT5879（guard，多屏互动）装了 1.43 回归：主页键、切 HDMI 不被拉回、App 列表、时钟的广播都正常。
 - **1.42（versionCode 45），2026-10-24 发布**（[v1.42](https://github.com/pengchujin/aerial-tv/releases/tag/v1.42)）：户主在小米 MFTR0 上报的几个问题。① 在 Aerial 里按主页键会闪一下小米桌面：Android 12+ 改为 Aerial 在前台时过滤按键（原桌面和其他 App 里仍不过滤，#293 不受影响），户主用真遥控器确认不闪了；同一次主页键的两次窗口事件只拉一次 Aerial。② 硬重启后先显示小米桌面十几秒：设了「开机时打开」时，守护进程一启动就接管，开机 App 直接用它自己的入口打开，屏幕亮起到打开 App 从 13–15 秒变为 7.2 秒。③ 屏保「跳回小米自带的」：户主这台设的是「从不」，小米自己的 8 分钟屏保照样出来；现在选「从不」且永不关屏时 Aerial 在前台保持常亮，户主确认不再出现。④ 开机打开 App「又被拉回」：日志里是有人在 App 里按了主页键，没改。详见 `docs/devices/xiaomi-mitv-mftr0.md`。
 - 同一版（PR #383，文档）：降低安装门槛（#32）。官网、README、`agent.md` 中英同步：分品牌 ADB 补 OPPO S1（设备型号 上上右右 → 开发者选项 USB 调试，IP 在已连接网络最下面）、列出打不开 ADB 的机型（极米 H3、老乐视、荣耀智慧屏、老康佳）（第三方 enabler 只在 `adb-by-brand.md` 里提，官网和 `agent.md` 不放链接，免得 Agent 去下载运行）；安装区加「只用手机」（甲壳虫 ADB、超级小爱，注明未逐一实测）；Agent 提示词和 `agent.md` 的验收加 `resolve-activity`，要求贴出原始输出；还原改成可直接发给 AI 的提示词；FAQ 补会员/小爱/账号/有线电视、PatchWall 从「桌面」磁贴进、开机广告、不支持的系统。新增 `docs/devices/adb-by-brand.md`。只改文档和官网，没有动 App、守护和安装脚本，也没有上机验证。改过 `style.css`，两页的 `?v=` 已从 4 加到 5。
 - 同一版（PR #392，zyt0339）：大眼橙 X7 投影仪上 Apple TV 的 HDMI 主页键（`guard/CecHome.kt`），**默认关闭**，用 `ConfigReceiver --es cec_home_input '*'` 打开。打开后在 HDMI 播放器里单按主页键给 Apple TV 发 CEC「Root Menu」，长按或双击回到 Aerial。只用 Amlogic 的 `/dev/cec`（可写时），不改驱动和 SELinux。贡献者在 X7 上用 `sendevent` 验证过单按、长按、双击；**实体遥控器、待机唤醒、只靠 CEC 识别（没在磁贴里选 Apple TV）都没验证**，我们手里没有 X7。详见 [devices/obe-x7.md](devices/obe-x7.md)。
@@ -169,6 +170,8 @@ plutil -convert json -o en.json TVIdleScreenStrings.bundle/en.lproj/Localizable.
 
 ## 已知问题与限制
 
+- TCL 多屏互动只接受版本号更高的包，同一个 versionCode 推过去会超时。`install.sh` 被中断时它起的 `http.server 8765` 可能还留着（目录已删，返回 404），下一次推送电视就下载不到；先 `pkill -f "http.server 8765"`。
+- 小米的任务中心（SystemUI 的 `RecentTasksLoader`）只按一份写死的包名单（`com.mitv.tvhome` 等）隐藏，Aerial 的 `excludeFromRecents` 对前台任务不生效（Android 对最上面的任务照样列出），所以长按主页键时 Aerial 会出现在里面（#324 #417），App 这边改不了。
 - TCL 每次升级都要点一次「同意」（多屏互动的提示框）。可以用 ADB 点：提示框出现时焦点在「拒绝」，先截图确认，再按右键、截图确认焦点在「同意」，再按确定。
 - 小米只有停在桌面上时才由 Aerial 接管屏保；在别的 App 里空闲，小米自己的屏保仍会出现。
 - TCL 调音量时会同时弹出 TCL 自己的音量条。
