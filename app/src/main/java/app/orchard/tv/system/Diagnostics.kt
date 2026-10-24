@@ -88,7 +88,8 @@ object Diagnostics {
             " overlay=${Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context)}" +
             " WRITE_SETTINGS=${Build.VERSION.SDK_INT < 23 || Settings.System.canWrite(context)}" +
             " install=${Build.VERSION.SDK_INT < 26 || pm.canRequestPackageInstalls()}" +
-            " location=${granted(context, Manifest.permission.ACCESS_FINE_LOCATION)}")
+            " location=${granted(context, Manifest.permission.ACCESS_FINE_LOCATION)}" +
+            " usage=${HomeGuardService.usageStatsAllowed(context)}")
         appendLine("ADB         adb_enabled=${global(context, Settings.Global.ADB_ENABLED)} keep_adb=${GuardSetup.keepAdb(context)}")
         appendLine("Screensaver enabled=${secure(context, "screensaver_enabled")} components=${secure(context, "screensaver_components")} Aerial's=${Wallpapers.screensaver}")
         appendLine("Sounds      sound_effects_enabled=${system(context, Settings.System.SOUND_EFFECTS_ENABLED)}")

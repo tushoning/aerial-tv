@@ -394,7 +394,7 @@ object SystemProbe {
         val tim = context.getSystemService<TvInputManager>() ?: return emptyList()
         val infos = runCatching { tim.tvInputList }.getOrNull() ?: return emptyList()
         val xiaomi = isInstalled(context, XIAOMI_PLAYER)
-        val droidLogic = isInstalled(context, DROIDLOGIC_PLAYER)
+        val tclPlayer = tclPlayer(context)
         val profile = DeviceProfile.current()
 
         return infos
@@ -416,10 +416,12 @@ object SystemProbe {
                 // which wakes it from standby as picking it in the TV's own list does; the port's
                 // only switches the picture (Sony BRAVIA XR90 with an Apple TV and a PS5, issue #259).
                 val cec = infos.firstOrNull { it.parentId == info.id }
+                val generic = genericRoute(cec ?: info, kind)
                 val intent = (if (xiaomi) xiaomiRoute(info, kind, label, profile) else null)
-                    ?: genericRoute(cec ?: info, kind).takeIf { !droidLogic || resolves(context, it) }
+                    ?: generic.takeIf { resolves(context, it) }
                     ?: droidLogicRoute(context, info)
-                    ?: genericRoute(cec ?: info, kind)
+                    ?: tclPlayer?.let { tclRoute(it, kind, label) }
+                    ?: generic
                 val device = cec
                     ?.let { runCatching { it.loadLabel(context).toString() }.getOrNull() }
                     ?.takeIf { it.isNotBlank() && !GENERIC_CEC_NAME.matches(it) }
@@ -457,6 +459,30 @@ object SystemProbe {
 
     private const val TCL_PLAYER = "com.tcl.tv"
 
+    private fun tclPlayer(context: Context): ComponentName? =
+        ComponentName(TCL_PLAYER, "$TCL_PLAYER.TVActivity")
+            .takeIf { runCatching { context.packageManager.getActivityInfo(it, 0) }.isSuccess }
+
+    private fun tclIntent(player: ComponentName, ordinal: Int): Intent = Intent().setComponent(player)
+        .putExtra("targetSourceId", ordinal)
+        .putExtra("referer", "com.tcl.settings.module_source")
+
+    /**
+     * FFALCON/TCL T966D5 (Android 14) lists its inputs in the framework, but nothing there opens
+     * the passthrough intent: every input said this TV could not switch to it (issue #395). TCL's
+     * player is tried there with the ordinals MT5879 uses (see tclSources), chosen by the input's
+     * name; not verified on that TV.
+     */
+    private fun tclRoute(player: ComponentName, kind: SourceKind, label: String): Intent? {
+        val ordinal = when (kind) {
+            SourceKind.Hdmi -> Regex("(\\d)").find(label)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 1..4 }?.let { 7 + it }
+            SourceKind.Tuner -> 2
+            SourceKind.Av -> 3
+            else -> null
+        } ?: return null
+        return tclIntent(player, ordinal)
+    }
+
     /**
      * TCL keeps its inputs in its own middleware, so the framework lists none (MT5879, China). Its
      * player switches to any of them when started with the input's EnTCLInputSource ordinal, which
@@ -464,18 +490,14 @@ object SystemProbe {
      * MT5879 has; the firmware does not tell an app which are connected or what is plugged in.
      */
     private fun tclSources(context: Context): List<TvSource> {
-        val player = ComponentName(TCL_PLAYER, "$TCL_PLAYER.TVActivity")
-        if (runCatching { context.packageManager.getActivityInfo(player, 0) }.isFailure) return emptyList()
+        val player = tclPlayer(context) ?: return emptyList()
         fun source(name: String, ordinal: Int, kind: SourceKind, label: String) = TvSource(
             id = "tcl:$name",
             label = label,
             kind = kind,
             connected = false,
             deviceName = null,
-            intent = Intent().setComponent(player)
-                .putExtra("targetSourceId", ordinal)
-                .putExtra("referer", "com.tcl.settings.module_source")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            intent = tclIntent(player, ordinal).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
         return listOf(
             source("HDMI1", 8, SourceKind.Hdmi, "HDMI 1"),
@@ -573,7 +595,8 @@ object SystemProbe {
  * HDMI2, but it is the HDMI 1 port and source 23 (#64, from the reporter's logcat).
  * MiTV4-ANSM0 (Mi TV 4, Amlogic, Android 6.0.1) registers an HDMI input only for a port with a
  * device in it; HW7 is source 23, not 25 (#191, the reporter scanned sources 1–32). Mi TV 4A
- * (MiTV4A, L32M5-AZ, same firmware) is the same: HW7 is 23 (#313, scanned likewise).
+ * (MiTV4A, L32M5-AZ, same firmware) is the same: HW7 is 23 (#313, scanned likewise). Firmware
+ * 22.x numbers the ports as the general rule does (#375).
  * MiTV-MFZP0 (77" OLED, mt9950, Android 9) registers HW4–HW7 as HDMI 1–4 but has three ports:
  * HW7 has none behind it, and its tvplayer numbers them hw + 19 (#311, the reporter's local build).
  */
@@ -597,14 +620,19 @@ private class DeviceProfile(
                 labels = mapOf(6 to "HDMI 1"),
                 xiaomiSourceIds = mapOf(6 to 23),
             )
-            "MiTV4-ANSM0", "MiTV4_ANSM0", "MiTV4A" -> DeviceProfile(
-                xiaomiSourceIds = mapOf(7 to 23),
-            )
+            // Firmware 22.x knows each port by its own number, and HW7 is HDMI 3 = 25 by the
+            // general rule (MiTV4-ANSM0 22.4.15.3234, issue #375: 23/24/25 opened HDMI 1/2/3).
+            "MiTV4-ANSM0", "MiTV4_ANSM0", "MiTV4A" ->
+                if (xiaomiFirmwareMajor() >= 22) DeviceProfile()
+                else DeviceProfile(xiaomiSourceIds = mapOf(7 to 23))
             "MiTV_MFZP0", "MiTV-MFZP0" -> DeviceProfile(
                 hiddenHardware = setOf(7),
                 xiaomiSourceIds = mapOf(4 to 23, 5 to 24, 6 to 25),
             )
             else -> DeviceProfile()
         }
+
+        /** The first number of a Xiaomi build id such as 22.4.15.3234, or 0. */
+        private fun xiaomiFirmwareMajor(): Int = Build.DISPLAY.substringBefore('.').toIntOrNull() ?: 0
     }
 }

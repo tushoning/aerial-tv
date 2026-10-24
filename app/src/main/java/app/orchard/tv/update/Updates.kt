@@ -45,8 +45,12 @@ object Updates {
     private const val CHECK_EVERY_MS = 3 * 60 * 60 * 1000L
     private const val RETRY_MS = 10 * 60 * 1000L
 
-    /** Longest one download source may take; past it the next source gets a try (issue #390). */
-    private const val SOURCE_BUDGET_MS = 60_000L
+    /**
+     * A source that delivers less than [STALL_BYTES] in [STALL_MS] is given up for the next one
+     * (issue #390). A slow but moving download (about 8 KB/s and up) still finishes.
+     */
+    private const val STALL_MS = 30_000L
+    private const val STALL_BYTES = 256 * 1024L
     const val CONTROL_CENTER_MAX_AGE_MS = RETRY_MS
 
     /** This build's version, e.g. "1.17" (the guard build's "-guard" left off). */
@@ -248,8 +252,9 @@ object Updates {
         c.readTimeout = 20_000
         // A throttled route can keep the TLS handshake up and deliver a byte now and then, so no
         // read() ever blocks long enough to time out and the progress bar sits at 0% for good
-        // (issue #390, FFALCON/TCL on China Unicom). Cap the whole source, not each read.
-        val deadline = SystemClock.elapsedRealtime() + SOURCE_BUDGET_MS
+        // (issue #390, FFALCON/TCL on China Unicom). So the bytes are counted, not each read timed.
+        var windowAt = SystemClock.elapsedRealtime()
+        var windowFrom = 0L
         try {
             if (c.responseCode != HttpURLConnection.HTTP_OK) error("HTTP ${c.responseCode}")
             val total = c.contentLength.toLong()
@@ -259,13 +264,16 @@ object Updates {
                 part.outputStream().use { out ->
                     val buf = ByteArray(64 * 1024)
                     while (true) {
-                        if (SystemClock.elapsedRealtime() > deadline) {
-                            error("exceeded the ${SOURCE_BUDGET_MS / 1000} s budget for one source")
-                        }
                         val n = input.read(buf)
                         if (n < 0) break
                         out.write(buf, 0, n)
                         done += n
+                        val now = SystemClock.elapsedRealtime()
+                        if (now - windowAt >= STALL_MS) {
+                            if (done - windowFrom < STALL_BYTES) error("stalled: ${done - windowFrom} bytes in ${(now - windowAt) / 1000} s")
+                            windowAt = now
+                            windowFrom = done
+                        }
                         val percent = if (total > 0) (done * 100 / total).toInt() else 0
                         if (percent != shown) {
                             shown = percent

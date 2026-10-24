@@ -52,6 +52,9 @@ sealed interface Overlay {
 
 enum class CcPage { Main, Inputs, InputSettings, Update, Setup }
 
+/** Time since boot at which the app list is looked at again; see HomeViewModel.catchUpAfterBoot. */
+private val BOOT_CATCH_UP_MS = listOf(60_000L, 180_000L)
+
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private val context get() = getApplication<Application>()
     private val store = LayoutStore(app)
@@ -150,8 +153,33 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             DiagLog.i("${all.size} apps in ${SystemClock.uptimeMillis() - started} ms")
             sources = withContext(Dispatchers.Default) { SystemProbe.sources(ctx) }
             arrange()
-            if (!loaded) DiagLog.i("Home loaded: ${apps.size} tiles, ${sources.size} inputs, ${SystemClock.uptimeMillis() - started} ms")
+            if (!loaded) {
+                DiagLog.i("Home loaded: ${apps.size} tiles, ${sources.size} inputs, ${SystemClock.uptimeMillis() - started} ms")
+                catchUpAfterBoot()
+            }
             loaded = true
+        }
+    }
+
+    /**
+     * Taking over early in a boot, Aerial can list the apps before the system has registered them
+     * all, and apps that were already installed send no broadcast later: the missing ones stayed
+     * missing until Aerial restarted (Konka LED60R1, issue #394; old Konka on Android 5.1, #170).
+     * Looks again a minute and three minutes into the boot, and changes Home only if the list did.
+     */
+    private fun catchUpAfterBoot() {
+        if (SystemClock.elapsedRealtime() >= BOOT_CATCH_UP_MS.last()) return
+        viewModelScope.launch {
+            for (at in BOOT_CATCH_UP_MS) {
+                val wait = at - SystemClock.elapsedRealtime()
+                if (wait <= 0) continue
+                delay(wait)
+                val again = AppCatalog.load(context)
+                if (again.map { it.key }.toSet() == all.map { it.key }.toSet()) continue
+                DiagLog.i("${again.size - all.size} more apps a while into the boot")
+                all = again
+                arrange()
+            }
         }
     }
 

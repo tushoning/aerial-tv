@@ -186,6 +186,10 @@ adb shell pm grant "$PKG" android.permission.WRITE_SECURE_SETTINGS 2>/dev/null |
 adb shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow 2>/dev/null || true             # open Aerial after boot
 adb shell appops set "$PKG" WRITE_SETTINGS allow 2>/dev/null || true                  # brightness
 adb shell appops set "$PKG" REQUEST_INSTALL_PACKAGES allow 2>/dev/null || true        # update from Control Center
+# What is in front, where a launcher hides from accessibility (Xiaomi Android 6, issue #81).
+# Android 5 knows the op only by this name.
+adb shell appops set "$PKG" GET_USAGE_STATS allow 2>/dev/null || true
+adb shell appops set "$PKG" android:get_usage_stats allow 2>/dev/null || true
 adb shell cmd notification allow_listener "$PKG/$PKG.guard.RevivalListener" 2>/dev/null || true  # come back after a kill
 # Android 9 on Xiaomi MiTV-MFTP0 reports success but never binds it (issue #72): low-RAM devices
 # get no notification listeners at all. Aerial's sync adapter brings it back there instead, later.

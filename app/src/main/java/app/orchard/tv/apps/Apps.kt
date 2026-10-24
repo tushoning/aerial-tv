@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.util.Log
 import app.orchard.tv.R
 import app.orchard.tv.guard.HomeGuardService
 import app.orchard.tv.system.TvSource
@@ -87,6 +88,7 @@ fun folderEntry(folder: Folder, art: TileArt): AppEntry = AppEntry(
 )
 
 object AppCatalog {
+    private const val TAG = "AerialTiles"
     /** Xiaomi's app store declares only this category, not CATEGORY_LAUNCHER (MiTV-MFTR0). */
     private const val CATEGORY_APPSTORE_LAUNCHER = "android.intent.category.APPSTORE_LAUNCHER"
 
@@ -184,7 +186,11 @@ object AppCatalog {
         coroutineScope {
             found.values.map { (info, leanback) ->
                 val home = info.packageName in stockHomes
-                async { runCatching { entry(pm, info, leanback, byCategory, home) }.getOrNull()?.let { if (home) it.copy(label = homeLabel) else it } }
+                async {
+                    runCatching { entry(pm, info, leanback, byCategory, home) }
+                        .onFailure { Log.w(TAG, "left ${info.packageName} out of Home", it) }
+                        .getOrNull()?.let { if (home) it.copy(label = homeLabel) else it }
+                }
             }.awaitAll().filterNotNull()
         }.plus(shortcuts(context, pm)).also {
             loaded = it
@@ -282,7 +288,7 @@ object AppCatalog {
         val stamp = runCatching { pm.getPackageInfo(pkg, 0).lastUpdateTime }.getOrDefault(0L) + CustomIcons.stamp(pkg) +
             if (stockHome) 1 else 0
         val cached = synchronized(cache) { cache[pkg] }?.takeIf { it.stamp == stamp && it.width == TileArtFactory.W }
-            ?: TileDiskCache.read(pkg, TileDiskCache.key(stamp))?.let { (label, art) ->
+            ?: runCatching { TileDiskCache.read(pkg, TileDiskCache.key(stamp)) }.getOrNull()?.let { (label, art) ->
                 Cached(stamp, TileArtFactory.W, label, art).also { synchronized(cache) { cache[pkg] = it } }
             }
         val system = (info.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
@@ -292,7 +298,7 @@ object AppCatalog {
             label = cached.label
             art = cached.art
         } else {
-            label = info.loadLabel(pm).toString().trim().ifEmpty { pkg }
+            label = runCatching { info.loadLabel(pm).toString().trim() }.getOrDefault("").ifEmpty { pkg }
             // Banner first: it is the artwork the app designed for a TV. ActivityInfo falls back
             // to the application's banner by itself.
             // A "banner" that is not wide is the app's square icon declared again (遥遥电视助手 on
@@ -305,15 +311,26 @@ object AppCatalog {
                 else if (system) SYSTEM_TILES[pkg] ?: byCategory[pkg]?.takeIf { banner == null } else null
             val custom = CustomIcons.load(pkg)
             val recipe = TileRecipes.of(pkg)
-            art = when {
-                custom != null -> TileArtFactory.fromBanner(android.graphics.drawable.BitmapDrawable(android.content.res.Resources.getSystem(), custom))
-                own != null -> TileArtFactory.forSystem(own)
-                recipe?.glyph != null -> TileArtFactory.glyphTile(recipe.top ?: 0, recipe.bottom ?: 0, recipe.glyph)
-                banner != null && recipe?.useIcon != true -> TileArtFactory.fromBanner(banner)
-                else -> TileArtFactory.fromIcon(densest(pm, info, info.iconResource) ?: info.loadIcon(pm), recipe)
-            }
+            // A tile that cannot be drawn used to drop the app from Home altogether, without a word
+            // in the log (com.fongmi.androidtv on TCL MT5879, issue #415). Its icon then, or
+            // Android's default one, so it is always there.
+            art = runCatching {
+                when {
+                    custom != null -> TileArtFactory.fromBanner(android.graphics.drawable.BitmapDrawable(android.content.res.Resources.getSystem(), custom))
+                    own != null -> TileArtFactory.forSystem(own)
+                    recipe?.glyph != null -> TileArtFactory.glyphTile(recipe.top ?: 0, recipe.bottom ?: 0, recipe.glyph)
+                    banner != null && recipe?.useIcon != true -> TileArtFactory.fromBanner(banner)
+                    else -> TileArtFactory.fromIcon(densest(pm, info, info.iconResource) ?: info.loadIcon(pm), recipe)
+                }
+            }.recoverCatching {
+                Log.w(TAG, "could not draw the tile of $pkg; using its icon", it)
+                TileArtFactory.fromIcon(info.loadIcon(pm), null)
+            }.recoverCatching {
+                Log.w(TAG, "could not draw the icon of $pkg either; using the default one", it)
+                TileArtFactory.fromIcon(pm.defaultActivityIcon, null)
+            }.getOrThrow()
             synchronized(cache) { cache[pkg] = Cached(stamp, TileArtFactory.W, label, art) }
-            TileDiskCache.write(pkg, TileDiskCache.key(stamp), label, art)
+            runCatching { TileDiskCache.write(pkg, TileDiskCache.key(stamp), label, art) }
         }
         val removable = !system
         return AppEntry(pkg, label, ComponentName(pkg, info.name), leanback, removable, art)

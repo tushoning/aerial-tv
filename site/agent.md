@@ -93,6 +93,8 @@ curl -fsSL https://aerial.qust.me/install.sh | KEEP_ADB=1 TV=<IP> bash
    adb shell appops set app.orchard.tv SYSTEM_ALERT_WINDOW allow
    adb shell appops set app.orchard.tv WRITE_SETTINGS allow
    adb shell appops set app.orchard.tv REQUEST_INSTALL_PACKAGES allow
+   adb shell appops set app.orchard.tv GET_USAGE_STATS allow
+   adb shell appops set app.orchard.tv android:get_usage_stats allow
    adb shell cmd notification allow_listener app.orchard.tv/app.orchard.tv.guard.RevivalListener
    adb shell appops set app.orchard.tv APP_AUTO_START allow
    adb shell appops set app.orchard.tv APP_ASSOC_START allow

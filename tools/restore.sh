@@ -18,6 +18,8 @@ adb shell cmd notification disallow_listener "$PKG/$PKG.guard.RevivalListener" >
 adb shell pm revoke "$PKG" android.permission.WRITE_SECURE_SETTINGS >/dev/null 2>&1 || true
 adb shell appops set "$PKG" SYSTEM_ALERT_WINDOW default >/dev/null 2>&1 || true
 adb shell appops set "$PKG" REQUEST_INSTALL_PACKAGES default >/dev/null 2>&1 || true
+adb shell appops set "$PKG" GET_USAGE_STATS default >/dev/null 2>&1 || true
+adb shell appops set "$PKG" android:get_usage_stats default >/dev/null 2>&1 || true
 adb shell appops set "$PKG" APP_AUTO_START default >/dev/null 2>&1 || true   # TCL only
 adb shell appops set "$PKG" APP_ASSOC_START default >/dev/null 2>&1 || true
 adb shell am force-stop "$PKG"
