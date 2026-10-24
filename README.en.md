@@ -31,7 +31,7 @@ Made for the Xiaomi, TCL and other TVs sold in China. It starts at boot and surv
 
 <p align="center">
   <img src="site/img/focus.jpg" width="49%" alt="The glass shelf under the top row">
-  <img src="site/img/grid.jpg" width="49%" alt="The app grid, with a folder at the end">
+  <img src="site/img/grid.jpg" width="49%" alt="The app grid, with a folder in it">
 </p>
 
 - **Home**: your favorite apps in one row on a glass shelf at the bottom, every app below it. Hidden system apps like Xiaomi's App Store and Mi Home show up too.

@@ -31,7 +31,7 @@
 
 <p align="center">
   <img src="site/img/focus.jpg" width="49%" alt="第一排的玻璃底板">
-  <img src="site/img/grid.jpg" width="49%" alt="往下滚动后的应用网格，最后一个是文件夹">
+  <img src="site/img/grid.jpg" width="49%" alt="往下滚动后的应用网格，中间有一个文件夹">
 </p>
 
 - **首页**：常用的一排 App 放在屏幕下方的玻璃底板上，往下是全部 App。小米「应用中心」「米家」这类藏起来的系统 App 也在。
