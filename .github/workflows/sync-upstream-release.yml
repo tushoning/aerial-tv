@@ -82,7 +82,7 @@ jobs:
           jq -r '.body // ""'       "$RUNNER_TEMP/upstream.json" > "$RUNNER_TEMP/release-notes.md"
           jq -r '.prerelease'       "$RUNNER_TEMP/upstream.json" > "$RUNNER_TEMP/prerelease.txt"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.up.outputs.skip == 'false'
         with:
           fetch-depth: 1
@@ -94,8 +94,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/src"
-          curl -fsSL --retry 5 --retry-delay 3 \
+          # 不静默到一点输出都没有：网络慢时这一步能静止半分钟，看着像卡死。
+          echo "开始下载 $TAG 的源码（约 20 MB）..."
+          curl -fsSL --retry 5 --retry-delay 3 --max-time 600 \
             "https://codeload.github.com/$UPSTREAM/tar.gz/refs/tags/$TAG" -o "$RUNNER_TEMP/src.tgz"
+          echo "下载完成：$(ls -lh "$RUNNER_TEMP/src.tgz" | awk '{print $5}')"
           tar xzf "$RUNNER_TEMP/src.tgz" -C "$RUNNER_TEMP/src" --strip-components=1
           grep -E '^\s+(versionCode|versionName) = ' "$RUNNER_TEMP/src/app/build.gradle.kts"
 
@@ -128,14 +131,80 @@ jobs:
             "HEAD:refs/heads/src/$TAG"
 
       # ---------------------------------------------------------------- 编译环境
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         if: steps.up.outputs.skip == 'false'
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
+      # 只让它准备 cmdline-tools + platform-tools（它的本职工作）。
+      # platform / build-tools 放到下一步自己装：那一步会打印 sdkmanager 版本、失败重试，
+      # 并且装完实地检查目录——sdkmanager 有个坑，找不到包时只打 warning，退出码却是 0。
+      # 也顺便避开了 v3 的致命默认值：v3 默认要装 `tools` 包，而这个包 Google 早已下架，
+      # 于是每次都在这里报 "Failed to find package 'tools'" 然后 exit 1。v4 的默认值已不含它。
+      - uses: android-actions/setup-android@v4
         if: steps.up.outputs.skip == 'false'
+        continue-on-error: true
+        with:
+          cmdline-tools-version: 15859902 # 22.0；API 36 要够新的 sdkmanager 才认得包名
+          packages: "platform-tools"
+
+      - name: 安装 SDK 组件 platforms / build-tools
+        if: steps.up.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          {
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            echo "ANDROID_SDK_ROOT=$ANDROID_HOME"
+          } >> "$GITHUB_ENV"
+
+          # action 成功时 sdkmanager 已在 PATH；失败时自己从 cmdline-tools/*/bin 里找。
+          if ! command -v sdkmanager >/dev/null 2>&1; then
+            found=""
+            # latest 优先：老版本 sdkmanager 认不出 API 36 的包名，会「warning + 退出码 0」，
+            # 那种失败最难查，所以宁可先挑最新的。
+            for d in "$ANDROID_HOME"/cmdline-tools/latest/bin "$ANDROID_HOME"/cmdline-tools/*/bin; do
+              if [ -x "$d/sdkmanager" ]; then PATH="$d:$PATH"; found="$d"; break; fi
+            done
+            if [ -z "$found" ]; then
+              echo "::error::找不到 sdkmanager，$ANDROID_HOME 下也没有 cmdline-tools"
+              ls -a "$ANDROID_HOME" 2>/dev/null || true
+              exit 1
+            fi
+            echo "$found" >> "$GITHUB_PATH"
+            echo "改用 $found 里的 sdkmanager"
+          fi
+          echo "sdkmanager 版本：$(sdkmanager --version 2>&1 || echo 未知)"
+
+          yes 2>/dev/null | sdkmanager --licenses > /dev/null || true
+
+          ok=0
+          for i in 1 2 3; do
+            echo "--- sdkmanager 第 $i 次尝试 ---"
+            if sdkmanager --install "platforms;$PLATFORM" "build-tools;$BUILD_TOOLS" "platform-tools"; then
+              ok=1
+              break
+            fi
+            echo "失败，10 秒后重试"
+            sleep 10
+          done
+          [ "$ok" = 1 ] || echo "::error::sdkmanager 三次都没成功，下面看具体缺什么"
+
+          # 只看目录有没有落地：sdkmanager 找不到包时可能 warning 一下就返回 0。
+          missing=0
+          [ -d "$ANDROID_HOME/platforms/$PLATFORM" ]     || { echo "::error::缺 platforms/$PLATFORM"; missing=1; }
+          [ -d "$ANDROID_HOME/build-tools/$BUILD_TOOLS" ] || { echo "::error::缺 build-tools/$BUILD_TOOLS"; missing=1; }
+          if [ "$missing" = 1 ]; then
+            echo "已安装的组件："
+            sdkmanager --list_installed 2>/dev/null | sed -n '1,40p' || true
+            echo "仓库里 3x 相关的包（用来核对包名到底存不存在）："
+            sdkmanager --list 2>/dev/null | grep -E "platforms;android-3[0-9]|build-tools;3[0-9]" | tail -20 || true
+            exit 1
+          fi
+          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools"
 
       - name: 缓存 Gradle
         if: steps.up.outputs.skip == 'false'
@@ -147,10 +216,6 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('custom/apply.py', 'custom/files/*') }}
           restore-keys: |
             gradle-${{ runner.os }}-
-
-      - name: 装 Android SDK 组件
-        if: steps.up.outputs.skip == 'false'
-        run: sdkmanager --install "platforms;$PLATFORM" "build-tools;$BUILD_TOOLS" > /dev/null
 
       - name: 写入签名密钥
         if: steps.up.outputs.skip == 'false'
