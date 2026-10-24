@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -77,8 +78,6 @@ import app.orchard.tv.ui.control.ControlCenter
 import app.orchard.tv.ui.wallpaper.WallpaperSheet
 import app.orchard.tv.wallpaper.ScreensaverMode
 import app.orchard.tv.wallpaper.Wallpapers
-import app.orchard.tv.wallpaper.AerialQuality
-import app.orchard.tv.wallpaper.AerialFormats
 import app.orchard.tv.ui.components.liquidGlass
 import app.orchard.tv.ui.theme.LocalReducedMotion
 import app.orchard.tv.ui.theme.Motion
@@ -201,18 +200,18 @@ fun HomeScreen(
     // The aerial wallpaper's film, and how far it shows through.
     val filmCover = remember { Animatable(0f) }
     val liveFilm = remember { LiveFilm() }
+    DisposableEffect(liveFilm) {
+        LiveFilm.onHome = liveFilm
+        onDispose { if (LiveFilm.onHome === liveFilm) LiveFilm.onHome = null }
+    }
     // A screensaver of aerials over the aerial wallpaper carries the wallpaper's film on, one shot
     // from Home to screensaver: the apps fade, the clock moves to the corner. Whether the film is
     // moving already or still on its frame (Back on the top row), as long as Home shows it: on the
     // top row with nothing over it. A film that does not move within FILM_SAVER_WAIT_MS hands over
     // to the screensaver's own films.
     var filmFailed by remember(vm.screensaverVisible) { mutableStateOf(false) }
-    // Not where the screensaver plays Dolby Vision, which the wallpaper never does (it stays out
-    // of the display's DV mode): the film carried on would be the wallpaper's 4K SDR (TCL).
-    val context = LocalContext.current
     val filmSaverChosen = remember(vm.screensaverVisible) {
         vm.screensaverVisible && Wallpapers.selectedId == Wallpapers.LIVE && Wallpapers.screensaver == ScreensaverMode.Aerial &&
-            AerialFormats.resolve(context, AerialSettings.aerialQuality) != AerialQuality.DolbyVision &&
             (filmCover.value > 0.5f || focusedRow == 0 && overlay == Overlay.None && moving == null)
     }
     val filmSaver = filmSaverChosen && !filmFailed

@@ -20,6 +20,7 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import app.orchard.tv.ui.home.LiveFilm
 import app.orchard.tv.ui.home.Screensaver
 import app.orchard.tv.ui.home.ScreensaverSkips
 import app.orchard.tv.ui.home.rememberNow
@@ -55,6 +56,8 @@ class AerialDream : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
         // in dispatchKeyEvent, as a non-interactive dream would.
         isInteractive = true
         isFullscreen = true
+        // Home's wallpaper film holds the decoder the dream's film needs (TCL MT5879).
+        LiveFilm.onHome?.letDecoderGo()
         Wallpapers.init(this)
         Weather.init(this)
         val canvas = canvasDensity(resources.displayMetrics)

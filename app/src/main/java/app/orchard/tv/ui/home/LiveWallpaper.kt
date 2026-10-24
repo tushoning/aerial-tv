@@ -72,6 +72,40 @@ class LiveFilm {
         val p = player ?: return
         if (step < 0) p.seekToPreviousMediaItem() else p.seekToNextMediaItem()
     }
+
+    /** The film and the moment showing now, while a player has it. */
+    fun spot(): Pair<String, Long>? = film?.id?.takeIf { player != null }?.let { it to positionMs }
+
+    /**
+     * Puts the paused film where the screensaver left off, so Home wakes on the moment the
+     * screensaver was showing (FilmCarry) rather than where it took over. A film not in its list
+     * is left as it is.
+     */
+    fun moveTo(filmId: String, atMs: Long) {
+        val p = player ?: return
+        val index = (0 until p.mediaItemCount).firstOrNull { p.getMediaItemAt(it).mediaId == filmId } ?: return
+        p.pause()
+        p.seekTo(index, atMs)
+    }
+
+    /**
+     * Lets the decoder go, keeping the film and its place: a TV may have one 4K decoder only, and
+     * the screensaver's better copy needs it (Xiaomi MiTV-MFTR0: opening Dolby Vision beside the
+     * wallpaper's HEVC failed both). The film plays again from here when Home asks for it.
+     */
+    fun letDecoderGo() {
+        player?.run { pause(); stop() }
+    }
+
+    /** After [letDecoderGo], when the better copy could not play: the film goes on. */
+    fun goOn() {
+        player?.run { if (playbackState == Player.STATE_IDLE) prepare(); play() }
+    }
+
+    companion object {
+        /** Home's film, for MainActivity to hand the moment on to a screensaver it starts elsewhere. */
+        var onHome: LiveFilm? = null
+    }
 }
 
 /**
@@ -192,6 +226,8 @@ fun LiveWallpaper(
         if (play) {
             val p = player ?: open().also { player = it }
             DiagLog.i("wallpaper film starts (state ${p.playbackState}, ${p.currentMediaItem?.mediaId} at ${p.currentPosition} ms)")
+            // Its decoder was let go for the screensaver (LiveFilm.letDecoderGo).
+            if (p.playbackState == Player.STATE_IDLE) p.prepare()
             p.playWhenReady = true
             snapshotFlow { showing }.first { it }
             DiagLog.i("wallpaper film moving")

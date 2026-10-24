@@ -50,7 +50,9 @@ import app.orchard.tv.apps.SourceLooks
 import app.orchard.tv.apps.TileArtFactory
 import app.orchard.tv.guard.GuardSetup
 import app.orchard.tv.guard.HomeGuardService
+import app.orchard.tv.ui.home.AerialStart
 import app.orchard.tv.ui.home.HomeScreen
+import app.orchard.tv.ui.home.LiveFilm
 import app.orchard.tv.ui.theme.LocalReducedMotion
 import app.orchard.tv.ui.theme.canvasDensity
 import app.orchard.tv.settings.AerialSettings
@@ -398,9 +400,19 @@ class MainActivity : ComponentActivity() {
             if (asked && !SystemScreensaver.startFirmware(this)) DiagLog.i("no system screensaver to start")
             return
         }
-        if (SystemScreensaver.isAerials(this) && SystemScreensaver.startDream(this)) {
-            DiagLog.i("screensaver starts as the system's dream")
-            return
+        // The aerial wallpaper's film and moment, for a screensaver that cannot carry Home's player on.
+        if (Wallpapers.selectedId == Wallpapers.LIVE && Wallpapers.screensaver == ScreensaverMode.Aerial) {
+            AerialStart.set(LiveFilm.onHome?.spot() ?: Wallpapers.liveSpot())
+        }
+        if (SystemScreensaver.isAerials(this)) {
+            // The dream's film needs the decoder the wallpaper's holds: TCL MT5879 failed Dolby
+            // Vision beside it and the dream fell back to 4K HEVC.
+            LiveFilm.onHome?.letDecoderGo()
+            if (SystemScreensaver.startDream(this)) {
+                DiagLog.i("screensaver starts as the system's dream")
+                return
+            }
+            LiveFilm.onHome?.goOn()
         }
         DiagLog.i("screensaver starts (${Wallpapers.screensaver})")
         vm.screensaverVisible = true
