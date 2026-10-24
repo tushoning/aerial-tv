@@ -54,5 +54,10 @@ internal object LaunchFallback {
         return pages.first()
     }
 
-    private const val BOUNCE_MS = 2_000L
+    /**
+     * Xiaomi MiTV-ANSP0 closed MitvWifiActivity 0.2 s after it opened (issue #331). At 2 s a look at
+     * Xiaomi's Wi-Fi page and Back (1.3 s, MiTV-MFTR0) opened Android's after it, and Back from that
+     * the settings app.
+     */
+    private const val BOUNCE_MS = 800L
 }
