@@ -1,0 +1,260 @@
+name: 同步上游并发布 OPPO 定制包
+
+# 上游（pengchujin/aerial-tv）发新 release 后，这里自动：
+#   1. 拉上游那个 tag 的源码（干干净净的一份，从不复用上次的目录）
+#   2. custom/apply.py 打上全部 OPPO 定制
+#   3. 只编 standard flavor，用本仓库密钥 v1+v2 签名，版本号跟上游 tag
+#   4. 发一个和上游同 tag 的 release：aerial-standard.apk + version.txt
+#
+# fork 收不到上游的 release 事件，所以定时轮询（每 6 小时）。也可以在 Actions 页手动跑。
+# 手动跑可以指定 tag，或勾 force 重建一个已经存在的 release。
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "上游 tag（例如 v1.46）；留空则自动取上游最新正式 release"
+        required: false
+        default: ""
+      force:
+        description: "本仓库已有该 tag 也重建（覆盖附件）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-release
+  cancel-in-progress: false
+
+env:
+  UPSTREAM: pengchujin/aerial-tv
+  MINE: ${{ github.repository }}
+  PLATFORM: android-36
+  BUILD_TOOLS: 36.0.0
+  APK_PACKAGE: com.oneplus.tv.launcher2
+  # 一个签名密钥只能一台机器一个进程地跑，且 CI 上没必要留守护进程耗内存。
+  GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.parallel=true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      # ---------------------------------------------------------------- 看上游
+      - name: 取上游最新 release
+        id: up
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_IN: ${{ inputs.tag }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          tag="${TAG_IN:-}"
+          if [ -z "$tag" ]; then
+            # latest 会跳过 prerelease；取不到（上游只发了 beta）就退到列表第一条。
+            tag=$(gh api "repos/$UPSTREAM/releases/latest" --jq .tag_name 2>/dev/null || true)
+            [ -n "$tag" ] || tag=$(gh api "repos/$UPSTREAM/releases?per_page=1" --jq '.[0].tag_name')
+          fi
+          [ -n "$tag" ] || { echo "拿不到上游 tag" >&2; exit 1; }
+          echo "上游最新：$tag"
+
+          # 只有「release 存在 + 两个附件都在」才算做完了，缺一个就补。
+          done_repo=""
+          if assets=$(gh release view "$tag" --repo "$MINE" --json assets --jq '.assets[].name' 2>/dev/null); then
+            if grep -qx "aerial-standard.apk" <<< "$assets" && grep -qx "version.txt" <<< "$assets"; then
+              done_repo=yes
+            fi
+          fi
+          if [ -n "$done_repo" ] && [ "$FORCE" != "true" ]; then
+            echo "本仓库已经有完整的 $tag，什么都不做。"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          gh api "repos/$UPSTREAM/releases/tags/$tag" > "$RUNNER_TEMP/upstream.json"
+          jq -r '.name // .tag_name' "$RUNNER_TEMP/upstream.json" > "$RUNNER_TEMP/release-title.txt"
+          jq -r '.body // ""'       "$RUNNER_TEMP/upstream.json" > "$RUNNER_TEMP/release-notes.md"
+          jq -r '.prerelease'       "$RUNNER_TEMP/upstream.json" > "$RUNNER_TEMP/prerelease.txt"
+
+      - uses: actions/checkout@v4
+        if: steps.up.outputs.skip == 'false'
+        with:
+          fetch-depth: 1
+
+      - name: 下载上游源码
+        if: steps.up.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.up.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/src"
+          curl -fsSL --retry 5 --retry-delay 3 \
+            "https://codeload.github.com/$UPSTREAM/tar.gz/refs/tags/$TAG" -o "$RUNNER_TEMP/src.tgz"
+          tar xzf "$RUNNER_TEMP/src.tgz" -C "$RUNNER_TEMP/src" --strip-components=1
+          grep -E '^\s+(versionCode|versionName) = ' "$RUNNER_TEMP/src/app/build.gradle.kts"
+
+      - name: 打上 OPPO 定制
+        if: steps.up.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.up.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python3 custom/apply.py "$RUNNER_TEMP/src" \
+            --version "${TAG#v}" \
+            --repo "$MINE"
+
+      # 把打完补丁的源码推到 src/<tag> 分支，方便在网页上直接对照看改了什么。
+      # 必须放在写签名密钥之前：否则 keystore 会跟着被推上去。
+      - name: 记录同步后的源码
+        if: steps.up.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.up.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/src"
+          test ! -e local || { echo "local/ 不该存在，拒绝提交" >&2; exit 1; }
+          git init -q
+          git add -A
+          git -c user.name="github-actions" -c user.email="actions@users.noreply.github.com" \
+              commit -qm "Aerial $TAG + OPPO 定制"
+          git push --force \
+            "https://x-access-token:${{ github.token }}@github.com/$MINE.git" \
+            "HEAD:refs/heads/src/$TAG"
+
+      # ---------------------------------------------------------------- 编译环境
+      - uses: actions/setup-java@v4
+        if: steps.up.outputs.skip == 'false'
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+        if: steps.up.outputs.skip == 'false'
+
+      - name: 缓存 Gradle
+        if: steps.up.outputs.skip == 'false'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('custom/apply.py', 'custom/files/*') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: 装 Android SDK 组件
+        if: steps.up.outputs.skip == 'false'
+        run: sdkmanager --install "platforms;$PLATFORM" "build-tools;$BUILD_TOOLS" > /dev/null
+
+      - name: 写入签名密钥
+        if: steps.up.outputs.skip == 'false'
+        env:
+          KEYSTORE_B64: ${{ secrets.AERIAL_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.AERIAL_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.AERIAL_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.AERIAL_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for v in KEYSTORE_B64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!v:-}" ]; then
+              echo "缺少 secret：$v（Settings → Secrets and variables → Actions）" >&2
+              exit 1
+            fi
+          done
+          mkdir -p "$RUNNER_TEMP/src/local"
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/src/local/aerial.keystore"
+          {
+            printf 'storeFile=aerial.keystore\n'
+            printf 'storePassword=%s\n' "$STORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > "$RUNNER_TEMP/src/local/signing.properties"
+
+      - name: 编译 standard release
+        if: steps.up.outputs.skip == 'false'
+        working-directory: ${{ runner.temp }}/src
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:assembleStandardRelease --no-daemon --console=plain
+
+      # ---------------------------------------------------------------- 校验
+      - name: 校验包名、版本号、v1+v2 与证书指纹
+        if: steps.up.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.up.outputs.tag }}
+          WANT_CERT: ${{ vars.AERIAL_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          bt="$ANDROID_HOME/build-tools/$BUILD_TOOLS"
+          apk="$RUNNER_TEMP/src/app/build/outputs/apk/standard/release/app-standard-release.apk"
+          test -f "$apk" || { echo "没编出 $apk" >&2; exit 1; }
+
+          # aapt2 有些版本不带 dump badging，回退到 aapt。
+          badging=$("$bt/aapt2" dump badging "$apk" 2>/dev/null) ||
+            badging=$("$bt/aapt" dump badging "$apk")
+          pkg=$(printf '%s\n' "$badging" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+          ver=$(printf '%s\n' "$badging" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")
+          echo "包名 $pkg，版本 $ver"
+          [ "$pkg" = "$APK_PACKAGE" ] || { echo "包名不对：$pkg" >&2; exit 1; }
+          [ "$ver" = "${TAG#v}" ] || { echo "版本号不对：$ver，上游是 ${TAG#v}" >&2; exit 1; }
+
+          out=$("$bt/apksigner" verify -v --print-certs "$apk")
+          printf '%s\n' "$out" | grep -E "^Verified using v[12] scheme"
+          printf '%s\n' "$out" | grep -q "Verified using v1 scheme (JAR signing): true" || { echo "v1 签名缺失：OPPO 安装器会拒绝" >&2; exit 1; }
+          printf '%s\n' "$out" | grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" || { echo "v2 签名缺失" >&2; exit 1; }
+
+          # 电视上已有的旧包是某一把密钥签的，换密钥就只能卸载重装。
+          # 配了仓库变量 AERIAL_CERT_SHA256 就强制核对，没配只打印。
+          cert=$(printf '%s\n' "$out" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          echo "证书 SHA-256：$cert"
+          if [ -n "${WANT_CERT:-}" ] && [ "$cert" != "$WANT_CERT" ]; then
+            echo "证书指纹与 AERIAL_CERT_SHA256 不一致——这个包装不到现有的电视上，检查 secret 里的 keystore" >&2
+            exit 1
+          fi
+
+          cp "$apk" "$RUNNER_TEMP/aerial-standard.apk"
+          printf '%s' "${TAG#v}" > "$RUNNER_TEMP/version.txt"
+
+      # ---------------------------------------------------------------- 发布
+      - name: 发布 release
+        if: steps.up.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.up.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          {
+            echo "OPPO / OnePlus 电视定制包：包名 \`$APK_PACKAGE\`，带 \`MODERN_HOME\`，"
+            echo "本仓库密钥签名（v1 + v2），只编 standard flavor。功能与上游 \`$TAG\` 一致。"
+            echo ""
+            echo "安装：电视上直接安装即可覆盖旧版（签名相同），或 \`adb install -r aerial-standard.apk\`。"
+            echo ""
+            echo "---"
+            echo ""
+            echo "以下是上游原文："
+            echo ""
+            cat release-notes.md
+          } > notes.md
+
+          flags=()
+          if [ "$(cat prerelease.txt)" = "true" ]; then flags+=(--prerelease); fi
+
+          if gh release view "$TAG" --repo "$MINE" > /dev/null 2>&1; then
+            gh release upload "$TAG" aerial-standard.apk version.txt --repo "$MINE" --clobber
+            gh release edit "$TAG" --repo "$MINE" --notes-file notes.md "${flags[@]}"
+          else
+            gh release create "$TAG" aerial-standard.apk version.txt \
+              --repo "$MINE" \
+              --title "$(cat release-title.txt)" \
+              --notes-file notes.md \
+              "${flags[@]}"
+          fi
+          echo "已发布：https://github.com/$MINE/releases/tag/$TAG"
