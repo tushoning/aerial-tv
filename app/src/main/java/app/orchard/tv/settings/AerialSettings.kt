@@ -30,22 +30,6 @@ enum class FocusStyle(val key: String) {
  * Where interface sounds come from. The TV's own are silent wherever its key sound setting is off,
  * which many TVs ship with (Sony, issue #160; #169), so that is not the default there.
  */
-/**
- * What Home looks like behind Control Center. Dim keeps it sharp under a dark veil, as tvOS does;
- * Frost leaves it as it is, with the panel frosted glass (1.41 faded a frosted wallpaper over all
- * of Home, which owners took for everything gone blurry); Blur (Android 12+) dims it a little and
- * the panel blurs live what lies behind it, the panel only: blurring all of Home live cost 20–77 ms
- * of GPU a frame on Xiaomi MiTV-MFTR0 while anything under it moved (issue #354). Folders open on
- * Home blurred whatever is chosen: live with Blur, else the frosted picture (HomeScreen).
- */
-enum class PanelBehind(val key: String) {
-    Dim("dim"), Frost("frost"), Blur("blur");
-
-    companion object {
-        fun of(key: String?) = entries.firstOrNull { it.key == key }
-    }
-}
-
 enum class UiSounds(val key: String) {
     Tv("tv"), Aerial("aerial"), Off("off");
 
@@ -62,7 +46,6 @@ object AerialSettings {
 
     var focusStyle by mutableStateOf(FocusStyle.HighContrast); private set
 
-    var panelBehind by mutableStateOf(PanelBehind.Dim); private set
 
     /** TV inputs pinned to Home as tiles, by TvInputInfo id. */
     var pinnedSources by mutableStateOf<Set<String>>(emptySet()); private set
@@ -142,9 +125,6 @@ object AerialSettings {
         app = context.applicationContext
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         focusStyle = FocusStyle.of(prefs.getString("focus_style", null))
-        // 1.41 kept only whether live blur was chosen; frost was the default then, and is no more.
-        panelBehind = PanelBehind.of(prefs.getString("panel_behind", null))
-            ?: if (prefs.getBoolean("live_blur", false)) PanelBehind.Blur else PanelBehind.Dim
         pinnedSources = prefs.getStringSet("pinned_sources", null)?.toSet() ?: emptySet()
         bootSource = prefs.getString("boot_source", null)
         bootApp = prefs.getString("boot_app", null)
@@ -267,8 +247,4 @@ object AerialSettings {
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("focus_style", style.key) }
     }
 
-    fun choosePanelBehind(mode: PanelBehind) {
-        panelBehind = mode
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("panel_behind", mode.key) }
-    }
 }

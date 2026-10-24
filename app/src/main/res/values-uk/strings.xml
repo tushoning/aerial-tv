@@ -133,11 +133,6 @@
     <string name="st_plate_none">Немає</string>
     <string name="st_sounds">Звуки</string>
     <string name="st_sounds_hint">Звук під час переміщення фокуса, вибору та натискання «Назад», як на Apple TV.</string>
-    <string name="st_blur">За панелями</string>
-    <string name="st_blur_hint">Як виглядає головний екран за Пунктом керування. Затемнення робить його темнішим; матове лишає його чітким, меню з матового скла; живе розмиття розмиває те, що за меню, і сповільнює старі телевізори. Папки завжди відкриваються на розмитому головному екрані.</string>
-    <string name="st_blur_dim">Затемнення</string>
-    <string name="st_blur_frost">Матове</string>
-    <string name="st_blur_live">Живе розмиття</string>
     <string name="st_sounds_tv_hint">Власні звуки клавіш телевізора, як у його меню. Якщо їх вимкнено в налаштуваннях телевізора, звуку не буде: тоді виберіть Aerial.</string>
     <string name="st_sounds_tv">ТВ</string>
     <string name="st_sounds_aerial">Aerial</string>

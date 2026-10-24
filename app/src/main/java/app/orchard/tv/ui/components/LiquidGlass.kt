@@ -5,13 +5,11 @@ import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Shader
-import android.os.Build
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
@@ -20,7 +18,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
@@ -32,11 +29,6 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -61,8 +53,6 @@ import kotlin.math.roundToInt
  * rounded rect, which holds it.
  */
 fun Modifier.liquidGlass(corner: Dp, bottomCorners: Boolean = true): Modifier = composed {
-    val live = LocalGlassBackdrop.current?.takeIf { Build.VERSION.SDK_INT >= 31 }
-    val liveLayer = if (live != null) rememberGraphicsLayer() else null
     val frost = Wallpapers.frosted.takeIf { Wallpapers.backdrop != null }
     var at by remember { mutableStateOf(Offset.Zero) }
     var root by remember { mutableStateOf(IntSize.Zero) }
@@ -84,25 +74,7 @@ fun Modifier.liquidGlass(corner: Dp, bottomCorners: Boolean = true): Modifier = 
             val brush = shader?.let { ShaderBrush(it) }
             val flat = mask.asImageBitmap()
             onDrawBehind {
-                if (live != null && liveLayer != null) {
-                    // What lies behind the panel, blurred within the panel only. The layer draws
-                    // Home's by reference, so it follows Home without being recorded again.
-                    // Blurred at a quarter of the size and drawn back up: a sixteenth of the pixels
-                    // to blur, which a blur cannot tell apart (MiTV-MFTR0: GPU 21 ms a frame at
-                    // full size).
-                    val r = LIVE_BLUR.toPx() / LIVE_SCALE
-                    liveLayer.renderEffect = BlurEffect(r, r, TileMode.Clamp)
-                    liveLayer.record(IntSize((w / LIVE_SCALE).roundToInt().coerceAtLeast(1), (h / LIVE_SCALE).roundToInt().coerceAtLeast(1))) {
-                        scale(1f / LIVE_SCALE, pivot = Offset.Zero) {
-                        translate(-at.x, -at.y) {
-                            val shot = live.shot
-                            if (shot != null) drawImage(shot) else drawLayer(live.layer)
-                        }
-                    }
-                    }
-                    scale(LIVE_SCALE, pivot = Offset.Zero) { drawLayer(liveLayer) }
-                    drawRect(LiveTint)
-                } else if (shader == null || brush == null || root == IntSize.Zero) {
+                if (shader == null || brush == null || root == IntSize.Zero) {
                     drawImage(flat, dstSize = IntSize(w, h), colorFilter = ColorFilter.tint(Palette.Glass))
                 } else {
                     shader.setLocalMatrix(Matrix().apply {
@@ -164,22 +136,6 @@ fun glassEdge(w: Int, h: Int, radius: Float, rim: Float, bottomCorners: Boolean 
         )
         bitmap.frozen().asImageBitmap()
     }
-
-/**
- * Home as drawn, for a panel to blur live what lies behind it (AerialSettings.panelBehind Blur,
- * Android 12+): its [layer], or once Home holds still, a [shot] of it. Null: the frosted wallpaper.
- * Provided around Control Center by HomeScreen.
- */
-class GlassBackdrop(val layer: GraphicsLayer, val shot: ImageBitmap?)
-
-val LocalGlassBackdrop = staticCompositionLocalOf<GlassBackdrop?> { null }
-
-/** How much a live panel blurs what is behind it, and how much smaller it blurs it. */
-private val LIVE_BLUR = 30.dp
-private const val LIVE_SCALE = 4f
-
-/** Over a live blur, so white text reads on snow as on the frosted glass. */
-private val LiveTint = Color.Black.copy(alpha = 0.28f)
 
 /** Panels: the frosted picture at half its light, lifted a little, so white text reads on snow. */
 private val PanelTint = ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(

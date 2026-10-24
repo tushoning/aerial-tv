@@ -133,11 +133,6 @@
     <string name="st_plate_none">Жоқ</string>
     <string name="st_sounds">Дыбыстар</string>
     <string name="st_sounds_hint">Фокус жылжығанда, таңдағанда және «Артқа» басқанда дыбыс шығады, Apple TV сияқты.</string>
-    <string name="st_blur">Панельдердің артында</string>
-    <string name="st_blur_hint">Басқару орталығы ашық кездегі басты экранның көрінісі. Қараңғылау оны күңгірттейді; күңгірт оны анық қалдырады, мәзір күңгірт әйнек болады; тірі бұлдырату мәзірдің артындағыны бұлдыратады және ескі теледидарларды баяулатады. Қалталар әрдайым бұлдыр басты экранда ашылады.</string>
-    <string name="st_blur_dim">Қараңғылау</string>
-    <string name="st_blur_frost">Күңгірт</string>
-    <string name="st_blur_live">Тірі бұлдырату</string>
     <string name="st_sounds_tv_hint">Теледидардың өз түйме дыбыстары, мәзірлеріндегідей. Теледидар параметрлерінде өшірулі болса, дыбыс болмайды: онда Aerial таңдаңыз.</string>
     <string name="st_sounds_tv">ТД</string>
     <string name="st_sounds_aerial">Aerial</string>

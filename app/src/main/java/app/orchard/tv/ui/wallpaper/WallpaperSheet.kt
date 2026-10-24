@@ -61,7 +61,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import app.orchard.tv.R
 import app.orchard.tv.settings.AerialSettings
-import app.orchard.tv.settings.PanelBehind
 import app.orchard.tv.settings.FocusStyle
 import app.orchard.tv.settings.UiSounds
 import app.orchard.tv.system.Sounds
@@ -217,16 +216,6 @@ fun WallpaperSheet(
                             note,
                             listOf(UiSounds.Tv to R.string.st_sounds_tv, UiSounds.Aerial to R.string.st_sounds_aerial, UiSounds.Off to R.string.st_off),
                             AerialSettings.uiSounds, { AerialSettings.chooseUiSounds(it); Sounds.prepare() },
-                        )
-                        // Only Android 12 and later can blur live.
-                        Choices(
-                            R.string.st_blur, stringResource(R.string.st_blur_hint), note,
-                            listOfNotNull(
-                                PanelBehind.Dim to R.string.st_blur_dim,
-                                PanelBehind.Frost to R.string.st_blur_frost,
-                                (PanelBehind.Blur to R.string.st_blur_live).takeIf { Build.VERSION.SDK_INT >= 31 },
-                            ),
-                            AerialSettings.panelBehind, AerialSettings::choosePanelBehind,
                         )
                     }
 

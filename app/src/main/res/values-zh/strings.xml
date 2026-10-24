@@ -140,11 +140,6 @@
     <string name="st_plate_none">不显示</string>
     <string name="st_sounds">按键声音</string>
     <string name="st_sounds_hint">移动焦点、确认、返回时发出声音，像 Apple TV 一样。</string>
-    <string name="st_blur">面板背后</string>
-    <string name="st_blur_hint">打开控制中心时主屏幕的样子。变暗：桌面压暗；磨砂：桌面清晰，菜单是磨砂玻璃；实时模糊：菜单实时模糊它后面的内容、桌面稍微压暗，较慢的电视会卡顿。文件夹总是在模糊的主屏幕上打开。</string>
-    <string name="st_blur_dim">变暗</string>
-    <string name="st_blur_frost">磨砂</string>
-    <string name="st_blur_live">实时模糊</string>
     <string name="st_sounds_tv_hint">用电视系统自带的按键音，和电视菜单里一样。电视设置里关了按键音时不会响，这时请选「Aerial」。</string>
     <string name="st_sounds_tv">电视</string>
     <string name="st_sounds_aerial">Aerial</string>

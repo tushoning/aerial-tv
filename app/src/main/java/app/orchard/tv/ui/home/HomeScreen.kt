@@ -8,7 +8,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntOffsetAsState
 import androidx.compose.animation.core.spring
@@ -33,7 +32,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -50,11 +48,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -76,10 +72,7 @@ import app.orchard.tv.HomeViewModel
 import app.orchard.tv.Overlay
 import app.orchard.tv.R
 import app.orchard.tv.settings.AerialSettings
-import app.orchard.tv.settings.PanelBehind
 import app.orchard.tv.apps.AppEntry
-import app.orchard.tv.ui.components.GlassBackdrop
-import app.orchard.tv.ui.components.LocalGlassBackdrop
 import app.orchard.tv.ui.control.ControlCenter
 import app.orchard.tv.ui.wallpaper.WallpaperSheet
 import app.orchard.tv.wallpaper.ScreensaverMode
@@ -430,24 +423,15 @@ fun HomeScreen(
         val openFolder = (overlay as? Overlay.Folder)?.id ?: (overlay as? Overlay.AppMenu)?.inFolder
         val folderOpen = overlay is Overlay.HiddenApps || openFolder != null
         val ccOpen = overlay is Overlay.ControlCenter
-        val behind = AerialSettings.panelBehind.let { if (it == PanelBehind.Blur && Build.VERSION.SDK_INT < 31) PanelBehind.Dim else it }
-        // Folders open on Home blurred, as on tvOS: live where chosen, else the frosted picture.
-        // Control Center keeps Home sharp: dimmed (Dim), as it is (Frost), or a little dimmed with
-        // only its panel blurring live what lies behind it (Blur).
-        val backdropBlur by animateDpAsState(
-            if (folderOpen && behind == PanelBehind.Blur) 30.dp else 0.dp,
-            tween(320, easing = Motion.EaseOut), label = "backdrop-blur",
-        )
+        // Folders open on Home frosted, as on tvOS; Control Center keeps Home sharp, dimmed.
         val backdropFrost by animateFloatAsState(
-            if (folderOpen && behind != PanelBehind.Blur) 1f else 0f,
+            if (folderOpen) 1f else 0f,
             tween(320, easing = Motion.EaseOut), label = "backdrop-frost",
         )
-        val veilAlpha = if (behind == PanelBehind.Blur) 0.2f else 0.45f
         val backdropVeil by animateFloatAsState(
-            if (ccOpen && behind != PanelBehind.Frost) 1f else 0f,
+            if (ccOpen) 1f else 0f,
             tween(320, easing = Motion.EaseOut), label = "backdrop-veil",
         )
-        val glassLive = ccOpen && behind == PanelBehind.Blur
         // With Control Center open, Home is still: once the panel is in, a picture of it stands in
         // for it, one full-screen image a frame instead of every tile again under the panel
         // (MiTV-MFTR0: GPU 18-21 ms a frame drawing Home under it, as against 9-15 ms frosted).
@@ -484,13 +468,11 @@ fun HomeScreen(
                 // While moving an app, a tap on empty space ends the move, as OK does.
                 .pointerInput(Unit) { detectTapGestures { if (movingNow != null) vm.endMove() } }
                 .graphicsLayer {
-                    val r = backdropBlur.toPx()
-                    renderEffect = if (r > 0.5f && Build.VERSION.SDK_INT >= 31) BlurEffect(r, r, TileMode.Clamp) else null
                     // Under the frost once it is whole, Home is not drawn at all: on MFTR0 the
                     // picture, plate and tiles cost the GPU as much again as the panel over them.
                     alpha = if (backdropFrost > 0.999f || homeShot != null) 0f else 1f
                 }
-                // Recorded while Control Center is open: for its picture and for its panel to blur.
+                // Recorded while Control Center is open, for the picture that stands in for Home.
                 .drawWithContent {
                     if (ccOpen) {
                         homeLayer.record { this@drawWithContent.drawContent() }
@@ -642,7 +624,7 @@ fun HomeScreen(
         }
 
         homeShot?.let { shot -> Canvas(Modifier.fillMaxSize()) { drawImage(shot) } }
-        PanelBackdrop(Wallpapers.frosted.takeIf { Wallpapers.backdrop != null }, { backdropFrost }, { backdropVeil }, veilAlpha)
+        PanelBackdrop(Wallpapers.frosted.takeIf { Wallpapers.backdrop != null }, { backdropFrost }, { backdropVeil })
 
         // Rows that scroll up under the status pill fade out instead of colliding with it.
         Canvas(
@@ -721,16 +703,14 @@ fun HomeScreen(
             )
         }
 
-        CompositionLocalProvider(LocalGlassBackdrop provides GlassBackdrop(homeLayer, homeShot).takeIf { glassLive }) {
-            ControlCenter(
-                visible = overlay is Overlay.ControlCenter,
-                page = (overlay as? Overlay.ControlCenter)?.page ?: CcPage.Main,
-                vm = vm,
-                now = now,
-                onOpen = { vm.overlay = Overlay.None; onOpen(it) },
-                onClose = { vm.overlay = Overlay.None },
-            )
-        }
+        ControlCenter(
+            visible = overlay is Overlay.ControlCenter,
+            page = (overlay as? Overlay.ControlCenter)?.page ?: CcPage.Main,
+            vm = vm,
+            now = now,
+            onOpen = { vm.overlay = Overlay.None; onOpen(it) },
+            onClose = { vm.overlay = Overlay.None },
+        )
 
         FolderView(
             name = openFolder?.let { id -> apps.firstOrNull { it.folder?.id == id }?.label },
