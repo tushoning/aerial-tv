@@ -44,3 +44,13 @@
 ## 还原
 
 - `tools/restore.sh` 用 `settings global aerial_vt_home_pkg` 里记下的原值还原 `persist.vt.use_home_pkg`。1.15 及以前是手动改的属性，没有记原值：这时如果属性是 `app.orchard.tv` 且装有 `com.jamdeo.tv.vod`，就还原成聚好看（#40 的报告人发现的，2026-10-22 起）。
+
+## 待机唤醒后时钟暂时显示旧时间（Android 8.0 / bigfish）
+
+2026-10-24 通过 ADB 只读检查了一台海信 `H55E9A`（`ro.product.hisense.model`；系统型号 `VIDAA_TV`，Android 8.0.0，设备 `Hi3751v811` / 平台 `bigfish`，Aerial 1.41 / versionCode 44）：
+
+- 用户报告开机先显示关机前的时间，稍后才恢复。日志中 Aerial 的同一个进程在 02:08:08 `onStop`，09:48:00 `onStart` / `onResume`，这次是保留进程的待机唤醒。
+- `auto_time=1`、`auto_time_zone=1`，时区 `Asia/Shanghai`。`dumpsys alarm` 的最后一次系统时间变更为 09:47:59.928，早于 Aerial 恢复界面；09:48:08 的系统网络校时日志也已是正确时间。
+- `HomeChrome.rememberNow` 原来保留 Compose 状态，仅靠协程等到下一分钟刷新，没有响应界面恢复、亮屏或系统校时。`MainActivity.dayReceiver` 虽监听校时，却只更新壁纸。因此系统时间已经正确时，界面仍可能暂时保留待机前的值。
+- 源码补丁改为前台监听 `TIME_TICK`、`TIME_SET`、`TIMEZONE_CHANGED`、`SCREEN_ON`，并在 `ON_START` / `ON_RESUME` 立即读取时间；首页和 Dream 共用这条逻辑。
+- **验证边界**：以上为原版的真机日志与源码分析；`:app:compileStandardReleaseKotlin` 通过。修复版尚未安装，也未验证真实待机唤醒。当前机器缺少与已装 APK 匹配的签名密钥。未改电视设置、未卸载应用。

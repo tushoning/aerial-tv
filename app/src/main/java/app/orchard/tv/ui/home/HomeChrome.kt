@@ -1,5 +1,9 @@
 package app.orchard.tv.ui.home
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.text.format.DateFormat
 import android.graphics.PorterDuff
 import android.graphics.Matrix
@@ -14,7 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.layout.fillMaxSize
@@ -55,6 +59,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.orchard.tv.R
 import app.orchard.tv.settings.AerialSettings
 import app.orchard.tv.wallpaper.Images
@@ -72,7 +80,6 @@ import app.orchard.tv.ui.theme.Type
 import app.orchard.tv.weather.Weather
 import app.orchard.tv.weather.WeatherKind
 import app.orchard.tv.weather.WeatherNow
-import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -81,13 +88,51 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
-/** The current time, ticking on the minute. */
+/** Tick on the minute and refresh immediately after waking or a system clock correction. */
 @Composable
-fun rememberNow(): State<LocalDateTime> = produceState(LocalDateTime.now()) {
-    while (true) {
-        value = LocalDateTime.now()
-        delay(60_000L - System.currentTimeMillis() % 60_000L + 30L)
+fun rememberNow(): State<LocalDateTime> {
+    val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val now = remember { mutableStateOf(LocalDateTime.now()) }
+    DisposableEffect(context, lifecycle) {
+        fun refresh() { now.value = LocalDateTime.now() }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) = refresh()
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIME_TICK)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
+        var registered = false
+        fun stop() {
+            if (registered) {
+                context.unregisterReceiver(receiver)
+                registered = false
+            }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+                    registered = true
+                    refresh()
+                }
+                Lifecycle.Event.ON_RESUME -> refresh()
+                Lifecycle.Event.ON_STOP -> stop()
+                else -> Unit
+            }
+        }
+        // A minute-long coroutine delay survives standby with its old value on Hisense VIDAA.
+        // Adding the observer also dispatches ON_START/ON_RESUME if already in the foreground.
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            stop()
+        }
     }
+    return now
 }
 
 @Composable
