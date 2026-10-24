@@ -1,8 +1,11 @@
 package app.orchard.tv.guard
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
@@ -44,6 +47,67 @@ object GuardSetup {
     private const val KEY_INSTALLER_OPENED = "installer_opened_at"
     private const val KEY_SCREENSAVER_SWITCHED_OFF = "screensaver_switched_off"
     private const val KEY_SCREENSAVER_ENABLED = "screensaver_enabled"
+    private const val KEY_OFF_IN_STANDBY = "guard_off_in_standby"
+
+    /**
+     * Opt-in, over ADB (ConfigReceiver): Home Guard takes itself out of the accessibility list when
+     * the screen goes off and is put back when it lights. A TCL tc8000_ay30a2 (Android 11) never
+     * woke from standby while the guard was enabled, with or without its key filter, the app freezer
+     * or anything else of Aerial's running; with the guard disabled it woke every time (issue #371;
+     * the same on tcl_mt5879_cn firmware V745 but not V472, #132).
+     */
+    fun offInStandby(context: Context): Boolean = isUserUnlocked(context) &&
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_OFF_IN_STANDBY, false)
+
+    fun setOffInStandby(context: Context, off: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_OFF_IN_STANDBY, off).commit()
+    }
+
+    /** Whether the guard is to stay out now: opted in and the screen is off. */
+    private fun standingOut(context: Context): Boolean =
+        offInStandby(context) && context.getSystemService<PowerManager>()?.isInteractive == false
+
+    /**
+     * Puts the guard back at SCREEN_ON while it is out for standby. Registered on the application
+     * context, so it outlives the guard, which is unbound once out of the list. If the firmware
+     * kills the process in standby, the next start (the notification listener's rebind, the sync
+     * adapter) comes through ensureEnabled, which registers it again while the screen is off.
+     */
+    private var screenOnWatch: BroadcastReceiver? = null
+
+    private fun watchScreenOn(context: Context) {
+        if (screenOnWatch != null) return
+        val app = context.applicationContext
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, intent: Intent) {
+                if (screenOnWatch !== this) return
+                runCatching { app.unregisterReceiver(this) }
+                screenOnWatch = null
+                Log.i(TAG, "screen on; putting Home Guard back after standby")
+                ensureEnabled(app)
+            }
+        }
+        screenOnWatch = receiver
+        app.registerReceiver(receiver, IntentFilter(Intent.ACTION_SCREEN_ON))
+        // Lit in between: the broadcast is already gone.
+        if (context.getSystemService<PowerManager>()?.isInteractive == true) receiver.onReceive(app, Intent(Intent.ACTION_SCREEN_ON))
+    }
+
+    /** Called by the guard at SCREEN_OFF: takes it out of the list and waits for the screen. */
+    fun stepOutForStandby(service: android.accessibilityservice.AccessibilityService) {
+        Log.i(TAG, "screen off; taking Home Guard out for standby")
+        watchScreenOn(service)
+        // disableSelf has the system drop the service from the list and unbind it at once.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && runCatching { service.disableSelf() }.isSuccess) return
+        if (ContextCompat.checkSelfPermission(service, Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return
+        val me = ComponentName(service, HomeGuardService::class.java).flattenToString()
+        val resolver = service.contentResolver
+        runCatching {
+            val others = Settings.Secure.getString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+                .split(':').filter { it.isNotBlank() && ComponentName.unflattenFromString(it)?.flattenToString() != me }
+            Settings.Secure.putString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, others.joinToString(":"))
+        }.onFailure { Log.w(TAG, "could not take Home Guard out", it) }
+    }
 
     /**
      * Kept on disk while Aerial's home screen is in front, so a new process can tell how the last
@@ -144,6 +208,7 @@ object GuardSetup {
      */
     fun rebindIfStalled(context: Context) {
         if (HomeGuardService.isRunning) return
+        if (standingOut(context)) { watchScreenOn(context); return }
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return
         val me = ComponentName(context, HomeGuardService::class.java).flattenToString()
         val resolver = context.contentResolver
@@ -273,6 +338,7 @@ object GuardSetup {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return false
         keepScreensaver(context)
         RevivalSync.ensure(context)
+        if (standingOut(context)) { watchScreenOn(context); return false }
         val me = ComponentName(context, HomeGuardService::class.java).flattenToString()
         val resolver = context.contentResolver
         val current = Settings.Secure.getString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()

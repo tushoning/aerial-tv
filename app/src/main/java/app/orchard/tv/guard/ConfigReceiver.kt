@@ -15,6 +15,8 @@ import kotlinx.coroutines.launch
  * Options set from a computer over ADB, e.g.
  *   adb shell am broadcast -a app.orchard.tv.CONFIG -n app.orchard.tv/.guard.ConfigReceiver --ez keep_adb true
  *   ... --ez own_screensaver true   (keep Aerial as the system screensaver; see GuardSetup)
+ *   ... --ez guard_off_in_standby true  (Home Guard leaves at screen off, back at screen on;
+ *                                   for TVs that do not wake with it enabled, issue #371)
  *   ... --ez clear_pin true         (turn the parental PIN off, for an owner who forgot it)
  *   ... --ez large_clock true --ez clock_right false --ez one_row_home true
  *       --ez peek_next_row false --ez home_plate true --ez show_all_names false
@@ -70,6 +72,7 @@ class ConfigReceiver : BroadcastReceiver() {
             Updates.checkIfStale(force = true)
         }
         if (intent.hasExtra("keep_adb")) GuardSetup.setKeepAdb(context, intent.getBooleanExtra("keep_adb", false))
+        if (intent.hasExtra("guard_off_in_standby")) GuardSetup.setOffInStandby(context, intent.getBooleanExtra("guard_off_in_standby", false))
         if (intent.hasExtra("own_screensaver")) GuardSetup.setOwnScreensaver(context, intent.getBooleanExtra("own_screensaver", false))
         // aerial, photos, clock, videos or system.
         intent.getStringExtra("screensaver")?.let { key ->
@@ -86,6 +89,6 @@ class ConfigReceiver : BroadcastReceiver() {
             HomeGuardService.refreshCecHome()
         }
         GuardSetup.ensureEnabled(context)
-        resultData = "keep_adb=${GuardSetup.keepAdb(context)}"
+        resultData = "keep_adb=${GuardSetup.keepAdb(context)} guard_off_in_standby=${GuardSetup.offInStandby(context)}"
     }
 }

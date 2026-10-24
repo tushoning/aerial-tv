@@ -68,7 +68,7 @@ TCL 手机 App 有一个「把手机里的 APK 推到电视」的功能。电视
 ## HOME 与守护
 
 - 和小米一样，靠桌面守护接管。待机唤醒后会自动回到 Aerial（实测）。
-- 同样是 cyberui、多屏互动装 guard 版的 TCL tc8000_ay30a2（Amlogic，Android 11）：守护运行时，遥控器关机后再也唤不醒，只能拔电；关掉守护就正常（#371，报告人做了对照实验）。怀疑是守护的按键过滤让唤醒的电源键经过了 Aerial 的进程。1.41 起屏幕关闭时不过滤按键，亮屏后再开，等报告人复测。
+- 同样是 cyberui、多屏互动装 guard 版的 TCL tc8000_ay30a2（Amlogic，Android 11）：守护运行时，遥控器关机后再也唤不醒，只能拔电；关掉守护就正常（#371，报告人做了对照实验）。怀疑是守护的按键过滤让唤醒的电源键经过了 Aerial 的进程。1.41 起屏幕关闭时不过滤按键，亮屏后再开，等报告人复测。1.43 复测仍唤不醒，关掉应用冻结也一样（#371），同型号刷回 V472 固件正常、V745 才有（#132）。1.44 加了可选的「待机时守护退出」：`adb shell am broadcast -a app.orchard.tv.CONFIG -n app.orchard.tv/.guard.ConfigReceiver --ez guard_off_in_standby true`。息屏时守护用 `disableSelf()` 把自己移出无障碍列表（Android 7 以下改写设置），亮屏时由挂在进程上的接收器加回，加回后照常检查前台、拉回原桌面；进程在待机中被杀时，下一次启动（通知监听重绑、同步）发现还在息屏就只挂接收器，不提前加回。我们的 MT5879 上实测：按待机后 0.5 秒内守护已移出、walleve 两个服务保留（2026-10-24）。
 - **升级 App 后，守护服务处于「已启用但没绑定」状态**。`GuardSetup.rebindIfStalled` 会先移除、1.5 秒后再加回，触发重新绑定（两次写入挨得太近会被系统合并，不起作用）。
 - TCL 自己有两个无障碍服务（`com.tcl.walleve`，「小T助手」），改 `enabled_accessibility_services` 时一定要保留。
 - 待机时网络 ADB 会断，但 adbd 不会被关；唤醒后能直接重连。
