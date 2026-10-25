@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安装说明 / Install guide
+    url: https://aerial.qust.me/agent.md
+    about: 安装、升级、还原的步骤，各品牌打开 ADB 的方法 / Installing, updating and undoing; turning on ADB
+  - name: 常见问题 / FAQ
+    url: https://github.com/pengchujin/aerial-tv#常见问题
+    about: 装完找不到图标、TCL 多屏互动、创维装不上等 / No icon after installing, TCL's 多屏互动, Skyworth install errors
