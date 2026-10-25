@@ -5,20 +5,23 @@
 
 ---
 
-## 一、需要放进仓库的三个文件
+## 一、需要放进仓库的两个文件
 
 ```
 custom/apply.py                              # 全部定制逻辑（唯一真相）
-custom/files/OppoPicture.kt                  # OPPO 背光通道，编译时被复制进源码
 .github/workflows/sync-upstream-release.yml  # CI：拉上游 → 打补丁 → 签名 → 发 release
 ```
+
+`custom/files/` 是给「需要整份新增的源文件」用的，当前定制**全是定点补丁，不需要它**，
+所以这个目录可以不存在（`apply.py` 会打印「没有新增文件，跳过」）。以后真要加整份文件，
+建 `custom/files/` 把 `.kt` 丢进去即可，编译时会被复制进源码并跟着改名一起搬家。
 
 除此之外**不要提交**任何上游源码。CI 每次都从上游 tag 重新解压一份干净的，从不复用旧目录。
 
 ```bash
 cd <你 clone 的 tushoning/xxx 目录>
-mkdir -p custom/files .github/workflows
-# 把上面三个文件放到对应位置
+mkdir -p custom .github/workflows
+# 把上面两个文件放到对应位置
 git add -A
 git commit -m "OPPO 定制：补丁脚本 + 自动发版流程"
 git push
@@ -76,14 +79,14 @@ gh secret set AERIAL_KEY_PASSWORD    --repo $R -b "aerial123"
 
 ### 3.（建议）加一个指纹强校验
 
-**Settings → Secrets and variables → Actions → Variables → New repository variable**
+**Settings → Secrets and variables → Actions → 顶部切到 Variables 标签页 → New repository variable**
 
 | Name | Value |
 |---|---|
 | `AERIAL_CERT_SHA256` | `4ca292129ad97359a262d5f5269e7fd7ef0287b33cd19f6e761dd671946581b5` |
 
 配上之后，CI 每次都会核对签名证书；万一 Secret 里的 keystore 传错，**在发 release 前就失败**，
-不会出现"版本发出来了，但电视装不上"。
+不会出现"版本发出来了，但电视装不上"。没配也能跑，只是这层校验不生效，日志里仍会打印实际指纹。
 
 ---
 
