@@ -1,0 +1,67 @@
+name: 实测可用 / Works on my TV
+description: Aerial 在你的电视上能用，告诉大家哪些功能正常 / Aerial works on your TV; tell others what does
+title: "[实测] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        这些报告会整理进 README 的「已验证的电视」，同型号的人装之前能先看到。有问题的部分请另外用「问题反馈」或「机型适配」开帖，一帖一个问题更好跟进。
+        These go into the README's list of verified TVs. Please report problems separately, one per issue.
+  - type: input
+    id: model
+    attributes:
+      label: 品牌和型号 / Brand and model
+      description: 包装或「设置 → 关于」里的型号 / As on the box or in Settings → About
+      placeholder: Sony KD-65Z9F 国行
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: 系统版本 / System
+      placeholder: Android 9 / BRAVIA 4K UR1
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Aerial 版本 / Aerial version
+      description: 控制中心最下面右边 / Bottom right of Control Center
+      placeholder: Aerial 1.31-guard
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: 怎么装的 / How Aerial was installed
+      options:
+        - 一行命令 install.sh / The install command
+        - 交给 Agent / An AI agent
+        - Windows 逐条运行 / Step by step on Windows
+        - U 盘、当贝或其他 / USB drive, Dangbei or other
+    validations:
+      required: true
+  - type: checkboxes
+    id: works
+    attributes:
+      label: 哪些正常 / What works
+      description: 只勾试过而且正常的 / Tick only what you tried and found working
+      options:
+        - label: 按主页键回到 Aerial / Home returns to Aerial
+        - label: 断电重启后是 Aerial / Aerial after a power cycle
+        - label: 待机唤醒后是 Aerial / Aerial after standby
+        - label: 信号源切换（控制中心或主屏幕磁贴）/ Switching inputs
+        - label: 音量和亮度 / Volume and brightness
+        - label: 航拍屏保 / Aerial screensaver
+        - label: 手机扫码配置 / The phone page
+  - type: textarea
+    id: notes
+    attributes:
+      label: 补充 / Notes
+      description: 安装时要特别做的步骤、哪里有点卡、和原桌面的差别 / Extra steps you needed, anything slow, differences from the stock launcher
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 诊断信息（可选）/ Diagnostics (optional)
+      description: 手机配置页最下面「反馈问题」复制的内容，有了它就能把这台电视的特殊处理写进代码 / From the phone page's 反馈问题; lets the TV's quirks go into the code
+      render: markdown
