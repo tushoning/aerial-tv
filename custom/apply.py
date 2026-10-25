@@ -10,9 +10,9 @@
 执行顺序就是依赖顺序，别随意调换：
 
     1. 预检          确认这是「干净的上游源码」，不是已经打过补丁的
-    2. 放新增文件    system/OppoPicture.kt 放进老包名目录，让它跟着下面的改名一起搬家
+    2. 放新增文件    custom/files 下的文件（当前为空）放进老包名目录，跟着改名一起搬家
     3. 全量改名      app.orchard.tv -> com.oneplus.tv.launcher2（源码目录 + 所有引用 + namespace）
-    4. 定点补丁      清单 MODERN_HOME、v1+v2 签名、名称设置、更新地址、亮度接线
+    4. 定点补丁      清单 MODERN_HOME、v1+v2 签名、名称设置、更新地址
     5. 终检          任何一条没落地就失败，绝不产出「看起来成功」的错包
 
 每条补丁都是「锚点必须恰好命中一次」。上游改动到这些位置时 CI 会红，
@@ -128,12 +128,15 @@ def install_files(root):
     target = os.path.join(root, "app/src/main/java", *OLD.split("."), "system")
     if not os.path.isdir(target):
         die("没找到 %s/system：上游目录结构变了" % OLD_PATH)
-    if not os.path.isdir(files_dir):
-        die("找不到 %s：自定义文件丢了" % files_dir)
 
-    names = [n for n in sorted(os.listdir(files_dir)) if os.path.isfile(os.path.join(files_dir, n))]
+    # 没有新增文件是正常状态（当前定制全是定点补丁），此时 custom/files 可以是空的，
+    # 也可能整个目录都不存在——Git 不跟踪空目录，删掉最后一个文件后它就消失了。
+    names = []
+    if os.path.isdir(files_dir):
+        names = [n for n in sorted(os.listdir(files_dir)) if os.path.isfile(os.path.join(files_dir, n))]
     if not names:
-        die("%s 是空的" % files_dir)
+        print("  --  %-44s 没有新增文件，跳过" % "custom/files")
+        return names
     for name in names:
         shutil.copyfile(os.path.join(files_dir, name), os.path.join(target, name))
         print("  ok  %-44s 新增" % ("system/" + name))
@@ -602,38 +605,6 @@ def patch_updates(root, repo):
     )
 
 
-def patch_brightness(root):
-    """OPPO / ColorOS TV 的背光：走固件的 tv_picture_backlight，不写 Android 的任何 setting。
-
-    Settings.System.SCREEN_BRIGHTNESS 在这块板子上写得进去、读得出来，面板却不动——
-    背光归固件的画质引擎管，不归 lights HAL。所以之前那个滑条是「能拖、没用」。
-    """
-    brightness = j("system/Brightness.kt")
-    patch(
-        root, brightness,
-        "    fun level(context: Context): Float? {\n"
-        "        val r = context.contentResolver\n"
-        "        if (isTcl(context)) TclPicture.backlight(context)?.let { return it / 100f }",
-        "    fun level(context: Context): Float? {\n"
-        "        val r = context.contentResolver\n"
-        "        if (isTcl(context)) TclPicture.backlight(context)?.let { return it / 100f }\n"
-        "        // OPPO / OnePlus (ColorOS TV on MediaTek): the panel follows the firmware's picture\n"
-        "        // engine, so Settings.System moved nothing and Control Center's slider was dead.\n"
-        "        OppoPicture.level(context)?.let { return it }",
-        "level() 接 OPPO 通道",
-    )
-    patch(
-        root, brightness,
-        "    fun adjust(context: Context, direction: Int): Float? {\n"
-        "        val current = level(context) ?: return null",
-        "    fun adjust(context: Context, direction: Int): Float? {\n"
-        "        // The vendor setting is the only route that moves this panel; it keeps its own level.\n"
-        "        OppoPicture.step(context, direction)?.let { return it }\n"
-        "        val current = level(context) ?: return null",
-        "adjust() 接 OPPO 通道",
-    )
-
-
 # ---------------------------------------------------------------- 5. 终检
 
 
@@ -682,7 +653,6 @@ def verify(root, repo, dropped):
             fail("%s 的 package 行没改：仍不是 %s.system" % (rel, PKG))
 
     for rel, needles in (
-        (j("system/Brightness.kt"), ("OppoPicture.level(context)", "OppoPicture.step(context, direction)")),
         (j("ui/home/AppTile.kt"), ("PlateTileName(", "plateName: PlateNames?")),
         (j("ui/home/HomeScreen.kt"), ("AerialSettings.plateNames",)),
         (j("settings/AerialSettings.kt"), ("enum class PlateNames", "choosePlateNames")),
@@ -758,8 +728,6 @@ def main():
     patch_names(root)
     patch_strings(root)
     patch_updates(root, repo)
-    # 亮度放最后：前面任何一步出问题，回退范围只有这一段，不牵连别的改动。
-    patch_brightness(root)
 
     print("\n[5/5] 终检")
     verify(root, repo, dropped)
