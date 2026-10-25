@@ -244,6 +244,113 @@ def patch_manifest(root):
         "HOME 加 MODERN_HOME 类别",
     )
 
+    # 背光只能由固件的 tvapisvc 驱动，它按「进程名包含 com.heytap.tv.remote」放行。
+    # 整个桌面直接跑在这个进程名里：进程数不增加，OppoBacklight 也就不必跨进程。
+    # 服务上再显式写一遍是双保险——merge 万一没带过来 application 的 process，
+    # 服务仍旧落在白名单进程里，功能不受影响，只是多回一个进程。
+    patch(
+        root, MANIFEST,
+        '    <application>',
+        '    <!-- 进程名带 :com.heytap.tv.remote，固件的 tvapisvc 才会接受本应用的背光调用。\n'
+        '         主进程名不含白名单串，所以让进程名本身带上它，比另开一个进程省事。 -->\n'
+        '    <application android:process=":com.heytap.tv.remote">',
+        "主进程挂白名单进程名",
+    )
+
+    patch(
+        root, MANIFEST,
+        '        </activity>\n'
+        '    </application>',
+        '        </activity>\n'
+        '        <service\n'
+        '            android:name="%s.system.OppoBrightnessService"\n'
+        '            android:exported="false"\n'
+        '            android:process=":com.heytap.tv.remote" />\n'
+        '    </application>' % PKG,
+        "背光服务留在白名单进程",
+    )
+
+
+def patch_brightness(root):
+    """OPPO 的面板只认固件服务，Settings 是影子数据：把这一支接到 Brightness 最前面。"""
+    rel = j("system/Brightness.kt")
+    patch(
+        root, rel,
+        '    fun level(context: Context): Float? {\n'
+        '        val r = context.contentResolver\n'
+        '        if (isTcl(context))',
+        '    fun level(context: Context): Float? {\n'
+        '        val r = context.contentResolver\n'
+        '        // OPPO ColorOS TV：背光在固件里，Settings 写得进去但面板不动。\n'
+        '        if (OppoBacklight.usable(context)) return OppoBacklight.level(context) / 100f\n'
+        '        if (isTcl(context))',
+        "亮度读取走固件服务",
+    )
+    patch(
+        root, rel,
+        '    fun adjust(context: Context, direction: Int): Float? {\n'
+        '        val current = level(context) ?: return null',
+        '    fun adjust(context: Context, direction: Int): Float? {\n'
+        '        if (OppoBacklight.usable(context)) {\n'
+        '            // 5% 一档，和设置页那条一致；0 会黑屏，所以下限是 1。\n'
+        '            val from = OppoBacklight.level(context)\n'
+        '            val next = (if (direction > 0) (from / 5 + 1) * 5 else ((from + 4) / 5 - 1) * 5).coerceIn(1, 100)\n'
+        '            OppoBacklight.set(context, next)\n'
+        '            return next / 100f\n'
+        '        }\n'
+        '        val current = level(context) ?: return null',
+        "亮度步进走固件服务",
+    )
+
+    # 控制中心那一条：左右键调背光，确认键进电视自己的图像设置。没有背光可调时
+    # 上游本来就是 MenuRow 跳到同一个地方，所以两边的去处一致，不会出现两种行为。
+    patch(
+        root, j("ui/control/ControlCenter.kt"),
+        '            steps = 20,\n'
+        '            onStep = vm::adjustBrightness,\n'
+        '            onClick = {},',
+        '            steps = 20,\n'
+        '            onStep = vm::adjustBrightness,\n'
+        '            onClick = {\n'
+        '                vm.overlay = Overlay.None\n'
+        '                SystemProbe.openPictureSettings(context)\n'
+        '            },',
+        "亮度条确认键跳转图像设置",
+    )
+
+    # 面板真值（query）回来时可能和记账值不同：小布或设置页改过亮度，记账值就旧了。
+    # 让 ViewModel 接住这个校正，滑块才会跟着变；否则要等下次自己调才刷新。
+    vm = j("HomeViewModel.kt")
+    patch(
+        root, vm,
+        'import %s.system.NetworkStatus\n'
+        'import %s.system.SystemProbe' % (PKG, PKG),
+        'import %s.system.NetworkStatus\n'
+        'import %s.system.OppoBacklight\n'
+        'import %s.system.SystemProbe' % (PKG, PKG, PKG),
+        "HomeViewModel 引用 OppoBacklight",
+    )
+    patch(
+        root, vm,
+        '        viewModelScope.launch { snapshotFlow { AppNames.all }.drop(1).collect { if (loaded) arrange() } }\n'
+        '    }',
+        '        viewModelScope.launch { snapshotFlow { AppNames.all }.drop(1).collect { if (loaded) arrange() } }\n'
+        '        // OPPO 的背光在固件里，Aerial 记下的只是副本：读到面板真值时它会报回来一次\n'
+        '        // （OppoBacklight.calibrate）。用小布或电视自己的图像菜单改过亮度，靠这一条才不显示旧值。\n'
+        '        OppoBacklight.onLevel = { percent -> brightness = percent / 100f }\n'
+        '    }',
+        "HomeViewModel 接住亮度校正",
+    )
+    patch(
+        root, vm,
+        '        if (AppCatalog.layout === layoutOps) AppCatalog.layout = null\n'
+        '    }',
+        '        if (AppCatalog.layout === layoutOps) AppCatalog.layout = null\n'
+        '        OppoBacklight.onLevel = null\n'
+        '    }',
+        "HomeViewModel 松手时摘掉回调",
+    )
+
 
 def patch_names(root):
     """名称设置拆成两套：第一排（画在图标里）、第一排以下（画在图标下方）。"""
@@ -690,6 +797,224 @@ def verify(root, repo, dropped):
     print("  ok  %-44s 全绿" % "终检")
 
 
+def patch_update_row(root):
+    """控制中心那行更新提示改成常驻：没有新版本时也能点一下去查。
+
+    上游只在「有东西可装」时才显示这一行，于是刚更新完的那一版反而没有入口能再查一次。
+    这里让它一直在，没新版本就叫「检测更新」；点了查不到结果就灰着显示「暂无新版本」5 秒，
+    然后变回可点的「检测更新」。
+    """
+    # Updates 加一个「等结果」的检查。原来的 checkIfStale 发起就返回，界面问不到结果，
+    # 也就无从知道该显示「暂无新版本」还是「有新版本」。
+    patch(
+        root, j("update/Updates.kt"),
+        '''    /** Whether version [a] comes after [b], comparing dotted numbers ("1.10" after "1.9"). */''',
+        '''    /**
+     * Asks once, now, and waits for the answer. Control Center's Check for Updates row has to say
+     * what came of the check, which [checkIfStale] cannot tell it: that one launches and returns.
+     * Null means either that no source answered or that this build is already the latest.
+     */
+    suspend fun checkNow(): String? {
+        if (!started) return null
+        lastAttempt = System.currentTimeMillis()
+        val latest = withContext(Dispatchers.IO) {
+            VERSION_URLS.firstNotNullOfOrNull { url ->
+                runCatching { read(url).trim().removePrefix("v") }
+                    .onFailure { Log.w(TAG, "could not check for a new version at $url", it) }
+                    .getOrNull()
+                    ?.takeIf { it.matches(Regex("\\\\d+(\\\\.\\\\d+)*")) }
+            }
+        } ?: return null
+        prefs.edit { putString("latest", latest); putLong("checked_at", System.currentTimeMillis()) }
+        available = latest.takeIf { newer(it, current) }
+        return available
+    }
+
+    /** Whether version [a] comes after [b], comparing dotted numbers ("1.10" after "1.9"). */''',
+        "Updates 增加可等待的检查",
+    )
+
+    # 聚焦底板是浅色surface。Apple 的 label 每套外观各有一份值，上游只搬了深色那套，
+    # 于是「白 60%」压在白板上等于没有字。这里补上浅色外观的 secondaryLabel。
+    patch(
+        root, j("ui/theme/Theme.kt"),
+        '''    /** tvOS draws a focused control as a near-white plate with dark content. */
+    val Focus = Color(0xFFF5F5F7)
+    val OnFocus = Color(0xFF1D1D1F)
+}''',
+        '''    /** tvOS draws a focused control as a near-white plate with dark content. */
+    val Focus = Color(0xFFF5F5F7)
+    val OnFocus = Color(0xFF1D1D1F)
+
+    /**
+     * The labels above, resolved for the plate. Apple gives every label a value per appearance,
+     * and the focused plate is the light one: `secondaryLabel` there is rgb(60,60,67) at 60%, not
+     * the white at 60% used on glass. Drawing the dark value on the plate puts white on white.
+     */
+    val OnFocusSecondary = Color(0x993C3C43)
+}''',
+        "Palette 补上浅色外观的次要文字色",
+    )
+
+    # 菜单行要能变灰：灰色自成一档，聚焦时不跟着变白，否则看起来仍然可以点。
+    overlay = j("ui/home/Overlays.kt")
+    patch(
+        root, overlay,
+        """    destructive: Boolean = false,
+    trailing: String? = null,
+) {""",
+        """    destructive: Boolean = false,
+    /** Dimmed: the row is showing an answer rather than offering itself (Control Center's check). */
+    muted: Boolean = false,
+    trailing: String? = null,
+) {""",
+        "MenuRow 支持变灰",
+    )
+    patch(
+        root, overlay,
+        """        val fg = when {
+            state.focused -> if (destructive) Color(0xFFD70015) else Palette.OnFocus
+            destructive -> Palette.Red
+            else -> Palette.Label
+        }""",
+        """        // The colour is resolved against the surface the row is drawn on, not against the dark
+        // appearance the rest of Home uses: on the near-white plate a white-at-60% label reads as
+        // nothing at all. Focus fades the plate in over 140 ms, so the text fades with it rather
+        // than staying white on a background that is turning light underneath it.
+        val fg by animateColorAsState(
+            when {
+                // An answer, not an offer. Secondary rather than tertiary: tertiary is the
+                // placeholder shade and this line is the whole point of the press, so it is read
+                // at secondaryLabel's weight on either surface.
+                muted -> if (state.focused) Palette.OnFocusSecondary else Palette.SecondaryLabel
+                state.focused -> if (destructive) Color(0xFFD70015) else Palette.OnFocus
+                destructive -> Palette.Red
+                else -> Palette.Label
+            },
+            tween(140, easing = Motion.EaseOut), label = "row-fg",
+        )""",
+        "MenuRow 变灰的取色",
+    )
+    # 右侧说明文字同理，并且跟底板一起过渡。
+    patch(
+        root, overlay,
+        """            if (trailing != null) {
+                BasicText(
+                    trailing,
+                    style = Type.Callout.copy(color = if (state.focused) Palette.OnFocus.copy(alpha = 0.6f) else Palette.SecondaryLabel),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp),
+                )
+            }""",
+        """            if (trailing != null) {
+                // Same pairing as the label: dark and muted on the plate, light and muted on glass.
+                val trailingFg by animateColorAsState(
+                    if (state.focused) Palette.OnFocus.copy(alpha = 0.6f) else Palette.SecondaryLabel,
+                    tween(140, easing = Motion.EaseOut), label = "row-trailing",
+                )
+                BasicText(
+                    trailing,
+                    style = Type.Callout.copy(color = trailingFg),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp),
+                )
+            }""",
+        "MenuRow 右侧文字与底板同步过渡",
+    )
+
+    center = j("ui/control/ControlCenter.kt")
+    patch(
+        root, center,
+        """        Updates.available?.let { latest ->
+            MenuRow(
+                Glyph.Info,
+                stringResource(R.string.cc_update_available, latest),
+                onClick = { vm.overlay = Overlay.ControlCenter(CcPage.Update) },
+            )
+        }
+""",
+        """        UpdateRow(vm)
+""",
+        "更新行改为常驻",
+    )
+    patch(
+        root, center,
+        '''/**
+ * How to move to the new version: "Download and Install" fetches the APK and opens the system''',
+        '''/**
+ * The row for a new version, always in the menu. Upstream only showed it when there was something
+ * to install, so a build that had just been updated offered no way to ask again. With a new version
+ * it names it and opens [CcPage.Update]; without one it offers a check, and a check that comes back
+ * empty says "no new version" — dimmed and inert — for five seconds, then offers itself again.
+ *
+ * The check runs from [LaunchedEffect] rather than from the click so the row can say "checking"
+ * while it runs, and so a second press cannot start a second one.
+ */
+@Composable
+private fun UpdateRow(vm: HomeViewModel) {
+    val latest = Updates.available
+    var checking by remember { mutableStateOf(false) }
+    var nothing by remember { mutableStateOf(false) }
+    LaunchedEffect(checking) {
+        if (!checking) return@LaunchedEffect
+        val found = Updates.checkNow()
+        checking = false
+        // A version found here shows through Updates.available, which this row reads every
+        // composition: it turns into the "new version" row by itself.
+        if (found == null) nothing = true
+    }
+    // An answer, not a state: after a moment the row can be asked again.
+    LaunchedEffect(nothing) {
+        if (!nothing) return@LaunchedEffect
+        delay(5_000)
+        nothing = false
+    }
+    if (latest != null) {
+        MenuRow(
+            Glyph.Info,
+            stringResource(R.string.cc_update_available, latest),
+            onClick = { vm.overlay = Overlay.ControlCenter(CcPage.Update) },
+        )
+    } else {
+        val ask = !checking && !nothing
+        MenuRow(
+            Glyph.Info,
+            stringResource(
+                when {
+                    checking -> R.string.cc_update_checking
+                    nothing -> R.string.cc_update_none
+                    else -> R.string.cc_update_check
+                }
+            ),
+            onClick = { if (ask) checking = true },
+            muted = !ask,
+        )
+    }
+}
+
+/**
+ * How to move to the new version: "Download and Install" fetches the APK and opens the system''',
+        "新增常驻更新行",
+    )
+
+    patch(
+        root, STRINGS_EN,
+        '''    <string name="cc_update_available">New Version: %s</string>''',
+        '''    <string name="cc_update_available">New Version: %s</string>
+    <string name="cc_update_check">Check for Updates</string>
+    <string name="cc_update_checking">Checking…</string>
+    <string name="cc_update_none">No New Version</string>''',
+        "英文文案：检测更新",
+    )
+    patch(
+        root, STRINGS_ZH,
+        '''    <string name="cc_update_available">有新版本 %s</string>''',
+        '''    <string name="cc_update_available">有新版本 %s</string>
+    <string name="cc_update_check">检测更新</string>
+    <string name="cc_update_checking">正在检测…</string>
+    <string name="cc_update_none">暂无新版本</string>''',
+        "中文文案：检测更新",
+    )
+
+
 # ---------------------------------------------------------------- main
 
 
@@ -725,9 +1050,11 @@ def main():
     set_version(root, args.version)
     patch_signature(root)
     patch_manifest(root)
+    patch_brightness(root)
     patch_names(root)
     patch_strings(root)
     patch_updates(root, repo)
+    patch_update_row(root)
 
     print("\n[5/5] 终检")
     verify(root, repo, dropped)
