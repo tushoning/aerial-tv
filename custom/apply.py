@@ -321,13 +321,13 @@ def patch_brightness(root):
     # 面板真值（query）回来时可能和记账值不同：小布或设置页改过亮度，记账值就旧了。
     # 让 ViewModel 接住这个校正，滑块才会跟着变；否则要等下次自己调才刷新。
     vm = j("HomeViewModel.kt")
+    # 只锚一行：上游会在 NetworkStatus 和 SystemProbe 之间插别的 system import
+    # （1.50 起多了 SourceKind），两行式锚点一插就断。插回 NetworkStatus 后面仍在字母序上。
     patch(
         root, vm,
+        'import %s.system.NetworkStatus' % PKG,
         'import %s.system.NetworkStatus\n'
-        'import %s.system.SystemProbe' % (PKG, PKG),
-        'import %s.system.NetworkStatus\n'
-        'import %s.system.OppoBacklight\n'
-        'import %s.system.SystemProbe' % (PKG, PKG, PKG),
+        'import %s.system.OppoBacklight' % (PKG, PKG),
         "HomeViewModel 引用 OppoBacklight",
     )
     patch(
@@ -409,6 +409,8 @@ def patch_names(root):
         "写 plateNames",
     )
 
+    # kotlin.math.PI / cos 不补：上游 1.57 起 AppTile 自己引了（SineEasing 用），再补一遍就是两份。
+    # sin 上游还没有，仍然补。终检会核对这三行都在，落在别处就报错，而不是等 Kotlin 编译才炸。
     patch(
         root, tile,
         "import %s.settings.AerialSettings" % PKG,
@@ -424,8 +426,6 @@ def patch_names(root):
         "import androidx.compose.ui.text.rememberTextMeasurer\n"
         "import androidx.compose.ui.unit.Constraints\n"
         "import androidx.compose.ui.unit.LayoutDirection\n"
-        "import kotlin.math.PI\n"
-        "import kotlin.math.cos\n"
         "import kotlin.math.sin" % (PKG, PKG),
         "导入 PlateNames 与描边绘制",
     )
@@ -760,7 +760,13 @@ def verify(root, repo, dropped):
             fail("%s 的 package 行没改：仍不是 %s.system" % (rel, PKG))
 
     for rel, needles in (
-        (j("ui/home/AppTile.kt"), ("PlateTileName(", "plateName: PlateNames?")),
+        # 名字画在图标里要靠 PI / cos / sin：上游自己引的（PI、cos）和本脚本补的（sin）
+        # 必须都在，否则是 Kotlin 编译期才报错，比这里报得晚也更难懂。
+        (
+            j("ui/home/AppTile.kt"),
+            ("PlateTileName(", "plateName: PlateNames?", "import kotlin.math.PI",
+             "import kotlin.math.cos", "import kotlin.math.sin"),
+        ),
         (j("ui/home/HomeScreen.kt"), ("AerialSettings.plateNames",)),
         (j("settings/AerialSettings.kt"), ("enum class PlateNames", "choosePlateNames")),
         (STRINGS_ZH, ('name="st_plate_names"', 'name="st_names_off"')),
