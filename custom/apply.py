@@ -973,27 +973,30 @@ private fun UpdateRow(vm: HomeViewModel) {
         delay(5_000)
         nothing = false
     }
-    if (latest != null) {
-        MenuRow(
-            Glyph.Info,
-            stringResource(R.string.cc_update_available, latest),
-            onClick = { vm.overlay = Overlay.ControlCenter(CcPage.Update) },
-        )
-    } else {
-        val ask = !checking && !nothing
-        MenuRow(
-            Glyph.Info,
-            stringResource(
-                when {
-                    checking -> R.string.cc_update_checking
-                    nothing -> R.string.cc_update_none
-                    else -> R.string.cc_update_check
-                }
-            ),
-            onClick = { if (ask) checking = true },
-            muted = !ask,
-        )
-    }
+    // One call site, whichever of the three things the row has to say. Written as an if/else with
+    // a MenuRow in each branch, the two branches are two composition groups: the moment a check
+    // turns up a version the branch flips, the row that holds the focus is disposed and a fresh
+    // one composed, so the focus goes with it and lands on the panel's first button. Varying only
+    // the arguments keeps the node, and the focus, where the viewer left it.
+    val asking = latest == null && !checking && !nothing
+    MenuRow(
+        Glyph.Info,
+        when {
+            latest != null -> stringResource(R.string.cc_update_available, latest)
+            checking -> stringResource(R.string.cc_update_checking)
+            nothing -> stringResource(R.string.cc_update_none)
+            else -> stringResource(R.string.cc_update_check)
+        },
+        onClick = {
+            if (latest != null) {
+                vm.overlay = Overlay.ControlCenter(CcPage.Update)
+            } else if (asking) {
+                checking = true
+            }
+        },
+        // Dimmed only while it has nothing to offer: a check in flight, or the answer just given.
+        muted = latest == null && !asking,
+    )
 }
 
 /**
