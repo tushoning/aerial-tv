@@ -1,0 +1,58 @@
+name: 机型适配 / Device support
+description: 装不上、按主页键回不到 Aerial、开机或待机后回到原桌面、信号源不对 / Installing fails, Home or boot lands on the old launcher, inputs are wrong
+title: "[机型] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        维护者只有小米 MiTV-MFTR0 和 TCL MT5879 两台电视，别的品牌全靠你贴的诊断信息。
+        The maintainer has only two TVs (Xiaomi MiTV-MFTR0, TCL MT5879); other brands depend on the diagnostics you paste.
+
+        **取诊断信息（任选一种）/ Getting the diagnostics (either way):**
+        1. 电脑（macOS / Linux，电视已开 ADB）/ Computer with ADB:
+           `curl -fsSL https://aerial.qust.me/tools/report.sh | TV=<电视IP> bash`
+        2. 手机 / Phone：电视上「控制中心 → 个性化」扫二维码，手机页最下面「反馈问题 → 显示诊断信息 → 复制」。
+           On the TV, Control Center → Personalize, scan the QR code; at the bottom of the phone page, 反馈问题 → 显示诊断信息 → 复制.
+
+        诊断信息不含账号、IP、Wi-Fi 名称、序列号和 App 列表，贴之前可以自己看一遍。
+        The diagnostics hold no accounts, addresses, Wi-Fi names, serial numbers or app lists; read them before posting.
+  - type: input
+    id: model
+    attributes:
+      label: 品牌和型号 / Brand and model
+      description: 包装或设置里「关于」写的型号，比如 Redmi X65 2026、TCL 75Q10L / As on the box or in About
+      placeholder: Redmi X65 2026
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Aerial 版本 / Aerial version
+      description: 控制中心最下面右边写的版本；装不上就写下载的文件名 / Bottom right of Control Center, or the APK you tried
+      placeholder: Aerial 1.31-guard
+  - type: textarea
+    id: problem
+    attributes:
+      label: 发生了什么 / What happens
+      description: 怎么操作、看到什么、本来应该怎样。能截图或拍照更好 / What you did, what you saw, what you expected. Photos help.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: 怎么装的 / How Aerial was installed
+      options:
+        - 一行命令 install.sh / The install command
+        - 交给 Agent / An AI agent
+        - Windows 逐条运行 / Step by step on Windows
+        - U 盘、当贝或其他 / USB drive, Dangbei or other
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 诊断信息 / Diagnostics
+      description: 把 report.sh 的输出或手机页复制的内容整段贴进来 / Paste all of report.sh's output, or what the phone page copied
+      render: markdown
+    validations:
+      required: true
