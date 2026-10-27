@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>
+  // Open the page in the browser's language, unless the visitor picked one with the switcher.
+  (function () {
+    if (/bot|crawl|spider|slurp/i.test(navigator.userAgent)) return;
+    var saved; try { saved = localStorage.getItem('aerial-lang'); } catch (e) {}
+    var lang = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+    if (saved ? saved === 'en' : !/^zh/i.test(lang)) location.replace('en/' + location.hash);
+  })();
+</script>
+<title>Aerial · 给国产电视的一块干净桌面</title>
+<meta name="description" content="参照 tvOS 设计的开源 Android TV 桌面。没有广告，没有推荐流，只有你的 App、你的壁纸和航拍屏保。支持小米、TCL、创维、索尼等国产电视和盒子，开机自动接管。">
+<meta property="og:title" content="Aerial · 给国产电视的一块干净桌面">
+<meta property="og:description" content="参照 tvOS 设计的开源电视桌面，没有广告，开机自动接管。">
+<meta property="og:image" content="img/home.jpg?v=147">
+<meta name="theme-color" content="#000000">
+<link rel="alternate" hreflang="zh" href="https://aerial.qust.me/">
+<link rel="alternate" hreflang="en" href="https://aerial.qust.me/en/">
+<link rel="alternate" hreflang="x-default" href="https://aerial.qust.me/en/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css?v=12">
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Aerial"><svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fd0a5"/><stop offset="1" stop-color="#5b5bf0"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#g)"/><path d="M7 21c3-6 6-9 9-9s6 3 9 9" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg> Aerial</a>
+    <div class="links">
+      <a href="#features">功能</a>
+      <a href="#how">接管原理</a>
+      <a href="#install">安装</a>
+      <a href="#adapt">适配</a>
+      <a href="#faq">常见问题</a>
+      <a href="voices/">用户评价</a>
+      <a href="https://github.com/pengchujin/aerial-tv">GitHub</a>
+    </div>
+    <a class="lang" href="en/" data-lang="en" hreflang="en" lang="en">English</a>
+    <a class="cta" href="#install">安装</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <p class="eyebrow">开源 · 免费 · 无广告</p>
+    <h1>Aerial</h1>
+    <p class="lede">给国产电视的一块干净桌面。<strong>没有广告，没有推荐流</strong>，只有你的 App、壁纸和 Apple TV 航拍屏保。</p>
+    <div class="actions">
+      <a class="btn primary" href="#install">开始安装</a>
+      <a class="btn ghost" href="https://github.com/pengchujin/aerial-tv">在 GitHub 查看 ›</a>
+    </div>
+    <div class="tv reveal">
+      <div class="glow"></div>
+      <div class="screen compare" id="compare" role="slider" tabindex="0" aria-label="电视自带的桌面和 Aerial 的对比，左右移动查看" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <img class="before" src="img/stock-xiaomi.jpg?v=3" alt="电视自带的桌面：满屏剧集推荐、会员和限免角标" width="1600" height="900">
+        <div class="after"><img src="img/home.jpg?v=147" alt="Aerial 首页：风景壁纸和玻璃底板上的一排 App" width="1600" height="900"></div>
+        <div class="divider" aria-hidden="true"><span class="knob"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l-6 6 6 6M15 6l6 6-6 6"/></svg></span></div>
+      </div>
+      <div class="stand"></div>
+      <div class="compare-legend">
+        <button type="button" class="replay"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>再看一遍</button>
+        <span class="compare-hint">在画面上左右移动鼠标对比</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>安静，<br>是最好的界面。</h2>
+      <p>打开电视，只有壁纸和你常用的 App。</p>
+    </div>
+
+    <div class="feature reveal">
+      <div class="shot"><img src="img/focus.jpg?v=146" alt="第一排的玻璃底板，选中了一个 App" loading="lazy" width="1600" height="900"></div>
+      <div>
+        <p class="kicker">首页</p>
+        <h3>像 Apple TV<br>一样顺手。</h3>
+        <p>常用的 App 排成一排，放在玻璃底板上。选中时轻轻浮起，下面有一层阴影。</p>
+        <p>选中的 App 有一圈白边，坐在沙发上也看得清。「应用中心」「米家」这类藏起来的系统 App 也都在。</p>
+      </div>
+    </div>
+
+    <div class="feature flip reveal">
+      <div class="shot"><img src="img/menu.jpg?v=146" alt="长按菜单：移动、移到文件夹、隐藏、应用信息、卸载" loading="lazy" width="1600" height="900"></div>
+      <div>
+        <p class="kicker">整理</p>
+        <h3>长按一下，<br>想怎么排就怎么排。</h3>
+        <p>长按 OK 键：<strong>移动</strong>、<strong>移到文件夹</strong>、<strong>隐藏</strong>、查看信息、卸载。隐藏的 App 可以在「个性化」里找回。</p>
+      </div>
+    </div>
+
+    <div class="feature reveal">
+      <div class="shot"><img src="img/folder.jpg?v=146" alt="打开的文件夹：系统应用" loading="lazy" width="1600" height="900"></div>
+      <div>
+        <p class="kicker">文件夹</p>
+        <h3>系统自带的 App，<br>收进一个文件夹。</h3>
+        <p>和 Apple TV 一样，文件夹放在首页里，按一下打开。</p>
+      </div>
+    </div>
+
+    <div class="feature flip reveal">
+      <div class="shot"><img src="img/control-center.jpg?v=146" alt="控制中心：信号源、网络、设置、音量和亮度" loading="lazy" width="1600" height="900"></div>
+      <div>
+        <p class="kicker">控制中心</p>
+        <h3>常用开关，<br>一键就到。</h3>
+        <p>信号源、网络、设置、音量、亮度都在这里。HDMI 还能固定到首页，一键切换。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>空闲的时候，<br>把客厅交给风景。</h2>
+      <p>114 段 Apple TV 航拍影片，从太空到海底，还会标出地名。</p>
+    </div>
+    <div class="gallery reveal">
+      <figure>
+        <div class="shot"><img src="img/screensaver-aerial.jpg?v=146" alt="航拍屏保：俯瞰夏威夷岛 Pu‘u O ‘Umi 自然保护区" loading="lazy" width="1600" height="900"></div>
+        <figcaption>夏威夷岛 Pu‘u O ‘Umi 自然保护区</figcaption>
+      </figure>
+      <figure>
+        <div class="shot"><img src="img/screensaver-aerial-2.jpg?v=146" alt="航拍屏保：俯瞰冰岛高地通纳河" loading="lazy" width="1600" height="900"></div>
+        <figcaption>冰岛高地通纳河</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="feature reveal">
+      <div class="shot"><img src="img/wallpaper.jpg?v=146" alt="个性化面板" loading="lazy" width="1600" height="900"></div>
+      <div>
+        <p class="kicker">壁纸</p>
+        <h3>每天一张新风景，<br>或者你的照片。</h3>
+        <p>必应每日精选、14 张 Mac 风格的内置壁纸，或者从手机传的照片。</p>
+      </div>
+    </div>
+    <div class="phone-row reveal" style="margin-top:110px">
+      <div>
+        <p class="kicker">用手机设置</p>
+        <h3 class="sub">扫一下，<br>不用遥控器打字。</h3>
+        <p class="muted">扫电视上的二维码，在手机上整理主屏幕（拖动排序、改名、换图标、文件夹、隐藏、加 HDMI），还能传照片、选壁纸、换屏保。</p>
+      </div>
+      <div class="phone"><img src="img/phone.jpg?v=147" alt="手机设置页的主屏幕标签：和电视一样的图标网格" loading="lazy" width="780" height="1384"></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="how">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>开机就是它。<br>待机也赶不走。</h2>
+      <p>国产电视只认自家桌面，待机还会清理第三方 App。Aerial 不用 root，也不停用系统应用。</p>
+    </div>
+    <div class="grid3 reveal">
+      <div class="tile">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg></div>
+        <h4>接管 HOME 键</h4>
+        <p>能设成默认桌面就设；不行就由桌面守护把它拉回来。原来的桌面也还在。</p>
+      </div>
+      <div class="tile">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M3 12h4M17 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg></div>
+        <h4>被杀后 0.5 秒复活</h4>
+        <p>小米待机会强停第三方 App，Aerial 会马上被系统拉起来。</p>
+      </div>
+      <div class="tile">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></div>
+        <h4>断电重启也是它</h4>
+        <p>开机自动接管。TCL 的自启拦截，安装脚本会帮你放行。</p>
+      </div>
+    </div>
+    <div class="devices reveal">
+      <span class="chip"><b>小米 / Redmi</b> · Android 6–14</span>
+      <span class="chip"><b>TCL</b> · Android 8–11</span>
+      <span class="chip"><b>创维 / 酷开</b> · Android 11</span>
+      <span class="chip"><b>索尼 BRAVIA</b> · Android 10–12</span>
+      <span class="chip"><b>康佳</b> · Android 9</span>
+      <span class="chip"><b>盒子和投影仪</b> · 极米、大眼橙、极光盒子</span>
+      <a class="chip chip-link" href="https://github.com/pengchujin/aerial-tv#支持的机型">完整<b>机型列表</b> ›</a>
+    </div>
+    <p class="note devices-note reveal">海信 / Vidda 和部分酷开开机会先进原桌面，雷鸟 MT9655 机型暂时接管不了。</p>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>三分钟装好。</h2>
+      <p>不用 root，随时能还原。</p>
+    </div>
+
+    <div class="install reveal">
+      <h3 class="step"><span>1</span>在电视上打开 ADB 调试</h3>
+      <div class="tabs" role="tablist" data-tabs="brand">
+        <button role="tab" aria-selected="true" data-tab="xiaomi"><i class="logo xiaomi" aria-hidden="true"></i>小米</button>
+        <button role="tab" aria-selected="false" data-tab="tcl" aria-label="TCL"><i class="logo tcl" aria-hidden="true"></i></button>
+        <button role="tab" aria-selected="false" data-tab="haier" aria-label="海尔"><i class="logo haier" aria-hidden="true"></i></button>
+        <button role="tab" aria-selected="false" data-tab="oppo" aria-label="OPPO"><i class="logo oppo" aria-hidden="true"></i></button>
+        <button role="tab" aria-selected="false" data-tab="other"><i class="logo android" aria-hidden="true"></i>其他</button>
+      </div>
+      <div class="panel on" data-panel="xiaomi"><p>设置 → 关于 → 连续按 <b>产品型号</b>，进入开发者模式；再到 设置 → 账号与安全，打开 <b>ADB 调试</b> 和 <b>安装未知来源的应用</b>。<br>IP 在 设置 → 网络 → 已连接的网络 里。</p></div>
+      <div class="panel" data-panel="tcl"><p>设置 → 关于 → <b>本机信息</b>，快速按遥控器 <b>上下左右</b>，在底部出现的「更多」里打开 <b>ADB</b>。<br>IP 在 设置 → 网络 → 已连接的网络 里。</p></div>
+      <div class="panel" data-panel="haier"><p>按<b>电视机身上</b>的信号源键，弹出信号源菜单后，用遥控器按 <b>左左上右</b>，进入「海尔工厂菜单」，把 <b>ADB 调试开关</b> 设为开。只改这一项，别动其他选项。<br>IP 在 设置 → 网络 → 已连接的网络 里。</p></div>
+      <div class="panel" data-panel="oppo"><p>设置 → 系统 → 关于本机 → <b>设备型号</b>，按 <b>上上右右</b> 再按确认；然后到 设置 → 系统 → <b>开发者选项</b>，打开 <b>USB 调试</b>（有的机型叫「ADB 调试」）。<br>IP 在 设置 → 网络 → 已连接的网络 <b>最下面</b>。</p></div>
+      <div class="panel" data-panel="other"><p>设置 → 设备偏好设置 → 关于 → 连按 <b>内部版本号</b>（Build，不是「Android 版本」）7 次，再在开发者选项里打开 <b>USB 调试</b>。<br>IP 在 设置 → 网络 → 已连接的网络 里。</p></div>
+      <p class="note">老乐视、荣耀智慧屏、老康佳（看不到版本号）等机型打不开 ADB。极米 H3 需先用第三方工具打开 ADB，见机型说明。</p>
+
+      <h3 class="step"><span>2</span>填上电视 IP</h3>
+      <p class="hint">在电视的 设置 → 网络 → 已连接的网络 里（OPPO S1 在这一页最下面）。电脑要和电视连同一个网络。</p>
+      <div class="field">
+        <label for="ip">电视 IP</label>
+        <input id="ip" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="例如 192.168.1.20">
+        <label class="opt"><input type="checkbox" id="keep" checked> 保持 ADB 常开</label>
+      </div>
+
+      <h3 class="step"><span>3</span>选一种方式安装</h3>
+      <div class="tabs" role="tablist" data-tabs="method">
+        <button role="tab" aria-selected="true" data-tab="agent">交给 Agent</button>
+        <button role="tab" aria-selected="false" data-tab="cli">一行命令</button>
+        <button role="tab" aria-selected="false" data-tab="manual">手动</button>
+        <button role="tab" aria-selected="false" data-tab="phone">只用手机</button>
+        <button role="tab" aria-selected="false" data-tab="usb">U 盘</button>
+      </div>
+
+      <div class="panel on" data-panel="agent">
+        <p>复制给能在电脑上运行命令的 Agent，比如：</p>
+        <ul class="agents">
+          <li><img src="img/agents/workbuddy.svg" alt="" width="20" height="20">WorkBuddy</li>
+          <li><img src="img/agents/doubao.svg" alt="" width="20" height="20">豆包电脑版</li>
+          <li><img src="img/agents/qwen.svg" alt="" width="20" height="20">千问电脑版</li>
+          <li><img src="img/agents/trae.svg" alt="" width="20" height="20">Trae</li>
+          <li><img src="img/agents/claude-code.svg" alt="" width="20" height="20">Claude Code</li>
+          <li><img src="img/agents/codex.svg" alt="" width="20" height="20">Codex</li>
+        </ul>
+        <div class="code"><button class="copy" data-copy="prompt">复制</button><pre id="prompt"></pre></div>
+        <p class="note">手机上的豆包、网页版聊天只会把步骤告诉你，不会自己执行。要用能在电脑上跑命令的版本：豆包电脑版或豆包工作版、WorkBuddy、千问电脑版、Trae、Claude Code、Codex 等。手机 App 和网页版聊天装不了。</p>
+      </div>
+
+      <div class="panel" data-panel="cli">
+        <p>在 macOS 或 Linux 终端里运行，没有 adb 会自动下载。Windows 请交给 Agent。</p>
+        <div class="code"><button class="copy" data-copy="cmd">复制</button><pre id="cmd"></pre></div>
+      </div>
+
+      <div class="panel" data-panel="manual">
+        <p>先下载 <a href="download/aerial-standard.apk"><b>aerial-standard.apk</b></a>，再运行：</p>
+        <div class="code"><button class="copy" data-copy="manualcmd">复制</button><pre id="manualcmd"></pre></div>
+      </div>
+
+      <div class="panel" data-panel="phone">
+        <p>没有电脑时，可以用手机上的 ADB 工具：<b>甲壳虫 ADB 助手</b>、<b>超级小爱</b>，或应用商店里同类工具。</p>
+        <ol>
+          <li>手机和电视连同一个 Wi-Fi。</li>
+          <li>按上面的第 1 步在电视上打开 ADB，IP 也按上面的位置找。</li>
+          <li>手机连上电视：<code>&lt;电视IP&gt;:5555</code>，电视上选「始终允许」。</li>
+          <li>在工具里安装 Aerial（standard 版；装不上时试 guard 版），再按 <a href="agent.md">安装说明</a> 的 Windows 第 3 步逐条授权、第 6 步启动 App。</li>
+        </ol>
+        <p class="note">这些工具是用户反馈装过的，本仓库没有逐一实测。手机工具一般不能替你完成全部设置，装好后建议再用电脑或 Agent 跑一遍验收。</p>
+      </div>
+
+      <div class="panel" data-panel="usb">
+        <p>不用电脑，也不用上面的第 1、2 步：把 APK 拷进 U 盘，插到电视上，用电视自带的文件管理器打开安装。</p>
+        <ul>
+          <li><a href="download/aerial-standard.apk"><b>aerial-standard.apk</b></a>：Android 5.0 及以上先装这个。</li>
+          <li><a href="download/aerial-guard.apk"><b>aerial-guard.apk</b></a>：上面那个装不上、提示不允许安装桌面类 App 时换这个。</li>
+          <li><a href="download/aerial-lite.apk"><b>aerial-lite.apk</b></a>：Android 4.0–4.4 的老电视、老盒子用的 Aerial Lite（测试版）。「交给 Agent」和「一行命令」会自动选 Lite，不会装错。</li>
+        </ul>
+        <p>装好后<b>按遥控器的主页键</b>：系统问「使用哪个应用」时选 <b>Aerial</b>，再选「<b>始终</b>」，就设好了，原生 Android TV 一般是这样。</p>
+        <p>直接回到原来的桌面、不问（国产电视大多这样）：从「我的应用」打开 Aerial，它会弹出「设为主屏幕」，按里面的入口去电视设置里打开桌面守护（无障碍）和通知使用权。电视设置里没有这些入口时，Aerial 只能当普通 App 从应用列表打开，要接管主页键就得用电脑或 Agent 设置一次（覆盖安装，设置不丢）。</p>
+        <p class="note">只用 U 盘装时，按主页键、开机、待机醒来能不能回到 Aerial，要看电视设置里有没有这几个入口；用电脑装最稳。以后升级可以在控制中心里点「有新版本」，也可以再用 U 盘装一次。</p>
+        <p class="note">Aerial Lite 外观和完整版一样，但没有桌面守护：装好后按主页键选 <b>Aerial Lite</b>、再选「始终」；固件把主页键锁死在自家桌面时，只能从应用列表打开。也没有航拍壁纸、信号源磁贴和应用内升级（升级就是再装一次）。还原：设置 → 应用 → Aerial Lite → 清除默认设置，或者卸载它。有问题请用<a href="https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml">机型适配模板</a>反馈，标题写上 Lite。</p>
+      </div>
+
+
+      <p class="note">电视问是否允许调试时，选「始终允许」。TCL 会弹「多屏互动：正在发起应用推送」，选「同意」。</p>
+    </div>
+  </div>
+</section>
+
+<section id="adapt">
+  <div class="wrap" style="max-width:860px">
+    <div class="head reveal">
+      <h2>装好了，但有地方不对？</h2>
+      <p>按主页键回到原桌面、待机或开机后停在原桌面、信号源打开的口不对、亮度条没反应：选一种方式，把你的电视适配好，再交给作者，同型号的人以后就不用再折腾。</p>
+    </div>
+    <div class="install reveal">
+      <h3 class="step"><span>1</span>交给 Agent（最省事）</h3>
+      <p>复制给能在电脑上运行命令的 Agent。它会先自检，能改的当场改好，最后整理成一份报告，你看过再提交。电视 IP 用上面第 2 步填的。</p>
+      <div class="code"><button class="copy" data-copy="adaptprompt">复制</button><pre id="adaptprompt"></pre></div>
+
+      <h3 class="step"><span>2</span>用手机提交给作者</h3>
+      <p>控制中心 → 个性化，用手机扫二维码，在手机页最下面 <b>反馈问题 → 显示诊断信息 → 去 GitHub 反馈</b>：型号和版本会自动填进表单，诊断信息自动复制，粘贴进去就行。没有 GitHub 账号时，把诊断信息发给有账号的朋友代发。</p>
+      <p class="note">电脑上也可以自己跑：<code>curl -fsSL https://aerial.qust.me/tools/report.sh | TV=&lt;电视IP&gt; bash</code>（只读）和 <code>curl -fsSL https://aerial.qust.me/tools/selftest.sh | TV=&lt;电视IP&gt; bash</code>（按主页键等，看 Aerial 能不能回来），把两份输出贴进<a href="https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml">机型适配模板</a>。诊断信息不含账号、IP、Wi-Fi 名称和 App 列表。</p>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="faq">
+  <div class="wrap" style="max-width:860px">
+    <div class="head reveal" style="margin-bottom:24px"><h2>常见问题</h2></div>
+    <div class="reveal">
+      <details>
+        <summary>能不能打开网页就直接装到电视上？</summary>
+        <p>不能。网页连不上电视的 ADB。最省事的是上面的 Agent 提示词或一行命令。</p>
+      </details>
+      <details>
+        <summary>会不会把电视弄坏？怎么还原？</summary>
+        <p>不会。Aerial 不动系统应用，只授予几项权限、改了桌面和屏保设置，这些都能撤销。最省事的还原方法是把下面这段直接发给 AI（和安装时一样，要用能在电脑上运行命令的版本），它会按<a href="agent.md">安装说明</a>的「还原」一节撤销全部改动，最后用主页键回到原来的桌面。想连 Aerial 一起卸载，在提示词最后加一句「顺便卸载 Aerial」。</p>
+        <div class="code"><button class="copy" data-copy="restoreprompt">复制</button><pre id="restoreprompt"></pre></div>
+        <p>自己动手也可以：把一行命令最后的 <code>bash</code> 换成 <code>bash -s restore</code>，也就是 <code>curl -fsSL https://aerial.qust.me/install.sh | TV=&lt;电视IP&gt; bash -s restore</code>；最后加 <code>--uninstall</code> 会顺便卸载 Aerial。不能运行 bash 的 Windows，逐条命令见<a href="agent.md">安装说明</a>。</p>
+      </details>
+      <details>
+        <summary>提示固件不允许安装桌面类 App？</summary>
+        <p>改装不声明桌面的版本：一行命令最后加 <code>-s guard</code>，手动安装就下载 <a href="download/aerial-guard.apk">aerial-guard.apk</a>。</p>
+      </details>
+      <details>
+        <summary>会员、小爱同学、小米账号和有线电视受影响吗？</summary>
+        <p>都不受影响。Aerial 只换桌面：小米 / TCL 的会员、小爱同学、小米账号、有线电视都照常使用，原来的桌面也能从 App 列表打开。</p>
+      </details>
+      <details>
+        <summary>小米影视、PatchWall 的内容去哪了？</summary>
+        <p>从「桌面」磁贴进去就是原来的 PatchWall，推荐和会员内容都在。开机广告是固件播的，Aerial 去不掉。</p>
+      </details>
+      <details>
+        <summary>Agent 说装好了，电视上却没变？</summary>
+        <p>有的 Agent 没运行命令就说成功了。让它按 <a href="agent.md">安装说明</a> 的「验收」把原始输出贴出来：<code>resolve-activity</code> 解析到的桌面、<code>enabled_accessibility_services</code> 里有没有 <code>app.orchard.tv</code>、按主页键后的 <code>mCurrentFocus</code>。最后一条里有 <code>app.orchard.tv</code> 才算装好。</p>
+      </details>
+      <details>
+        <summary>没有电脑，只用手机能装吗？</summary>
+        <p>可以试。有用户用手机上的甲壳虫 ADB 助手、超级小爱装成功过，我们没逐一实测。步骤见安装区的「只用手机」。</p>
+      </details>
+      <details>
+        <summary>怎么升级？</summary>
+        <p>1.32 起，有新版本时电视的控制中心会出现「有新版本」，选「下载并安装」，再在电视自己的安装界面确认就行。电视不让 App 安装应用时，升级就是再运行一次安装命令（或者再交给 Agent 一次）：升级页上有二维码，手机扫码能复制这台电视的命令。设置、排列和壁纸都会保留。</p>
+      </details>
+      <details>
+        <summary>需要哪些权限？</summary>
+        <p><code>WRITE_SECURE_SETTINGS</code>：桌面守护被关掉后重新打开。通知监听：被杀后由系统拉起，不读通知。无障碍：只看哪个窗口在前台，不读屏幕内容。定位：只用来显示 Wi-Fi 名称。</p>
+      </details>
+      <details>
+        <summary>航拍影片从哪来？费流量吗？</summary>
+        <p>直接从 Apple 的服务器播放，1080p，码率约 15–20 Mbps。连不上时自动改用照片屏保。</p>
+      </details>
+      <details>
+        <summary>我的电视能用吗？</summary>
+        <p>先看<a href="https://github.com/pengchujin/aerial-tv#支持的机型">机型列表</a>。不在列表里的大概率也可以，原生 Android TV / Google TV 最省事。LG webOS、三星 Tizen、华为鸿蒙智慧屏的系统不一样，装不了；Android 4.0–4.4 的老电视用 Aerial Lite（测试版，见安装区的「U 盘」，Agent 和一行命令会自动装它），更老的不支持。老乐视、荣耀智慧屏、老康佳（看不到版本号）等机型打不开 ADB，暂时没有办法。老电视或内存小的电视会自动用「流畅」效果，也可以在 个性化 → 效果 里手动选。遇到问题见上面的<a href="#adapt">「装好了，但有地方不对？」</a>。</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>
+      Aerial 是独立的开源项目（MIT 许可），与 Apple、小米、TCL、海尔、OPPO、索尼均无关联，品牌标志归各自所有者。<br>
+      航拍影片版权归 Apple 所有；每日精选图片来自必应，版权归原作者所有。
+    </div>
+    <div><a href="https://github.com/pengchujin/aerial-tv">GitHub</a> · <a href="download/aerial-standard.apk">下载</a> · <a href="voices/">用户评价</a> · <a href="https://github.com/pengchujin/aerial-tv/issues">反馈</a> · <a href="en/" data-lang="en" lang="en">English</a></div>
+  </div>
+</footer>
+
+<script>
+  window.T = {
+    ip: '<电视IP>',
+    copy: '复制',
+    copied: '已复制',
+    tclOnly: '仅 TCL：允许开机自启',
+    guide: '/agent.md',
+    adaptGuide: '/adapt.md',
+    prompt: (ip, keep, guide) =>
+`请帮我把开源电视桌面 Aerial 装到我的电视上，并设为开机进入的桌面。
+电视 IP：${ip}
+保持 ADB 常开：${keep ? '要' : '不要'}
+
+安装说明在这里：${guide}
+（打不开时用 https://raw.githubusercontent.com/pengchujin/aerial-tv/main/site/agent.md ）
+
+请先完整读完安装说明再动手，然后在我的电脑上亲自运行命令，不要只把步骤告诉我。需要我在电视上操作时提醒我。
+最后按说明里的「验收」，把下面几条命令的原始输出原样贴给我，不要只写「成功」：
+- adb shell "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME"（解析到的桌面）
+- adb shell settings get secure enabled_accessibility_services（里面有没有 app.orchard.tv/app.orchard.tv.guard.HomeGuardService）
+- 按主页键后的 adb shell "dumpsys window | grep mCurrentFocus"
+如果没有安装成功，直接告诉我卡在哪一步。`,
+    adapt: (ip, guide) =>
+`请按 ${guide} 给我的电视做 Aerial 适配。
+电视 IP：${ip}
+哪里不对：<比如：按主页键回到原桌面 / HDMI 2 打开的是 HDMI 1 / 待机后停在原桌面>
+
+请先完整读完说明再动手，在我的电脑上亲自运行命令，不要只把步骤告诉我。
+待机测试、重启电视之前先问我；不要卸载或停用任何系统应用。
+最后把整理好的报告给我看，我同意后再提交到 GitHub。`,
+    restore: (ip, guide) =>
+`请按 ${guide} 里「还原」部分的步骤，把我电视（IP：${ip}）的桌面还原成原来的，Aerial 先不卸载。
+请在我的电脑上亲自运行命令，不要只把步骤发给我。
+最后把下面两条命令的原始输出贴给我：
+- adb shell settings get secure enabled_accessibility_services（应该已经不含 app.orchard.tv）
+- 按主页键后的 adb shell "dumpsys window | grep mCurrentFocus"（应该回到电视原来的桌面）`,
+  };
+</script>
+<script src="app.js?v=5"></script>
+</body>
+</html>

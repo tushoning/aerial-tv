@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>
+  // Open the page in the browser's language, unless the visitor picked one with the switcher.
+  (function () {
+    if (/bot|crawl|spider|slurp/i.test(navigator.userAgent)) return;
+    var saved; try { saved = localStorage.getItem('aerial-lang'); } catch (e) {}
+    var lang = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+    if (saved ? saved === 'zh' : /^zh/i.test(lang)) location.replace('../' + location.hash);
+  })();
+</script>
+<title>Aerial · A calm home screen for Android TV</title>
+<meta name="description" content="An open-source, tvOS-style home screen for Android TV. No ads, no recommendation feeds. Just your apps, your wallpaper and Apple TV's aerial screensavers. Built for Xiaomi, TCL, Skyworth, Sony and other TVs and boxes sold in China.">
+<meta property="og:title" content="Aerial · A calm home screen for Android TV">
+<meta property="og:description" content="An open-source, tvOS-style home screen for Android TV. No ads, and it stays your home screen.">
+<meta property="og:image" content="../img/home.jpg?v=147">
+<meta name="theme-color" content="#000000">
+<link rel="alternate" hreflang="zh" href="https://aerial.qust.me/">
+<link rel="alternate" hreflang="en" href="https://aerial.qust.me/en/">
+<link rel="alternate" hreflang="x-default" href="https://aerial.qust.me/en/">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css?v=12">
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Aerial"><svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fd0a5"/><stop offset="1" stop-color="#5b5bf0"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#g)"/><path d="M7 21c3-6 6-9 9-9s6 3 9 9" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg> Aerial</a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a href="#adapt">Adapting</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/pengchujin/aerial-tv">GitHub</a>
+    </div>
+    <a class="lang" href="../" data-lang="zh" hreflang="zh" lang="zh-CN">中文</a>
+    <a class="cta" href="#install">Install</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <p class="eyebrow">Open source · Free · No ads</p>
+    <h1>Aerial</h1>
+    <p class="lede">A calm home screen for Android TV. <strong>No ads, no recommendation feeds.</strong> Just your apps, your wallpaper and Apple TV's aerial screensavers.</p>
+    <div class="actions">
+      <a class="btn primary" href="#install">Get started</a>
+      <a class="btn ghost" href="https://github.com/pengchujin/aerial-tv">View on GitHub ›</a>
+    </div>
+    <div class="tv reveal">
+      <div class="glow"></div>
+      <div class="screen compare" id="compare" role="slider" tabindex="0" aria-label="The TV's stock home screen compared with Aerial. Move left or right to compare." aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <img class="before" src="../img/stock-xiaomi.jpg?v=3" alt="The TV's stock home screen, covered in show recommendations and membership badges" width="1600" height="900">
+        <div class="after"><img src="../img/home.jpg?v=147" alt="Aerial's home screen: a landscape wallpaper and a row of apps on a glass shelf" width="1600" height="900"></div>
+        <div class="divider" aria-hidden="true"><span class="knob"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l-6 6 6 6M15 6l6 6-6 6"/></svg></span></div>
+      </div>
+      <div class="stand"></div>
+      <div class="compare-legend">
+        <button type="button" class="replay"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>Replay</button>
+        <span class="compare-hint">Move your mouse across the screen to compare</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>Quiet is<br>the best interface.</h2>
+      <p>Turn on the TV and you see your wallpaper and the apps you use.</p>
+    </div>
+
+    <div class="feature reveal">
+      <div class="shot"><img src="../img/focus.jpg?v=146" alt="The glass shelf under the top row, with an app in focus" loading="lazy" width="1600" height="900"></div>
+      <div>
+        <p class="kicker">Home</p>
+        <h3>As easy as<br>Apple TV.</h3>
+        <p>Your favorite apps sit in one row on a glass shelf. The focused one lifts gently and casts a soft shadow.</p>
+        <p>A white ring marks focus, easy to spot from the couch. Hidden system apps like Xiaomi's App Store and Mi Home show up too.</p>
+      </div>
+    </div>
+
+    <div class="feature flip reveal">
+      <div class="shot"><img src="../img/menu.jpg?v=146" alt="The long-press menu: Move, Move to Folder, Hide, App Info, Uninstall" loading="lazy" width="1600" height="900"></div>
+      <div>
+        <p class="kicker">Organize</p>
+        <h3>Hold OK<br>to make it yours.</h3>
+        <p><strong>Move</strong>, put in a <strong>folder</strong>, <strong>hide</strong>, inspect or uninstall any app. Hidden apps wait in Personalize.</p>
+      </div>
+    </div>
+
+    <div class="feature reveal">
+      <div class="shot"><img src="../img/folder.jpg?v=146" alt="An open folder of system apps" loading="lazy" width="1600" height="900"></div>
+      <div>
+        <p class="kicker">Folders</p>
+        <h3>Tuck the TV's own apps<br>into a folder.</h3>
+        <p>Folders sit on Home like any app, as on Apple TV. Press OK to open one.</p>
+      </div>
+    </div>
+
+    <div class="feature flip reveal">
+      <div class="shot"><img src="../img/control-center.jpg?v=146" alt="Control Center: inputs, network, settings, volume and brightness" loading="lazy" width="1600" height="900"></div>
+      <div>
+        <p class="kicker">Control Center</p>
+        <h3>Everyday controls,<br>one button away.</h3>
+        <p>Inputs, network, settings, volume and brightness, all in one place. Pin an HDMI input to Home to switch in one press.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>When you're not watching,<br>enjoy the view.</h2>
+      <p>114 aerial films from Apple TV, from orbit to the ocean floor, with place names.</p>
+    </div>
+    <div class="gallery reveal">
+      <figure>
+        <div class="shot"><img src="../img/screensaver-aerial.jpg?v=146" alt="Aerial screensaver over the Pu‘u O ‘Umi Natural Area Reserve, Hawaii" loading="lazy" width="1600" height="900"></div>
+        <figcaption>Pu‘u O ‘Umi Natural Area Reserve, Hawaii</figcaption>
+      </figure>
+      <figure>
+        <div class="shot"><img src="../img/screensaver-aerial-2.jpg?v=146" alt="Aerial screensaver over the Tungnaá River in the Icelandic Highlands" loading="lazy" width="1600" height="900"></div>
+        <figcaption>The Tungnaá River, Icelandic Highlands</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="feature reveal">
+      <div class="shot"><img src="../img/wallpaper.jpg?v=146" alt="The Personalize panel" loading="lazy" width="1600" height="900"></div>
+      <div>
+        <p class="kicker">Wallpaper</p>
+        <h3>A new view every day,<br>or your own photos.</h3>
+        <p>Bing's photo of the day, fourteen Mac-style built-ins, or photos from your phone.</p>
+      </div>
+    </div>
+    <div class="phone-row reveal" style="margin-top:110px">
+      <div>
+        <p class="kicker">Set up from your phone</p>
+        <h3 class="sub">Scan.<br>Don't type.</h3>
+        <p class="muted">Scan the code on the TV to arrange Home on your phone (drag to reorder, rename, change icons, folders, hide, add HDMI), upload photos, pick a wallpaper or change the screensaver.</p>
+      </div>
+      <div class="phone"><img src="../img/phone.jpg?v=147" alt="The Home Screen tab of the phone page: the TV's tiles in a grid" loading="lazy" width="780" height="1384"></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="how">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>Home at boot.<br>Still home after standby.</h2>
+      <p>Most TVs sold in China lock you into the maker's launcher and kill other apps in standby. Aerial works around both, with no root and no system apps disabled.</p>
+    </div>
+    <div class="grid3 reveal">
+      <div class="tile">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg></div>
+        <h4>Owns the Home button</h4>
+        <p>Aerial becomes the default home screen where it can; elsewhere, Home Guard brings it back. The stock launcher is still there.</p>
+      </div>
+      <div class="tile">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M3 12h4M17 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg></div>
+        <h4>Back in half a second</h4>
+        <p>Xiaomi TVs force-stop other apps in standby. Android brings Aerial right back.</p>
+      </div>
+      <div class="tile">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></div>
+        <h4>Survives a power cut</h4>
+        <p>Aerial takes over at boot. The installer gets it past TCL's startup block.</p>
+      </div>
+    </div>
+    <div class="devices reveal">
+      <span class="chip"><b>Xiaomi / Redmi</b> · Android 6–14</span>
+      <span class="chip"><b>TCL</b> · Android 8–11</span>
+      <span class="chip"><b>Skyworth / Coocaa</b> · Android 11</span>
+      <span class="chip"><b>Sony BRAVIA</b> · Android 10–12</span>
+      <span class="chip"><b>Konka</b> · Android 9</span>
+      <span class="chip"><b>Boxes and projectors</b> · XGIMI, OBE, Aurora</span>
+      <a class="chip chip-link" href="https://github.com/pengchujin/aerial-tv/blob/main/README.en.md#supported-tvs">Full <b>list</b> ›</a>
+    </div>
+    <p class="note devices-note reveal">Hisense / Vidda and some Coocaa sets boot into their own home first; FFALCON MT9655 models can't be taken over yet.</p>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>Up and running<br>in three minutes.</h2>
+      <p>No root, and you can undo it any time.</p>
+    </div>
+
+    <div class="install reveal">
+      <h3 class="step"><span>1</span>Turn on ADB debugging on the TV</h3>
+      <div class="tabs" role="tablist" data-tabs="brand">
+        <button role="tab" aria-selected="true" data-tab="xiaomi"><i class="logo xiaomi" aria-hidden="true"></i>Xiaomi</button>
+        <button role="tab" aria-selected="false" data-tab="tcl" aria-label="TCL"><i class="logo tcl" aria-hidden="true"></i></button>
+        <button role="tab" aria-selected="false" data-tab="haier" aria-label="Haier"><i class="logo haier" aria-hidden="true"></i></button>
+        <button role="tab" aria-selected="false" data-tab="oppo" aria-label="OPPO"><i class="logo oppo" aria-hidden="true"></i></button>
+        <button role="tab" aria-selected="false" data-tab="other"><i class="logo android" aria-hidden="true"></i>Others</button>
+      </div>
+      <div class="panel on" data-panel="xiaomi"><p>Settings (设置) → About (关于) → press OK on <b>Model</b> (产品型号) until developer mode is on. Then Settings → Account &amp; Security (账号与安全): turn on <b>ADB debugging</b> (ADB 调试) and <b>Install unknown apps</b> (安装未知来源的应用).<br>The IP address is under Settings → Network → the connected network.</p></div>
+      <div class="panel" data-panel="tcl"><p>Settings (设置) → About (关于) → <b>Device info</b> (本机信息), then quickly press <b>Up, Down, Left, Right</b>. Turn on <b>ADB</b> in the <b>More</b> (更多) group that appears.<br>The IP address is under Settings → Network → the connected network.</p></div>
+      <div class="panel" data-panel="haier"><p>Press the Source button <b>on the TV itself</b>. While the source menu is open, press <b>Left, Left, Up, Right</b> on the remote to open the factory menu (海尔工厂菜单), then set <b>ADB 调试开关</b> (ADB debugging) to on. Change nothing else.<br>The IP address is under Settings → Network → the connected network.</p></div>
+      <div class="panel" data-panel="oppo"><p>Settings (设置) → System (系统) → About (关于本机) → <b>Model</b> (设备型号), press <b>Up, Up, Right, Right</b>, then OK. Then Settings → System → <b>Developer options</b> (开发者选项) and turn on <b>USB debugging</b> (USB 调试, sometimes called ADB debugging).<br>The IP address is at the <b>bottom</b> of Settings → Network → the connected network.</p></div>
+      <div class="panel" data-panel="other"><p>Settings → Device Preferences → About → press <b>Build</b> (not Android version) 7 times, then turn on <b>USB debugging</b> in Developer options.<br>The IP address is under Settings → Network → the connected network.</p></div>
+      <p class="note">Some TVs cannot open ADB at all: old LeTV sets, Honor Vision and old Konka models (no version number to tap). XGIMI H3 needs a third-party tool to open ADB first.</p>
+
+      <h3 class="step"><span>2</span>Enter the TV's IP address</h3>
+      <p class="hint">It's under Settings → Network → the connected network (at the bottom on OPPO S1). Your computer must be on the same network.</p>
+      <div class="field">
+        <label for="ip">TV IP address</label>
+        <input id="ip" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="e.g. 192.168.1.20">
+        <label class="opt"><input type="checkbox" id="keep" checked> Keep ADB on</label>
+      </div>
+
+      <h3 class="step"><span>3</span>Pick a way to install</h3>
+      <div class="tabs" role="tablist" data-tabs="method">
+        <button role="tab" aria-selected="true" data-tab="agent">Agent</button>
+        <button role="tab" aria-selected="false" data-tab="cli">One command</button>
+        <button role="tab" aria-selected="false" data-tab="manual">Manual</button>
+        <button role="tab" aria-selected="false" data-tab="phone">Phone only</button>
+        <button role="tab" aria-selected="false" data-tab="usb">USB drive</button>
+      </div>
+
+      <div class="panel on" data-panel="agent">
+        <p>Paste this into an agent that can run commands on your computer, such as:</p>
+        <ul class="agents">
+          <li><img src="../img/agents/claude-code.svg" alt="" width="20" height="20">Claude Code</li>
+          <li><img src="../img/agents/codex.svg" alt="" width="20" height="20">Codex</li>
+          <li><img src="../img/agents/cursor.svg" alt="" width="20" height="20">Cursor</li>
+          <li><img src="../img/agents/workbuddy.svg" alt="" width="20" height="20">WorkBuddy</li>
+          <li><img src="../img/agents/trae.svg" alt="" width="20" height="20">Trae</li>
+        </ul>
+        <div class="code"><button class="copy" data-copy="prompt">Copy</button><pre id="prompt"></pre></div>
+        <p class="note">Phone apps and web chats (including Doubao on a phone) only tell you the steps; they can't run anything. Use a desktop build that can run commands, such as Doubao for desktop or Doubao Work, WorkBuddy, Qwen for desktop, Trae, Claude Code or Codex.</p>
+      </div>
+
+      <div class="panel" data-panel="cli">
+        <p>Run it in a macOS or Linux terminal; it downloads adb if you don't have it. On Windows, use an agent.</p>
+        <div class="code"><button class="copy" data-copy="cmd">Copy</button><pre id="cmd"></pre></div>
+      </div>
+
+      <div class="panel" data-panel="manual">
+        <p>Download <a href="../download/aerial-standard.apk"><b>aerial-standard.apk</b></a>, then run:</p>
+        <div class="code"><button class="copy" data-copy="manualcmd">Copy</button><pre id="manualcmd"></pre></div>
+      </div>
+
+      <div class="panel" data-panel="phone">
+        <p>Without a computer, use an ADB app on a phone: <b>甲壳虫 ADB 助手</b> (Beetle ADB), <b>超级小爱</b> (Super Xiaoai), or similar tools from the app store.</p>
+        <ol>
+          <li>Phone and TV on the same Wi-Fi.</li>
+          <li>Turn on ADB on the TV as in step 1 above; the IP address is in the same place.</li>
+          <li>Connect the phone to <code>&lt;TV-IP&gt;:5555</code>; choose Always allow on the TV.</li>
+          <li>Install Aerial from the app (standard build; try the guard build if that is refused), then grant permissions one by one as in Windows item 3 of the <a href="agent.md">install guide</a> and start the app as in item 6.</li>
+        </ol>
+        <p class="note">Users have installed Aerial this way; we have not tested each tool. Phone tools usually can't finish every setting, so once it's installed, run the check with a computer or an agent if you can.</p>
+      </div>
+
+      <div class="panel" data-panel="usb">
+        <p>No computer, and no need for steps 1 and 2 above: copy the APK to a USB drive, plug it into the TV, and open it with the TV's file manager to install.</p>
+        <ul>
+          <li><a href="../download/aerial-standard.apk"><b>aerial-standard.apk</b></a>: try this first on Android 5.0 and later.</li>
+          <li><a href="../download/aerial-guard.apk"><b>aerial-guard.apk</b></a>: use this if the first is refused because the TV won't install home-screen apps.</li>
+          <li><a href="../download/aerial-lite.apk"><b>aerial-lite.apk</b></a>: Aerial Lite (a beta) for old TVs and boxes on Android 4.0-4.4. The Agent and One command tabs pick Lite on their own, never the wrong one.</li>
+        </ul>
+        <p>Once it's installed, <b>press Home on the remote</b>. If Android asks which app to use, choose <b>Aerial</b>, then <b>Always</b>, and you're done; stock Android TV usually works this way.</p>
+        <p>If Home goes straight back to the old home screen without asking (most Chinese-brand TVs): open Aerial from the app list. It shows "Make Aerial Your Home Screen", whose entries open the TV's settings for the home guard (Accessibility) and notification access. If the TV's settings don't have them, Aerial works only as an ordinary app opened from the app list; to take over Home, set it up once with a computer or an agent (it installs over, settings stay).</p>
+        <p class="note">Whether Home, power-on and wake come back to Aerial after a USB-only install depends on those entries being in the TV's settings; a computer install is the most reliable. Later updates: choose "New version" in Control Center, or install from the USB drive again.</p>
+        <p class="note">Aerial Lite looks the same as the full app but has no Home Guard: once it's installed, press Home and choose <b>Aerial Lite</b>, then Always; where the firmware keeps Home for its own launcher, open Lite from the app list. No aerial wallpaper, input tiles or in-app updates either (updating is installing again). To undo: Settings → Apps → Aerial Lite → Clear defaults, or uninstall it. Report problems with the <a href="https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml">device support form</a>, with Lite in the title.</p>
+      </div>
+
+
+      <p class="note">When the TV asks to allow debugging, choose Always allow. On TCL, accept the 多屏互动 (screen sharing) prompt with 同意 (Agree).</p>
+    </div>
+  </div>
+</section>
+
+<section id="adapt">
+  <div class="wrap" style="max-width:860px">
+    <div class="head reveal">
+      <h2>Installed, but something is off?</h2>
+      <p>Home goes back to the old launcher, standby or a restart ends there, an input opens the wrong port, the brightness slider does nothing: adapt Aerial to your TV one of these ways and send it in, so the next owner of the same model does not have to.</p>
+    </div>
+    <div class="install reveal">
+      <h3 class="step"><span>1</span>Hand it to an agent (easiest)</h3>
+      <p>Paste this into an agent that can run commands on your computer. It tests the TV, fixes on the spot what it can, and writes a report for you to read before it is posted. The TV address is the one from step 2 above.</p>
+      <div class="code"><button class="copy" data-copy="adaptprompt">Copy</button><pre id="adaptprompt"></pre></div>
+
+      <h3 class="step"><span>2</span>Send it in from your phone</h3>
+      <p>Control Center → Personalize, scan the QR code, and at the bottom of the phone page choose <b>Report a Problem → Show Diagnostics → Report on GitHub</b>: the model and the version fill the form, and the diagnostics are copied for you to paste.</p>
+      <p class="note">On a computer: <code>curl -fsSL https://aerial.qust.me/tools/report.sh | TV=&lt;tv-ip&gt; bash</code> (reads only) and <code>curl -fsSL https://aerial.qust.me/tools/selftest.sh | TV=&lt;tv-ip&gt; bash</code> (presses Home and checks Aerial comes back), then paste both into the <a href="https://github.com/pengchujin/aerial-tv/issues/new?template=device.yml">device support form</a>. The diagnostics hold no accounts, addresses, Wi-Fi names or app lists.</p>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="faq">
+  <div class="wrap" style="max-width:860px">
+    <div class="head reveal" style="margin-bottom:24px"><h2>FAQ</h2></div>
+    <div class="reveal">
+      <details>
+        <summary>Can I install it straight from a web page?</summary>
+        <p>No. Browsers can't reach the TV's ADB. The agent prompt or the one-line command is the easiest way.</p>
+      </details>
+      <details>
+        <summary>Can it break my TV? How do I undo it?</summary>
+        <p>No. Aerial doesn't touch system apps; it grants itself a few permissions and changes the home screen and screensaver settings, and all of that can be undone. The easiest way is to paste the text below into an AI that can run commands on a computer (the same kind you installed with): it follows the Undo section of the <a href="agent.md">install guide</a>, undoes every change and leaves the TV on its original home screen. Add "and uninstall Aerial as well" to also remove it.</p>
+        <div class="code"><button class="copy" data-copy="restoreprompt">Copy</button><pre id="restoreprompt"></pre></div>
+        <p>By hand: replace the final <code>bash</code> in the one-line command with <code>bash -s restore</code>, that is <code>curl -fsSL https://aerial.qust.me/install.sh | TV=&lt;TV-IP&gt; bash -s restore</code>; add <code>--uninstall</code> to remove Aerial too. On Windows without bash, the commands one by one are in the <a href="agent.md">install guide</a>.</p>
+      </details>
+      <details>
+        <summary>My firmware won't install home-screen apps?</summary>
+        <p>Install the build that doesn't declare itself a home screen: add <code>-s guard</code> to the end of the one-line command, or download <a href="../download/aerial-guard.apk">aerial-guard.apk</a> for a manual install.</p>
+      </details>
+      <details>
+        <summary>Do my subscriptions, Xiaoai, Xiaomi account or cable TV change?</summary>
+        <p>No. Aerial only replaces the home screen: Xiaomi / TCL subscriptions, Xiaoai, your Xiaomi account and cable TV all work as before, and the old home screen still opens from the app list.</p>
+      </details>
+      <details>
+        <summary>Where did Xiaomi Video and PatchWall content go?</summary>
+        <p>The 桌面 (Home) tile opens PatchWall as before, with its recommendations and subscription content. The boot ad comes from the firmware; Aerial can't remove it.</p>
+      </details>
+      <details>
+        <summary>The agent says it's installed, but nothing changed on the TV?</summary>
+        <p>Some agents report success without running anything. Ask it to paste the raw output from "Check" in the <a href="agent.md">install guide</a>: which home screen <code>resolve-activity</code> finds, whether <code>enabled_accessibility_services</code> contains <code>app.orchard.tv</code>, and the <code>mCurrentFocus</code> after pressing Home. The install only worked if the last one includes <code>app.orchard.tv</code>.</p>
+      </details>
+      <details>
+        <summary>Can I install it with only a phone?</summary>
+        <p>You can try. Users have installed Aerial with Beetle ADB (甲壳虫 ADB 助手) and Super Xiaoai (超级小爱) on a phone; we haven't tested each one. See "Phone only" under Install.</p>
+      </details>
+      <details>
+        <summary>How do I update?</summary>
+        <p>From 1.32, the TV's Control Center shows New Version when there is one: choose Download and Install, then confirm in the TV's own installer. On TVs that do not let apps install apps, updating means running the install command again (or asking the agent again); the update page has a QR code that opens this TV's command on a phone. Settings, layout and wallpaper are kept.</p>
+      </details>
+      <details>
+        <summary>What permissions does it use?</summary>
+        <p><code>WRITE_SECURE_SETTINGS</code> turns Home Guard back on if it's switched off. The notification listener lets Android restart Aerial; it reads no notifications. Accessibility only sees which window is in front, not what's on screen. Location only shows your Wi-Fi name.</p>
+      </details>
+      <details>
+        <summary>Where do the aerial films come from? How much data do they use?</summary>
+        <p>They stream straight from Apple's servers in 1080p, at about 15–20 Mbps. If they can't load, Aerial switches to the photo screensaver.</p>
+      </details>
+      <details>
+        <summary>Will it work on my TV?</summary>
+        <p>Check the <a href="https://github.com/pengchujin/aerial-tv/blob/main/README.en.md#supported-tvs">list</a>. If yours isn't there, probably. Stock Android TV and Google TV are the easiest. LG webOS, Samsung Tizen and Huawei Vision (HarmonyOS) run different systems and can't take Aerial; Android 4.0-4.4 TVs get Aerial Lite (a beta, see USB drive under Install; the agent and the one-line command install it on their own); older ones are not supported. Some TVs can't open ADB at all, such as old LeTV sets, Honor Vision and old Konka models (no version number to tap). Slow or low-memory TVs pick Lite effects on their own; you can also choose it in Personalize → Effects. If something goes wrong, see <a href="#adapt">Installed, but something is off?</a> above.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>
+      Aerial is an independent open-source project (MIT), not affiliated with Apple, Xiaomi, TCL, Haier, OPPO or Sony; brand logos belong to their owners.<br>
+      Aerial films © Apple. Daily photos from Bing, © their respective owners.
+    </div>
+    <div><a href="https://github.com/pengchujin/aerial-tv">GitHub</a> · <a href="../download/aerial-standard.apk">Download</a> · <a href="https://github.com/pengchujin/aerial-tv/issues">Feedback</a> · <a href="../" data-lang="zh" lang="zh-CN">中文</a></div>
+  </div>
+</footer>
+
+<script>
+  window.T = {
+    ip: '<TV-IP>',
+    copy: 'Copy',
+    copied: 'Copied',
+    tclOnly: 'TCL only: allow starting at boot',
+    guide: '/en/agent.md',
+    adaptGuide: '/en/adapt.md',
+    prompt: (ip, keep, guide) =>
+`Please install Aerial, an open-source home screen for Android TV, on my TV, and make it the home screen the TV starts into.
+TV IP address: ${ip}
+Keep ADB debugging on: ${keep ? 'yes' : 'no'}
+
+The install guide is here: ${guide}
+(If you can't open it, use https://raw.githubusercontent.com/pengchujin/aerial-tv/main/site/en/agent.md)
+
+Read the whole guide before you start. Then run the commands yourself on my computer; don't just tell me the steps. Tell me when I need to do something on the TV.
+At the end, paste the raw output of these commands from the "Check" section, not just "it worked":
+- adb shell "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME" (which home screen it finds)
+- adb shell settings get secure enabled_accessibility_services (does it contain app.orchard.tv/app.orchard.tv.guard.HomeGuardService?)
+- adb shell "dumpsys window | grep mCurrentFocus" after pressing Home
+If it did not work, tell me exactly which step failed.`,
+    adapt: (ip, guide) =>
+`Please adapt Aerial to my TV, following ${guide}
+TV IP: ${ip}
+What is wrong: <e.g. Home goes back to the old launcher / HDMI 2 opens HDMI 1 / ends on the old launcher after standby>
+
+Read the whole guide first, then run the commands on my computer yourself instead of listing them.
+Ask me before a standby test or restarting the TV; do not uninstall or disable any system app.
+Show me the finished report, and post it to GitHub only once I agree.`,
+    restore: (ip, guide) =>
+`Please follow the "Undo" section of ${guide} to give my TV (IP address: ${ip}) its original home screen back, without uninstalling Aerial.
+Run the commands yourself on my computer; don't just send me the steps.
+At the end, paste the raw output of:
+- adb shell settings get secure enabled_accessibility_services (it should no longer contain app.orchard.tv)
+- adb shell "dumpsys window | grep mCurrentFocus" after pressing Home (it should be the TV's original home screen)`,
+  };
+</script>
+<script src="../app.js?v=5"></script>
+</body>
+</html>
