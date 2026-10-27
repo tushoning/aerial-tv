@@ -551,9 +551,9 @@ def patch_brightness(root):
         r"^[ \t]*fun adjust\(context: Context, direction: Int\)[ \t]*:[ \t]*Float\?[ \t]*\{\n",
         [
             "if (OppoBacklight.usable(context)) {",
-            "    // 5% 一档，和设置页那条一致；0 会黑屏，所以下限是 1。",
+            "    // 5% 一档，和设置页那条一致；范围 0..100，跟系统那条对齐（0 = 最低）。",
             "    val from = OppoBacklight.level(context)",
-            "    val next = (if (direction > 0) (from / 5 + 1) * 5 else ((from + 4) / 5 - 1) * 5).coerceIn(1, 100)",
+            "    val next = (if (direction > 0) (from / 5 + 1) * 5 else ((from + 4) / 5 - 1) * 5).coerceIn(0, 100)",
             "    OppoBacklight.set(context, next)",
             "    return next / 100f",
             "}",
@@ -576,6 +576,13 @@ def patch_brightness(root):
         "SystemProbe.openPictureSettings(context)",
     )
 
+    # 上游在 BrightnessRow 里那段轮询（`LaunchedEffect(xgimi) { … delay(700) … }`）**保持原样不动**：
+    # 它是给极米开的（极米亮度在 HAL 里，没有任何 Settings 键可盯，只能轮询），OPPO 用不上。
+    # OPPO 走的是 OppoBacklight 里那个常驻 ContentObserver，零成本、且控制中心没开着时也在同步。
+    #
+    # 实测过另一条路：电视那个「快捷亮度条」（ScreenLightAdjustDialog）改亮度时**既不写任何
+    # Settings 键、也不发广播**，只走 PictureManagerImpl 直连面板。所以观察者对它无效；
+    # 想让 Aerial 那条实时跟随，只能轮询固件（一次查询约 2~10ms）。当前选择：**不做**。
     # 面板真值（query）回来时可能和记账值不同：小布或设置页改过亮度，记账值就旧了。
     # 让 ViewModel 接住这个校正，滑块才会跟着变；否则要等下次自己调才刷新。
     vm = j("HomeViewModel.kt")
@@ -603,6 +610,232 @@ def patch_brightness(root):
         "HomeViewModel 松手时摘掉回调",
         "OppoBacklight.onLevel = null",
         at="end",
+    )
+
+
+def patch_screensaver(root):
+    """个性化里的「进入时间」直接读写系统的屏保时间，另加 1 分钟档、文案压成「N分」。
+
+    背景：1.62 起系统的屏保可以就是 Aerial 自己（ScreensaverMode.System），但延时那一行只把
+    系统值显示出来，改不了。这台 OPPO（OPPOCNM632）系统的屏保时间就存在
+    Settings.System.SCREEN_OFF_TIMEOUT（实测 120000），Aerial 的 WRITE_SETTINGS 已被放行
+    （appops allow），所以两边可以直接互通：打开设置页时读一次，改的时候写回去。
+    """
+    # 1) 系统屏保的读 / 写：读用的就是 firmwareDelayMs 那个键，写也写同一个键。
+    insert_in_body(
+        root, j("system/SystemScreensaver.kt"),
+        r"^object SystemScreensaver \{\n",
+        [
+            "",
+            "/** The delay in minutes the TV's own screensaver waits; null where unknown, 0 when off. */",
+            "fun delayMinutes(context: Context): Int? {",
+            "    val ms = firmwareDelayMs(context) ?: return null",
+            "    if (ms <= 0) return 0",
+            "    return ((ms + 30_000) / 60_000).toInt().coerceAtLeast(1)",
+            "}",
+            "",
+            "/**",
+            " * Writes the setting the firmware starts its screensaver from, so Aerial's row and the TV's",
+            " * own screensaver page agree. 0 means the system's screensaver is off (\"Never\"). False",
+            " * where WRITE_SETTINGS was not granted, or the firmware has no such key.",
+            " */",
+            "fun setDelayMinutes(context: Context, minutes: Int): Boolean {",
+            "    if (minutes <= 0) return true",
+            "    val xiaomi = runCatching { context.packageManager.getPackageInfo(XIAOMI, 0) }.isSuccess",
+            "    val key = if (xiaomi) \"screen_saver_timeout\" else Settings.System.SCREEN_OFF_TIMEOUT",
+            "    return runCatching { Settings.System.putLong(context.contentResolver, key, minutes * 60_000L) }",
+            "        .onFailure { Log.w(TAG, \"could not set the screensaver delay\", it) }",
+            "        .isSuccess",
+            "}",
+        ],
+        "屏保延时：读写系统设置",
+        "fun setDelayMinutes(context: Context",
+        at="end",
+    )
+
+    # 2) 档位：多一个 1 分钟；列表要能带上系统里那种「不在档位表里」的值。
+    settings = j("settings/AerialSettings.kt")
+    patch(
+        root, settings,
+        "    val screensaverChoices = listOf(2, 5, 10, 20, NEVER)",
+        "    // 这台电视的系统屏保支持 1 分钟，Aerial 原版只有 2 起。\n"
+        "    val screensaverChoices = listOf(1, 2, 5, 10, 20, NEVER)",
+        "档位加 1 分钟",
+    )
+    ensure_import(
+        root, settings,
+        "import %s.system.SystemScreensaver" % PKG,
+        "AerialSettings 引用 SystemScreensaver",
+    )
+    insert_in_body(
+        root, settings,
+        r"^object AerialSettings \{\n",
+        [
+            "/** The choices, plus the TV's own value when it is not one of them, so the row never lies. */",
+            "val screensaverChoicesNow: List<Int>",
+            "    get() = screensaverMinutes.takeIf { it != NEVER && it !in screensaverChoices }",
+            "        ?.let { (screensaverChoices - NEVER + it).sorted() + NEVER }",
+            "        ?: screensaverChoices",
+            "",
+            "/**",
+            " * Reads the delay from the TV's own screensaver setting, so this row shows what the system's",
+            " * page shows. Run each time the settings sheet opens: the TV can change it on its own.",
+            " *",
+            " * 读一次要跨进程问三次（PackageManager + SettingsProvider 的两个键），几十毫秒；调用点正好在",
+            " * 抽屉滑入的那一帧上，放主线程会卡一下，所以整段读到 IO 上去，回来再写状态。",
+            " */",
+            "suspend fun syncScreensaverFromSystem(context: Context) {",
+            "    if (!started) return",
+            "    val minutes = withContext(Dispatchers.IO) { SystemScreensaver.delayMinutes(context) } ?: return",
+            "    if (minutes == screensaverMinutes) return",
+            "    screensaverMinutes = minutes",
+            "    app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putInt(\"screensaver_minutes\", minutes) }",
+            "}",
+        ],
+        "屏保时间跟随系统（读 + 档位表）",
+        "fun syncScreensaverFromSystem(context: Context)",
+        at="end",
+    )
+    # 上面那个 suspend 要用的调度器；上游这个文件里一条协程 import 都没有。
+    ensure_import(
+        root, settings,
+        "import kotlinx.coroutines.Dispatchers",
+        "AerialSettings 引 Dispatchers",
+    )
+    ensure_import(
+        root, settings,
+        "import kotlinx.coroutines.withContext",
+        "AerialSettings 引 withContext",
+    )
+
+    # 4) 真正该同步的地方：盯住系统那个键，而不是等打开设置页。
+    # screensaverMinutes 不只是给那一行显示用的 —— MainActivity.restartIdleTimer() 每次按键
+    # 都拿它算屏保倒计时（idleBeforeScreensaver），旁边读系统值的两处上游本来就是实时读的。
+    # 上游自己在 HomeGuardService 里就用 ContentObserver 盯 screensaver_components / adb_enabled，
+    # 写法照抄：主线程 Handler + runCatching 注册。回调里仍然走 IO 读，不把几十毫秒搬回主线程。
+    insert_in_body(
+        root, settings,
+        r"^object AerialSettings \{\n",
+        [
+            "",
+            "/**",
+            " * The TV's own screensaver page writes the same key Aerial reads, and it is the only",
+            " * other writer: watch it, so the delay the idle timer counts on is the one the TV shows.",
+            " * The row in Personalize is not the only place the value is used (restartIdleTimer).",
+            " */",
+            "private val watchScope = MainScope()",
+            "private val screensaverObserver by lazy {",
+            "    object : ContentObserver(Handler(Looper.getMainLooper())) {",
+            "        override fun onChange(selfChange: Boolean) {",
+            "            // 我们自己改档位时也会写系统，回调跟着来一次；值相同就在 sync 里 return，不会打乒乓。",
+            "            watchScope.launch { syncScreensaverFromSystem(app) }",
+            "        }",
+            "    }",
+            "}",
+            "",
+            "/** Once, from init(): the firmware's own page is the only other writer of these two keys. */",
+            "private fun watchScreensaverDelay() {",
+            "    val r = app.contentResolver",
+            "    runCatching { r.registerContentObserver(Settings.System.getUriFor(Settings.System.SCREEN_OFF_TIMEOUT), false, screensaverObserver) }",
+            "    runCatching { r.registerContentObserver(Settings.System.getUriFor(\"screen_saver_timeout\"), false, screensaverObserver) }",
+            "}",
+        ],
+        "常驻观察者盯住系统屏保延时",
+        "private fun watchScreensaverDelay()",
+        at="end",
+    )
+    ensure_import(
+        root, settings,
+        "import android.database.ContentObserver",
+        "AerialSettings 引 ContentObserver",
+    )
+    ensure_import(
+        root, settings,
+        "import android.os.Handler",
+        "AerialSettings 引 Handler",
+    )
+    ensure_import(
+        root, settings,
+        "import android.os.Looper",
+        "AerialSettings 引 Looper",
+    )
+    ensure_import(
+        root, settings,
+        "import kotlinx.coroutines.MainScope",
+        "AerialSettings 引 MainScope",
+    )
+    ensure_import(
+        root, settings,
+        "import kotlinx.coroutines.launch",
+        "AerialSettings 引 launch",
+    )
+    # 注册点：init() 里，那里本来就有 started 防重入，只跑一次。
+    insert_in_body(
+        root, settings,
+        r"^[ \t]*fun init\(context: Context\) \{\n",
+        [
+            "// 屏保延时跟着系统走：注册一次观察，之后系统那边一改就同步（不只是打开设置页那一次）。",
+            "watchScreensaverDelay()",
+        ],
+        "init 里挂上系统屏保观察",
+        # 标记不能用函数名：上面那段定义里就含 watchScreensaverDelay() 这个串，会被判成「已存在」。
+        "// 屏保延时跟着系统走",
+        at="end",
+    )
+    insert_in_body(
+        root, settings,
+        r"^[ \t]*fun chooseScreensaverMinutes\(minutes: Int\) \{\n",
+        [
+            "// 双向：电视自己的屏保页读的是同一个键，改这边那边跟着变。",
+            "SystemScreensaver.setDelayMinutes(app, minutes)",
+        ],
+        "改档位时写回系统",
+        "SystemScreensaver.setDelayMinutes(app, minutes)",
+        at="end",
+    )
+
+    # 3) 设置页：打开时读一次系统值；延时那一行改成可选档位（原来 System 模式只显示、不能改）。
+    sheet = j("ui/wallpaper/WallpaperSheet.kt")
+    patch(
+        root, sheet,
+        "        if (!visible) return@LaunchedEffect\n",
+        "        if (!visible) return@LaunchedEffect\n"
+        "        // 系统那边的屏保时间随时可能被改：每次打开都重新读一遍（函数内部走 IO，不挡滑入动画）。\n"
+        "        AerialSettings.syncScreensaverFromSystem(context)\n",
+        "打开设置页时刷新屏保时间",
+    )
+    patch(
+        root, sheet,
+        '                        // The firmware\'s screensaver starts on the firmware\'s timer: Aerial\'s delay\n'
+        '                        // did nothing there, and Xiaomi\'s 1 minute came before the 5 chosen (issue #675).\n'
+        '                        if (Wallpapers.screensaver == ScreensaverMode.System) SettingRow(R.string.ss_delay, null, note) {\n'
+        '                            val delay = remember { SystemScreensaver.firmwareDelayMs(context) }\n'
+        '                            BasicText(\n'
+        '                                when {\n'
+        '                                    delay == null -> stringResource(R.string.ss_delay_system)\n'
+        '                                    delay == 0L -> stringResource(R.string.ss_delay_system_off)\n'
+        '                                    else -> stringResource(R.string.ss_delay_system_minutes, ((delay + 30_000) / 60_000).coerceAtLeast(1).toInt())\n'
+        '                                },\n'
+        '                                style = Type.Body.copy(color = Palette.SecondaryLabel),\n'
+        '                                modifier = Modifier.padding(end = 8.dp),\n'
+        '                            )\n'
+        '                        } else Choices(\n'
+        '                            R.string.ss_delay, null, note,\n'
+        '                            AerialSettings.screensaverChoices.map {',
+        '                        // One setting, and it is the TV\'s own: the same key the system\'s screensaver\n'
+        '                        // page writes, so choosing here changes the TV and the other way round.\n'
+        '                        Choices(\n'
+        '                            R.string.ss_delay, null, note,\n'
+        '                            AerialSettings.screensaverChoicesNow.map {',
+        "屏保时间改成可选档位（含系统值）",
+    )
+
+    # 4) 文案：档位压成「1分 / 2分 / …」，菜单一行放得下。
+    patch(
+        root, STRINGS_ZH,
+        '    <string name="ss_minutes">%d 分钟</string>',
+        '    <string name="ss_minutes">%d分</string>',
+        "中文文案：档位写成分",
     )
 
 
@@ -827,15 +1060,39 @@ def patch_names(root):
         "        val plateNames = false",
         "底板不再为名称增高",
     )
+    # 一旦焦点下到网格（抽屉），第一排就只是网格里的普通一行：名字回到图标下方，和第二排及以下
+    # 完全同一套规则（显示全部还是仅焦点，由 showAllNames 决定）。
+    # 做法是算一个 onPlateRow，下面三个参数都只看它 —— 一个判断，不会出现改了一处漏了另一处。
+    patch(
+        root, home,
+        "                        val slot = animateIntOffsetAsState(\n"
+        "                            slotPx,\n"
+        "                            spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),\n"
+        "                            label = \"slot\",\n"
+        "                        )\n"
+        "                        AppTile(\n",
+        "                        val slot = animateIntOffsetAsState(\n"
+        "                            slotPx,\n"
+        "                            spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),\n"
+        "                            label = \"slot\",\n"
+        "                        )\n"
+        "                        // On the shelf the top row is the plate's row. Once the focus is\n"
+        "                        // down in the grid, that row is just another row of it, and takes\n"
+        "                        // the grid's own rule for names instead.\n"
+        "                        val onPlateRow = !inGrid && index < COLUMNS\n"
+        "                        AppTile(\n",
+        "定义「台面第一排」判据",
+    )
     patch(
         root, home,
         "                            showName = plate == null || index >= COLUMNS || plateNames,\n"
         "                            nameOnPlate = plate != null && index < COLUMNS,",
-        "                            // The top row's names are drawn inside its tiles (plateName);\n"
-        "                            // the grid's keep the original rule below the tile.\n"
-        "                            showName = index >= COLUMNS,\n"
-        "                            nameOnPlate = plate != null && index < COLUMNS,\n"
-        "                            plateName = if (index < COLUMNS) AerialSettings.plateNames else null,",
+        "                            // The plate's row draws its names inside the tiles. Every other\n"
+        "                            // row - including that same row while the grid is open - keeps\n"
+        "                            // the original name below the tile, always clear of the focus\n"
+        "                            // ring: nameOnPlate is left at its default of false on purpose.\n"
+        "                            showName = !onPlateRow,\n"
+        "                            plateName = if (onPlateRow) AerialSettings.plateNames else null,",
         "第一排改用 plateName",
     )
 
@@ -1019,7 +1276,9 @@ def verify(root, repo, dropped):
         ),
         (
             j("ui/control/ControlCenter.kt"),
-            ("vm.overlay = Overlay.None\n                SystemProbe.openPictureSettings(context)",),
+            (
+                "vm.overlay = Overlay.None\n                SystemProbe.openPictureSettings(context)",
+            ),
         ),
         (
             j("HomeViewModel.kt"),
@@ -1029,6 +1288,22 @@ def verify(root, repo, dropped):
                 "OppoBacklight.onLevel = null",
             ),
         ),
+        # 屏保时间那一组：读写系统设置、档位加 1 分钟、设置页打开时刷新。
+        (
+            j("system/SystemScreensaver.kt"),
+            ("fun delayMinutes(context: Context)", "Settings.System.putLong("),
+        ),
+        (
+            j("settings/AerialSettings.kt"),
+            ("listOf(1, 2, 5, 10, 20, NEVER)", "screensaverChoicesNow",
+             "fun syncScreensaverFromSystem(", "SystemScreensaver.setDelayMinutes(app, minutes)",
+             "private fun watchScreensaverDelay()", "registerContentObserver(",
+             "watchScreensaverDelay()"),
+        ),
+        (
+            j("ui/wallpaper/WallpaperSheet.kt"),
+            ("AerialSettings.syncScreensaverFromSystem(context)", "AerialSettings.screensaverChoicesNow.map"),
+        ),
         # 名字画在图标里要靠 PI / cos / sin：上游自己引的（PI、cos）和本脚本补的（sin）
         # 必须都在，否则是 Kotlin 编译期才报错，比这里报得晚也更难懂。
         (
@@ -1036,7 +1311,7 @@ def verify(root, repo, dropped):
             ("PlateTileName(", "plateName: PlateNames?", "import kotlin.math.PI",
              "import kotlin.math.cos", "import kotlin.math.sin"),
         ),
-        (j("ui/home/HomeScreen.kt"), ("AerialSettings.plateNames",)),
+        (j("ui/home/HomeScreen.kt"), ("AerialSettings.plateNames", "val onPlateRow = !inGrid && index < COLUMNS", "showName = !onPlateRow,")),
         (j("settings/AerialSettings.kt"), ("enum class PlateNames", "choosePlateNames")),
         (STRINGS_ZH, ('name="st_plate_names"', 'name="st_names_off"')),
         (STRINGS_EN, ('name="st_plate_names"',)),
@@ -1329,6 +1604,7 @@ def main():
     patch_signature(root)
     patch_manifest(root)
     patch_brightness(root)
+    patch_screensaver(root)
     patch_names(root)
     patch_strings(root)
     patch_updates(root, repo)
