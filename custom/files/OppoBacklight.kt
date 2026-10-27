@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.database.ContentObserver
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -20,7 +21,14 @@ import android.provider.Settings
  *
  * - 设置里「图像与亮度 › 屏幕亮度」那个条，写的是 `PictureManagerImpl.setBacklight()`，直接下到
  *   `g_disp__disp_back_light`，面板立刻变；它不写任何 Settings。
- * - Settings.Global 的 `tv_picture_backlight` 只是出厂快照，写它面板不动，除非设置应用冷启动。
+ * - Settings.Global 的 `tv_picture_backlight`：**两个方向要分开看**。
+ *   - 我们写它 → 面板动不动，取决于设置应用 `com.android.tv.settings` 在不在跑。它常年活着并
+ *     盯着这个键，收到变化就用 `PictureManagerImpl.setBacklight()` 推给面板（实测写 42，屏幕明显
+ *     变亮，随后固件 query 也回报 42）；它不在跑时，写它就只是一份惰性快照。这个进程**没有**
+ *     声明 persistent，所以「能推动面板」是现状，不是契约 —— **不能拿它当控制通道**。
+ *   - 电视自己改 → **会**写这个键（实测 1 → 2 跟着变，且没有任何广播）。这是目前唯一能告诉我
+ *     们「外界改过亮度」的信号，[watcher] 就是靠它。
+ *   结论：这个键只用于**感知**（读）和**快照**，控制一律走下面的固件通道。
  *
  * 所以普通的 Settings 写入在这台机器上完全无效，这也是上游在这里显示「在图像设置里调」的原因。
  *
@@ -73,7 +81,7 @@ object OppoBacklight {
     @Volatile private var lastSetAt = 0L
     @Volatile private var pendingQuery = false
 
-    /** 校准时发现面板真值和记账值不一样，把真值报出来（1..100），在主线程调用。 */
+    /** 校准时发现面板真值和记账值不一样，把真值报出来（0..100），在主线程调用。 */
     @Volatile var onLevel: ((Int) -> Unit)? = null
 
     private val reply = Messenger(Handler(Looper.getMainLooper()) { msg ->
@@ -81,40 +89,83 @@ object OppoBacklight {
         true
     })
 
+    /**
+     * 电视自己的「图像与亮度」页改亮度时会写 Settings.Global 的 tv_picture_backlight
+     * （实测 1 → 2 这个键跟着变，而它没有广播），所以这里盯住它：一改就把值接过来，
+     * 不用等下一次按键或打开控制中心才对齐。小布若走同一条路也会触发。
+     */
+    @Volatile private var watching = false
+
+    private val watcher = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            val ctx = appContext ?: return
+            // 我们自己 set 时也写这个键（给设置页冷启动留的快照），那次回调要忽略：
+            // 面板还在渐变，而且记账值已经是最新。
+            if (SystemClock.uptimeMillis() - lastSetAt < SETTLE_MS) return
+            val value = runCatching {
+                Settings.Global.getInt(ctx.contentResolver, GLOBAL_KEY, -1)
+            }.getOrDefault(-1)
+            if (value !in 0..100 || value == last) return
+            last = value
+            runCatching {
+                ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY, value).apply()
+            }
+            onLevel?.invoke(value)
+        }
+    }
+
+    /** 第一次拿到 context 时挂上，只挂一次。 */
+    private fun watch(context: Context) {
+        if (watching) return
+        watching = true
+        appContext = context.applicationContext
+        runCatching {
+            appContext?.contentResolver?.registerContentObserver(
+                Settings.Global.getUriFor(GLOBAL_KEY), false, watcher,
+            )
+        }
+    }
+
     /** 这台电视有没有那套固件接口。没有就走上游原来的分支。 */
     fun usable(context: Context): Boolean =
         runCatching { context.packageManager.getPackageInfo(SERVICE_PKG, 0) }.isSuccess
 
-    /** 当前亮度，1..100。先给记账值，真值由 [calibrate] 稍后校正。 */
+    /** 当前亮度，0..100。先给记账值，真值由 [calibrate] 稍后校正。 */
     fun level(context: Context): Int {
+        watch(context)
         val value = remembered(context)
         calibrate(context)
         return value
     }
 
     private fun remembered(context: Context): Int {
-        if (last in 1..100) return last
+        if (last in 0..100) return last
         val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY, -1)
         val db = runCatching {
             Settings.Global.getInt(context.contentResolver, GLOBAL_KEY, -1)
         }.getOrDefault(-1)
         last = when {
-            saved in 1..100 -> saved
-            db in 1..100 -> db
+            saved in 0..100 -> saved
+            db in 0..100 -> db
             else -> 50
         }
         return last
     }
 
-    /** 调到 [percent]（1..100）。设置页那条的下限就是 1，0 会让屏幕全黑。 */
+    /**
+     * 调到 [percent]（0..100）。范围和电视系统那条一致：0 是最低（画面几乎全黑），100 是最高。
+     * 0 能不能真的全黑看固件，这台机器上系统那条自己也允许拖到 0。
+     */
     fun set(context: Context, percent: Int) {
-        val value = percent.coerceIn(1, 100)
+        watch(context)
+        val value = percent.coerceIn(0, 100)
         // 记下这一笔：在途的 query 读的是旧电平，之后 SETTLE_MS 内的回读也是渐变中的值。
         version++
         lastSetAt = SystemClock.uptimeMillis()
         last = value
-        // 顺手把出厂快照也写一份：面板不吃这个值，但设置应用冷启动时会拿它初始化，
-        // 不同步的话重启后亮度会跳回旧值。没有 WRITE_SECURE_SETTINGS 时静默失败。
+        // 顺手把快照也写一份：设置应用在跑时会把它推给面板（就是刚设的那个值，无副作用），
+        // 它不在跑时就只是冷启动快照，不同步的话重启后亮度会跳回旧值。
+        // 没有 WRITE_SECURE_SETTINGS 时静默失败。
         runCatching { Settings.Global.putInt(context.contentResolver, GLOBAL_KEY, value) }
         runCatching {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -160,12 +211,15 @@ object OppoBacklight {
         querying = false
         if (asked != version) return
         if (SystemClock.uptimeMillis() - lastSetAt < SETTLE_MS) return
-        if (value !in 1..100) return
+        if (value !in 0..100) return
         if (value == last) return
         last = value
         val ctx = appContext ?: return
-        // 记到本地，进程重启后不必再猜一个 50。
-        runCatching { Settings.Global.putInt(ctx.contentResolver, GLOBAL_KEY, value) }
+        // 只记到本地，进程重启后不必再猜一个 50。
+        //
+        // 这里**不再回写 tv_picture_backlight**：那个键在设置应用活着时能推动面板（见文件头），
+        // 而校准读到的可能是渐变中途的电平，回写等于把面板钉在一个我们并不想要的值上。它是
+        // 「外界改过亮度的信号」，我们只读不写 —— 要写也只在 [set] 里写我们自己刚设的那个值。
         runCatching {
             ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putInt(KEY, value).apply()
@@ -286,7 +340,7 @@ class OppoBrightnessService : Service() {
     /**
      * `query` 的返回值恒为 0（-1 只表示模块名不认识），真值写回传进去的数组。而 AIDL 的 out 数组
      * 回程要求两边长度相等（Parcel.readStringArray 长度不符直接抛），长度由固件那边决定，看不出来，
-     * 只能试：先用上次成功的槽位数，不对再换。读到的第一格合法值（1..100）就是背光。
+     * 只能试：先用上次成功的槽位数，不对再换。读到的第一格合法值（0..100）就是背光。
      */
     private fun reading(target: Any): Int {
         val method = queryMethod ?: runCatching {
@@ -303,7 +357,7 @@ class OppoBrightnessService : Service() {
             if (runCatching { method.invoke(target, "ModulePicture", 1, back) }.isFailure) continue
             val value = back.asSequence()
                 .mapNotNull { it.trim().toIntOrNull() }
-                .firstOrNull { it in 1..100 }
+                .firstOrNull { it in 0..100 }
             if (value != null) {
                 slots = n
                 return value
