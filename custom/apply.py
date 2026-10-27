@@ -93,6 +93,261 @@ def patch(root, rel, old, new, what):
     print("  ok  %-44s %s" % (short(rel), what))
 
 
+# ---------------------------------------------------------------- 结构化锚点
+#
+# 上面那个 patch() 是「照抄一段上游原文当锚点」：上游在里面插一行、换个措辞，锚点就命中 0 次。
+# 亮度这块已经因此红过两次（1.57 在 AppTile 里加 PI/cos，1.61 在 level() 里加极米分支）。
+# 所以这几处改成认结构，上游只改块内容时不会失配：
+#
+#   insert_in_body()   只认函数签名，把代码插到块的最前面 / 最末尾
+#   set_call_arg()     只认调用里某一行的参数，改它所属调用里的另一个参数
+#   ensure_import()    按「行」补 import，按字母序插
+#
+# 三个都带 marker：内容已经在文件里就算做完，同一份源码重复跑不会插两遍。
+
+
+def _indent_of(line):
+    return re.match(r"[ \t]*", line).group(0)
+
+
+def _block(lines, indent):
+    """把若干行源码按 indent 缩进成一段；空行不留尾随空格。"""
+    return "".join(indent + line + "\n" if line.strip() else "\n" for line in lines)
+
+
+def _skip_literal(text, i):
+    """i 在字符串/字符/注释开头时，返回它结束后的下标；否则返回 None。"""
+    n = len(text)
+    if text[i] == '"':
+        if text.startswith('"""', i):
+            j = text.find('"""', i + 3)
+            return n if j < 0 else j + 3
+        i += 1
+        while i < n:
+            if text[i] == "\\":
+                i += 2
+            elif text[i] == '"':
+                return i + 1
+            elif text[i] == "\n":
+                return i + 1  # 普通字符串不跨行，别跑飞
+            else:
+                i += 1
+        return n
+    if text[i] == "'":
+        i += 1
+        while i < n:
+            if text[i] == "\\":
+                i += 2
+            elif text[i] == "'":
+                return i + 1
+            elif text[i] == "\n":
+                return i + 1
+            else:
+                i += 1
+        return n
+    if text.startswith("//", i):
+        j = text.find("\n", i)
+        return n if j < 0 else j
+    if text.startswith("/*", i):
+        j = text.find("*/", i + 2)
+        return n if j < 0 else j + 2
+    return None
+
+
+def _close_brace(text, start):
+    """start 落在 '{' 之后，返回与它配对的 '}' 下标；-1 表示没闭合。"""
+    depth = 1
+    i = start
+    n = len(text)
+    while i < n:
+        skip = _skip_literal(text, i)
+        if skip is not None:
+            i = skip
+            continue
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def _close_paren(text, start):
+    """start 落在 '(' 之后，返回与它配对的 ')' 下标；-1 表示没闭合。"""
+    depth = 1
+    i = start
+    n = len(text)
+    while i < n:
+        skip = _skip_literal(text, i)
+        if skip is not None:
+            i = skip
+            continue
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def _value_end(text, start):
+    """start 在一个参数值开头，返回这个值结束的位置（深度 0 的 ',' 或调用收尾的 ')'）。"""
+    depth = 0
+    i = start
+    n = len(text)
+    while i < n:
+        skip = _skip_literal(text, i)
+        if skip is not None:
+            i = skip
+            continue
+        ch = text[i]
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            if depth == 0:
+                return i
+            depth -= 1
+        elif ch == "," and depth == 0:
+            return i
+        i += 1
+    return n
+
+
+def _call_span(text, pos):
+    """pos 落在某个调用的参数里时，返回最内层那个调用的 (开, 闭) 下标。
+
+    从 pos 往前找 '('，用括号配对确认它确实把 pos 包在里面；先找到的就是最内层。
+    这样参数值里自带括号（比如 `steps = if (xgimi) … else 20`）也不会被当成调用。
+    """
+    i = pos
+    n = len(text)
+    while i > 0:
+        i -= 1
+        if text[i] != "(":
+            continue
+        close = _close_paren(text, i + 1)
+        if close >= pos:
+            return i, close
+    return None
+
+
+def _only_match(text, pattern, rel, what):
+    found = list(re.finditer(pattern, text, re.M))
+    if len(found) == 1:
+        return found[0]
+    fail(
+        "%s\n    要改的地方：%s\n    问题：按结构定位「%s」命中 %d 次（应当 1 次）。\n"
+        "    上游多半改了函数签名（参数、返回类型，或改成扩展函数）。按下面这个正则更新 apply.py：\n%s"
+        % (rel, what, pattern.strip(), len(found), fence(pattern))
+    )
+    return None
+
+
+def insert_in_body(root, rel, signature, lines, what, marker, at="start"):
+    """把 lines 插进 signature 指的块：at="start" 最前面，at="end" 闭合花括号前。
+
+    signature 只描述「一行签名 + 换行」，块里的内容一律不看。上游在 level() 里加分支、
+    在 init 里多写两句，都不会影响这里。
+    """
+    text = read(root, rel)
+    if text is None:
+        return
+    if marker in text:
+        print("  ok  %-44s %s（已存在）" % (short(rel), what))
+        return
+    found = _only_match(text, signature, rel, what)
+    if found is None:
+        return
+    if at == "start":
+        indent = _indent_of(found.group(0)) + "    "
+        body = _block(lines, indent)
+        if not text[: found.end()].endswith("\n"):
+            body = "\n" + body
+        text = text[: found.end()] + body + text[found.end():]
+    else:
+        close = _close_brace(text, found.end())
+        if close < 0:
+            fail("%s\n    要改的地方：%s\n    问题：花括号没闭合，定位不到块尾" % (rel, what))
+            return
+        line_start = text.rfind("\n", 0, close) + 1
+        indent = _indent_of(text[line_start:close]) + "    "
+        text = text[:line_start] + _block(lines, indent) + text[line_start:]
+    write(root, rel, text)
+    print("  ok  %-44s %s" % (short(rel), what))
+
+
+def set_call_arg(root, rel, anchor, arg, lines, what, marker):
+    """把 anchor 那一行所在调用里的 `arg = …` 换成 lines 写的 lambda 体。
+
+    只认调用里的一个参数名：参数顺序、别的参数怎么写、原来 arg 是 {} 还是多行 lambda，
+    都不影响。上游给这一行加参数、挪位置也仍然能用。
+    """
+    text = read(root, rel)
+    if text is None:
+        return
+    if text.count(anchor) != 1:
+        fail(
+            "%s\n    要改的地方：%s\n    问题：锚点「%s」命中 %d 次（应当 1 次）。\n"
+            "    上游可能换了参数名，或这一整行没了。"
+            % (rel, what, anchor.strip(), text.count(anchor))
+        )
+        return
+    span = _call_span(text, text.find(anchor))
+    if span is None:
+        fail("%s\n    要改的地方：%s\n    问题：找不到「%s」所在的那个调用" % (rel, what, anchor.strip()))
+        return
+    open_at, close_at = span
+    found = re.compile(r"(?m)^([ \t]*)%s = " % re.escape(arg)).search(text, open_at, close_at)
+    if found is None:
+        fail(
+            "%s\n    要改的地方：%s\n    问题：这个调用里没有 %s = …（上游可能删了或改名了）"
+            % (rel, what, arg)
+        )
+        return
+    # marker 只在这个参数自己的值里找：上游别处本来就有同名调用（比如亮度不可调时的 MenuRow），
+    # 拿全文找会误判成「已改过」。
+    value_end = _value_end(text, found.end())
+    if marker in text[found.end():value_end]:
+        print("  ok  %-44s %s（已存在）" % (short(rel), what))
+        return
+    indent = found.group(1)
+    value = "{\n" + _block(lines, indent + "    ") + indent + "}"
+    text = text[: found.end()] + value + text[value_end:]
+    write(root, rel, text)
+    print("  ok  %-44s %s" % (short(rel), what))
+
+
+def ensure_import(root, rel, line, what):
+    """按「行」补一条 import：没有就插到字母序的位置上。
+
+    上游爱在 import 段里插一行（1.50 加 SourceKind、1.61 加 Channel、1.57 加 PI/cos），
+    所以这里不拿相邻几行原文当锚点，也不会补出重复的一条。
+    """
+    text = read(root, rel)
+    if text is None:
+        return
+    if re.search(r"(?m)^%s$" % re.escape(line), text):
+        print("  ok  %-44s %s（已有）" % (short(rel), what))
+        return
+    lines = text.split("\n")
+    imports = [i for i, item in enumerate(lines) if item.startswith("import ")]
+    if not imports:
+        fail("%s\n    要改的地方：%s\n    问题：文件里没有 import 段" % (rel, what))
+        return
+    at = imports[-1] + 1
+    for i in imports:
+        if lines[i] > line:
+            at = i
+            break
+    lines.insert(at, line)
+    write(root, rel, "\n".join(lines))
+    print("  ok  %-44s %s" % (short(rel), what))
+
+
 # ---------------------------------------------------------------- 1. 预检
 
 
@@ -272,83 +527,82 @@ def patch_manifest(root):
 
 
 def patch_brightness(root):
-    """OPPO 的面板只认固件服务，Settings 是影子数据：把这一支接到 Brightness 最前面。"""
+    """OPPO 的面板只认固件服务，Settings 是影子数据：把这一支接到 Brightness 最前面。
+
+    这一组全部按结构定位（见上面的结构化锚点）：
+      - level() / adjust()：认函数签名，插到函数体第一行，上游在函数体里加分支不影响；
+      - 控制中心那条：认 onStep = vm::adjustBrightness 这个参数，改它所属调用的 onClick；
+      - HomeViewModel：import 按行补，init / onCleared 的钩子插在块尾。
+    上游改了签名或参数名才会报错，那才是真需要人看的时候。
+    """
     rel = j("system/Brightness.kt")
-    patch(
+    insert_in_body(
         root, rel,
-        '    fun level(context: Context): Float? {\n'
-        '        val r = context.contentResolver\n'
-        '        if (isTcl(context))',
-        '    fun level(context: Context): Float? {\n'
-        '        val r = context.contentResolver\n'
-        '        // OPPO ColorOS TV：背光在固件里，Settings 写得进去但面板不动。\n'
-        '        if (OppoBacklight.usable(context)) return OppoBacklight.level(context) / 100f\n'
-        '        if (isTcl(context))',
+        r"^[ \t]*fun level\(context: Context\)[ \t]*:[ \t]*Float\?[ \t]*\{\n",
+        [
+            "// OPPO ColorOS TV：背光在固件里，Settings 写得进去但面板不动。",
+            "if (OppoBacklight.usable(context)) return OppoBacklight.level(context) / 100f",
+        ],
         "亮度读取走固件服务",
+        "return OppoBacklight.level(context) / 100f",
     )
-    patch(
+    insert_in_body(
         root, rel,
-        '    fun adjust(context: Context, direction: Int): Float? {\n'
-        '        val current = level(context) ?: return null',
-        '    fun adjust(context: Context, direction: Int): Float? {\n'
-        '        if (OppoBacklight.usable(context)) {\n'
-        '            // 5% 一档，和设置页那条一致；0 会黑屏，所以下限是 1。\n'
-        '            val from = OppoBacklight.level(context)\n'
-        '            val next = (if (direction > 0) (from / 5 + 1) * 5 else ((from + 4) / 5 - 1) * 5).coerceIn(1, 100)\n'
-        '            OppoBacklight.set(context, next)\n'
-        '            return next / 100f\n'
-        '        }\n'
-        '        val current = level(context) ?: return null',
+        r"^[ \t]*fun adjust\(context: Context, direction: Int\)[ \t]*:[ \t]*Float\?[ \t]*\{\n",
+        [
+            "if (OppoBacklight.usable(context)) {",
+            "    // 5% 一档，和设置页那条一致；0 会黑屏，所以下限是 1。",
+            "    val from = OppoBacklight.level(context)",
+            "    val next = (if (direction > 0) (from / 5 + 1) * 5 else ((from + 4) / 5 - 1) * 5).coerceIn(1, 100)",
+            "    OppoBacklight.set(context, next)",
+            "    return next / 100f",
+            "}",
+        ],
         "亮度步进走固件服务",
+        "OppoBacklight.set(context, next)",
     )
 
     # 控制中心那一条：左右键调背光，确认键进电视自己的图像设置。没有背光可调时
     # 上游本来就是 MenuRow 跳到同一个地方，所以两边的去处一致，不会出现两种行为。
-    patch(
+    set_call_arg(
         root, j("ui/control/ControlCenter.kt"),
-        '            steps = 20,\n'
-        '            onStep = vm::adjustBrightness,\n'
-        '            onClick = {},',
-        '            steps = 20,\n'
-        '            onStep = vm::adjustBrightness,\n'
-        '            onClick = {\n'
-        '                vm.overlay = Overlay.None\n'
-        '                SystemProbe.openPictureSettings(context)\n'
-        '            },',
+        "onStep = vm::adjustBrightness,",
+        "onClick",
+        [
+            "vm.overlay = Overlay.None",
+            "SystemProbe.openPictureSettings(context)",
+        ],
         "亮度条确认键跳转图像设置",
+        "SystemProbe.openPictureSettings(context)",
     )
 
     # 面板真值（query）回来时可能和记账值不同：小布或设置页改过亮度，记账值就旧了。
     # 让 ViewModel 接住这个校正，滑块才会跟着变；否则要等下次自己调才刷新。
     vm = j("HomeViewModel.kt")
-    # 只锚一行：上游会在 NetworkStatus 和 SystemProbe 之间插别的 system import
-    # （1.50 起多了 SourceKind），两行式锚点一插就断。插回 NetworkStatus 后面仍在字母序上。
-    patch(
+    ensure_import(
         root, vm,
-        'import %s.system.NetworkStatus' % PKG,
-        'import %s.system.NetworkStatus\n'
-        'import %s.system.OppoBacklight' % (PKG, PKG),
+        "import %s.system.OppoBacklight" % PKG,
         "HomeViewModel 引用 OppoBacklight",
     )
-    patch(
+    insert_in_body(
         root, vm,
-        '        viewModelScope.launch { snapshotFlow { AppNames.all }.drop(1).collect { if (loaded) arrange() } }\n'
-        '    }',
-        '        viewModelScope.launch { snapshotFlow { AppNames.all }.drop(1).collect { if (loaded) arrange() } }\n'
-        '        // OPPO 的背光在固件里，Aerial 记下的只是副本：读到面板真值时它会报回来一次\n'
-        '        // （OppoBacklight.calibrate）。用小布或电视自己的图像菜单改过亮度，靠这一条才不显示旧值。\n'
-        '        OppoBacklight.onLevel = { percent -> brightness = percent / 100f }\n'
-        '    }',
+        r"^[ \t]*init[ \t]*\{\n",
+        [
+            "// OPPO 的背光在固件里，Aerial 记下的只是副本：读到面板真值时它会报回来一次",
+            "// （OppoBacklight.calibrate）。用小布或电视自己的图像菜单改过亮度，靠这一条才不显示旧值。",
+            "OppoBacklight.onLevel = { percent -> brightness = percent / 100f }",
+        ],
         "HomeViewModel 接住亮度校正",
+        "OppoBacklight.onLevel = { percent ->",
+        at="end",
     )
-    patch(
+    insert_in_body(
         root, vm,
-        '        if (AppCatalog.layout === layoutOps) AppCatalog.layout = null\n'
-        '    }',
-        '        if (AppCatalog.layout === layoutOps) AppCatalog.layout = null\n'
-        '        OppoBacklight.onLevel = null\n'
-        '    }',
+        r"^[ \t]*override fun onCleared\(\)[ \t]*\{\n",
+        ["OppoBacklight.onLevel = null"],
         "HomeViewModel 松手时摘掉回调",
+        "OppoBacklight.onLevel = null",
+        at="end",
     )
 
 
@@ -410,25 +664,23 @@ def patch_names(root):
     )
 
     # kotlin.math.PI / cos 不补：上游 1.57 起 AppTile 自己引了（SineEasing 用），再补一遍就是两份。
-    # sin 上游还没有，仍然补。终检会核对这三行都在，落在别处就报错，而不是等 Kotlin 编译才炸。
-    patch(
-        root, tile,
-        "import %s.settings.AerialSettings" % PKG,
-        "import %s.settings.AerialSettings\n"
-        "import %s.settings.PlateNames\n"
-        "import androidx.compose.ui.geometry.Size\n"
-        "import androidx.compose.ui.graphics.Canvas as GraphicsCanvas\n"
-        "import androidx.compose.ui.graphics.drawscope.CanvasDrawScope\n"
-        "import androidx.compose.ui.platform.LocalDensity\n"
-        "import androidx.compose.ui.platform.LocalLayoutDirection\n"
-        "import androidx.compose.ui.text.drawText\n"
-        "import androidx.compose.ui.text.font.FontWeight\n"
-        "import androidx.compose.ui.text.rememberTextMeasurer\n"
-        "import androidx.compose.ui.unit.Constraints\n"
-        "import androidx.compose.ui.unit.LayoutDirection\n"
-        "import kotlin.math.sin" % (PKG, PKG),
-        "导入 PlateNames 与描边绘制",
-    )
+    # sin 上游还没有，仍然补。逐条 ensure_import：上游在 import 段里加什么、删什么都顶不开这一块，
+    # 已经有的也不重复补。终检会核对 PI / cos / sin 三行都在，而不是等 Kotlin 编译才炸。
+    for imp in (
+        "import %s.settings.PlateNames" % PKG,
+        "import androidx.compose.ui.geometry.Size",
+        "import androidx.compose.ui.graphics.Canvas as GraphicsCanvas",
+        "import androidx.compose.ui.graphics.drawscope.CanvasDrawScope",
+        "import androidx.compose.ui.platform.LocalDensity",
+        "import androidx.compose.ui.platform.LocalLayoutDirection",
+        "import androidx.compose.ui.text.drawText",
+        "import androidx.compose.ui.text.font.FontWeight",
+        "import androidx.compose.ui.text.rememberTextMeasurer",
+        "import androidx.compose.ui.unit.Constraints",
+        "import androidx.compose.ui.unit.LayoutDirection",
+        "import kotlin.math.sin",
+    ):
+        ensure_import(root, tile, imp, "导入 %s" % imp.rsplit(".", 1)[-1])
     patch(
         root, tile,
         "private val RingWidth = 3.dp",
@@ -760,6 +1012,23 @@ def verify(root, repo, dropped):
             fail("%s 的 package 行没改：仍不是 %s.system" % (rel, PKG))
 
     for rel, needles in (
+        # 亮度这几处是按结构插的：插不进去不会报错，只会「什么都没做」，所以这里再核一遍。
+        (
+            j("system/Brightness.kt"),
+            ("OppoBacklight.usable(context)", "OppoBacklight.set(context, next)"),
+        ),
+        (
+            j("ui/control/ControlCenter.kt"),
+            ("vm.overlay = Overlay.None\n                SystemProbe.openPictureSettings(context)",),
+        ),
+        (
+            j("HomeViewModel.kt"),
+            (
+                "import %s.system.OppoBacklight" % PKG,
+                "OppoBacklight.onLevel = { percent -> brightness = percent / 100f }",
+                "OppoBacklight.onLevel = null",
+            ),
+        ),
         # 名字画在图标里要靠 PI / cos / sin：上游自己引的（PI、cos）和本脚本补的（sin）
         # 必须都在，否则是 Kotlin 编译期才报错，比这里报得晚也更难懂。
         (
