@@ -41,6 +41,47 @@ git push
 > 仓库名不是 `aerial-tv` 也没关系：CI 里用 `${{ github.repository }}` 自动取，
 > 应用内更新地址、release 上传全跟着实际仓库走，**代码里没有写死仓库名**。
 
+### 这版定制了什么（功能清单）
+
+跟上游 v1.62 的差异全在下面，都由 `apply.py` 一次生成：
+
+**安装与进程**
+
+- 包名 `app.orchard.tv` → `com.oneplus.tv.launcher2`；主进程挂在 `:com.heytap.tv.remote`
+  （`tvapisvc` 按**进程名**白名单放行，不挂就调不动背光），背光服务也留在这个进程里。
+- HOME 加 `MODERN_HOME` 类别；release 强制 v1 + v2 签名。
+- `custom/files/OppoBacklight.kt` 整份新增（进老包名目录，跟着第 3 阶段一起改名搬走）。
+
+**亮度**
+
+- 读写走固件服务 `tvapisvc`（`disPatchCommand("ModulePicture", 1, [亮度])`），不是 Settings ——
+  这台电视 Settings 是影子数据，写它面板不一定动。
+- 步进 5% 一档，范围 **0..100**（跟系统那条一致，0 是最低）。
+- 控制中心的亮度条：确认键进电视自己的「图像与亮度」。
+- 同步（外界改 → Aerial 跟着变）：常驻 `ContentObserver` 盯
+  `Settings.Global.tv_picture_backlight`。**注意覆盖面**：只有「设置 → 图像与亮度」那条会写这个键；
+  快捷亮度条（`ScreenLightAdjustDialog`）实测既不写任何 Settings 键、也不发广播，所以那条**跟不动**——
+  想跟只能轮询固件（一次查询约 2~10ms），当前选择不做。
+- `set()` 会把这个键镜像写一份（给电视设置页冷启动留快照）；`onRead()` **不回写**——
+  这个键在设置应用活着时能推动面板，而校准读到的可能是渐变中间值，回写会把面板拽歪。
+
+**屏保时间**
+
+- 个性化里的「进入时间」直接读写系统 `Settings.System.SCREEN_OFF_TIMEOUT`，**双向同步**
+  （Aerial 改 → 系统跟着；系统改 → Aerial 跟着，常驻 `ContentObserver` 盯 `SCREEN_OFF_TIMEOUT`
+  和小米那条 `screen_saver_timeout`）。
+- 档位加 **1 分钟**：`1分 / 2分 / 5分 / 10分 / 20分 / 从不`；文案压成「N分」。
+- 打开个性化时再刷一次（兜底，防某些固件改设置不发通知）；同步读数走 `Dispatchers.IO`，
+  不挡抽屉滑入动画。
+
+**应用名称**
+
+- 第一排（玻璃板那排）名称画进**图标内部**，三态：仅焦点 / 全部 / 关闭（`plateNames`）。
+- 第二排及以下保持上游原样：名称画在图标下方，是否全部显示由 `showAllNames` 决定。
+- **进入抽屉（焦点下到应用网格）后，第一排也回归网格规则**：名称回到图标下方、跟第二排同一个开关。
+  判定用上游已有的 `inGrid`，一个 `onPlateRow = !inGrid && index < COLUMNS` 同时驱动
+  `showName` / `plateName`（`nameOnPlate` 走默认值 false，那是个上游参数、在本定制里恒不生效）。
+
 ---
 
 ## 二、签名密钥（4 个 Secret）
@@ -234,6 +275,8 @@ python3 custom/apply.py tmp --version 1.47 --repo tushoning/aerial-tv
 | 亮度读取 / 步进 | 认 `fun level(...)`、`fun adjust(...)` 的函数签名，代码插到函数体**第一行** | 上游改签名（参数、返回类型、改成扩展函数） |
 | 亮度条确认键 | 认 `onStep = vm::adjustBrightness,` 这一行，改**它所属调用**的 `onClick` | 这个参数改名，或整行被删 |
 | HomeViewModel 的钩子 | `import` 按字母序补；`init {}` / `onCleared()` 的代码插在**块尾** | 这两个块改名 |
+| 屏保那组（读写 / 档位 / 观察者） | 多数是结构化锚点：`insert_in_body` 认函数签名、`ensure_import` 补 import；只有 `WallpaperSheet` 里那两处是原文锚点 | 改了 `AerialSettings` / `SystemScreensaver` 的函数签名，或改了 `WallpaperSheet` 里那两行 |
+| 名称那组（第一排 / 抽屉） | **仍是原文锚点**（`patch()`），但只认两小段：`animateIntOffsetAsState` 那一段、以及 `showName`/`nameOnPlate` 那两行 | 上游改了这两段里的措辞 |
 
 所以上游在函数体里加分支、加注释、调换参数顺序（1.57 的 AppTile 导入、1.61 的极米光机分支就是这种），
 都不会再把 CI 顶红。只有真的动了签名/参数名才会报错——那种情况本来也该人工看一眼。
@@ -337,3 +380,15 @@ diff -rq upstream-src patched-src
   万一被停了，Actions 页面点一下 **Enable workflow**。
 - **不要手动改 release 里的 `aerial-standard.apk` 文件名**：应用内更新按 `aerial-<flavor>.apk` 精确取名字。
 - 电视上覆盖安装前，确认旧包也是这把密钥签的（`apksigner verify --print-certs` 看 SHA-256）。
+- **Gradle 偶发在写 APK 那一步抛 `IOException: Failed to create …apk`**：不是代码问题（Kotlin
+  编译那时已经过了）。删掉 `app/build/outputs/apk/standard` 重跑即可，前面的任务全是 up-to-date，
+  十几秒就好。
+- **主进程名不是包名**。补丁把主进程挂在 `:com.heytap.tv.remote` 上，所以
+  `pidof com.oneplus.tv.launcher2` 永远查不到；`ps` / `dumpsys gfxinfo` / `dumpsys content` 要用
+  `com.oneplus.tv.launcher2:com.heytap.tv.remote`。
+- **adb 不能 root**（`adbd cannot run as root in production builds`），`/data/data` 读不到，
+  别指望读应用的 SharedPreferences 去看它记了什么。要看只能加日志再编一版。
+- **降级安装被系统拒**（`INSTALL_FAILED_VERSION_DOWNGRADE`）：`adb -d` 只对可调试包有效，
+  `pm install -r -d` 也一样。要装旧版只能卸载（数据会丢），或把旧源码的 versionCode 抬高重编。
+- **默认桌面没固定时，禁用 Aerial 会让遥控全哑**：系统不知道该起谁，于是没有任何桌面在跑，
+  方向键没人接收，看起来像遥控坏了。先按一次 HOME，在弹出的「选择应用」里勾「始终」。
