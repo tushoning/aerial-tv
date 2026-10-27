@@ -12,11 +12,10 @@ custom/apply.py                              # 全部定制逻辑（唯一真相
 .github/workflows/sync-upstream-release.yml  # CI：拉上游 → 打补丁 → 签名 → 发 release
 ```
 
-另外几个**可选的附属文件**，CI 不读，只是给人看/给人用，都放在 `custom/` 下跟 `apply.py` 挨着：
+另外两个**可选的附属文件**，CI 不读，只是给人看/给人用，都放在 `custom/` 下跟 `apply.py` 挨着：
 
 ```
 custom/files/OppoBacklight.kt   # 整份新增的源文件（走 apply.py 的第 2 阶段复制进源码并跟着改名）
-custom/PATCHES.md               # 补丁清单：38 条定点补丁各自改了哪个文件、为什么
 custom/SETUP-自动发版.md        # 就是本文：配一次之后怎么跑、出问题怎么改
 ```
 
@@ -30,7 +29,7 @@ custom/SETUP-自动发版.md        # 就是本文：配一次之后怎么跑、
 ```bash
 cd <你 clone 的 tushoning/xxx 目录>
 mkdir -p custom .github/workflows
-cp -r <这份 fork 目录>/custom/. custom/                 # apply.py + files/ + PATCHES.md + 本文档
+cp -r <这份 fork 目录>/custom/. custom/                 # apply.py + files/ + 本文档
 cp -r <这份 fork 目录>/.github/. .github/               # 工作流
 git add -A
 git commit -m "OPPO 定制：补丁脚本 + 自动发版流程"
@@ -321,8 +320,8 @@ diff -rq build-app-src patched-src -x build -x .gradle -x .kotlin -x local -x lo
 diff -rq upstream-src patched-src
 ```
 
-改了什么、每条补丁落在哪个文件、为什么这么改，见 [`custom/PATCHES.md`](custom/PATCHES.md)，
-里面按「预检 / 新增文件 / 包名改名 / 定点补丁 38 条 / 终检」五个阶段列全。
+改了什么、每条补丁落在哪个文件、为什么这么改，`apply.py` 里每条补丁的 `what`/注释就写着，
+跑一遍 `python3 custom/apply.py <干净源码>` 也会把 38 条补丁逐条打印出来。
 
 > 因为定制里有一整步**包名全量改名**（`app.orchard.tv` → `com.oneplus.tv.launcher2`），
 > 树里每个 `.kt` 的路径都变了，所以不存在一份能 `git apply` 的文本 patch —— 那会长成几百个删除+新增。
