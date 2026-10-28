@@ -274,6 +274,9 @@ class OppoBrightnessService : Service() {
     private var api: Any? = null
     private var queryMethod: java.lang.reflect.Method? = null
 
+    /** 写命令的方法，第一次用到时查一次就存着。 */
+    private var dispatchMethod: java.lang.reflect.Method? = null
+
     /** 回读数组的槽位数：固件只写它认的那一格，长度对不上 AIDL 会抛，见 [reading]。 */
     private var slots = 1
 
@@ -308,10 +311,14 @@ class OppoBrightnessService : Service() {
         }
     }
 
+    /**
+     * 写亮度这条路每次按键都走，所以反射查方法只做一次（`query` 那边早就是这样了）。
+     * `Class.forName` + `getMethod` 都在主线程上，按一次键查一次纯属浪费。
+     */
     private fun push(percent: Int) {
         connect()
         val target = api ?: return
-        runCatching {
+        val method = dispatchMethod ?: runCatching {
             Class.forName("com.oneplus.tvapi.ITvApi")
                 .getMethod(
                     "disPatchCommand",
@@ -320,8 +327,8 @@ class OppoBrightnessService : Service() {
                     Array<String>::class.java,
                     Boolean::class.javaPrimitiveType
                 )
-                .invoke(target, "ModulePicture", 1, arrayOf(percent.toString()), false)
-        }
+        }.getOrNull()?.also { dispatchMethod = it } ?: return
+        runCatching { method.invoke(target, "ModulePicture", 1, arrayOf(percent.toString()), false) }
     }
 
     private fun read(version: Int, caller: Messenger?) {
