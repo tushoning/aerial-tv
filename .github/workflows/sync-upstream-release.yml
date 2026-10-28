@@ -104,10 +104,11 @@ jobs:
             sed 's/^/  | /' "$RUNNER_TEMP/notes.md"
           else
             {
-              echo "OPPO / OnePlus 电视定制包：包名 \`$APK_PACKAGE\`，带 \`MODERN_HOME\`，"
-              echo "本仓库密钥签名（v1 + v2），只编 standard flavor。功能与上游 \`$tag\` 一致。"
+              echo "OPPO / OnePlus 电视定制包："
+              echo "包名 \`$APK_PACKAGE\`，带 \`MODERN_HOME\`，"
+              echo "本仓库密钥签名（v1 + v2），只编 standard flavor。"
               echo ""
-              echo "安装：电视上直接安装即可覆盖旧版（签名相同），或 \`adb install -r aerial-standard.apk\`。"
+              echo "安装：与源仓库签名不同所以相互切换需要卸载后安装。"
               echo ""
               echo "---"
               echo ""
