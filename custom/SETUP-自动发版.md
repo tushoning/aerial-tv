@@ -15,14 +15,15 @@ custom/apply.py                              # 全部定制逻辑（唯一真相
 另外两个**可选的附属文件**，CI 不读，只是给人看/给人用，都放在 `custom/` 下跟 `apply.py` 挨着：
 
 ```
-custom/files/OppoBacklight.kt   # 整份新增的源文件（走 apply.py 的第 2 阶段复制进源码并跟着改名）
+custom/files/OppoBacklight.kt   # 亮度走固件服务那一层（整份新增）
+custom/files/OppoPower.kt       # 待机 / 关机走固件服务那一层（整份新增）
 custom/SETUP-自动发版.md        # 就是本文：配一次之后怎么跑、出问题怎么改
 ```
 
-`custom/files/` 是给「需要整份新增、无法用锚点插进上游文件」的源文件用的。当前里面是
-`OppoBacklight.kt`（亮度走固件服务那一层，整份新增），`apply.py` 第 2 阶段会把它放进**老包名**
-目录，再跟着第 3 阶段的改名一起搬到 `com/oneplus/tv/launcher2/system/`。以后再加整份文件，
-把 `.kt` 丢进这个目录即可，不需要改脚本。
+`custom/files/` 是给「需要整份新增、无法用锚点插进上游文件」的源文件用的。里面的 `.kt` 会被
+`apply.py` 第 2 阶段放进 `system/` 子目录，再跟着第 3 阶段的改名一起搬到
+`com/oneplus/tv/launcher2/system/`，**所以包名要写 `com.oneplus.tv.launcher2.system`**。
+以后再加整份文件，丢进这个目录即可，不需要改脚本。
 
 除此之外**不要提交**任何上游源码。CI 每次都从上游 tag 重新解压一份干净的，从不复用旧目录。
 
@@ -79,8 +80,40 @@ git push
 - 第一排（玻璃板那排）名称画进**图标内部**，三态：仅焦点 / 全部 / 关闭（`plateNames`）。
 - 第二排及以下保持上游原样：名称画在图标下方，是否全部显示由 `showAllNames` 决定。
 - **进入抽屉（焦点下到应用网格）后，第一排也回归网格规则**：名称回到图标下方、跟第二排同一个开关。
-  判定用上游已有的 `inGrid`，一个 `onPlateRow = !inGrid && index < COLUMNS` 同时驱动
-  `showName` / `plateName`（`nameOnPlate` 走默认值 false，那是个上游参数、在本定制里恒不生效）。
+  判定用上游已有的 `inGrid`，`onPlateRow = !inGrid &&` 后面**直接借用上游 `nameOnPlate` 里
+  「这一格在托盘上」的表达式**（1.62 是 `index < COLUMNS`、1.67 是 `index < columns * metrics.shelfRows`），
+  由它同时驱动 `showName` / `plateName`（`nameOnPlate` 走默认值 false，那是个上游参数、在本定制里恒不生效）。
+
+**应用内更新**
+
+- 版本检查与 APK 地址都指回本仓库的 release（三级国内加速：ghfast / gh-proxy / 直连）。
+- **安装方式保持上游原样**，不接管：Android 13 起上游用「安装会话」，13 以下交给系统安装器
+  （`ACTION_VIEW`）。这台电视是 Android 9，所以是系统安装器 + 按一次「安装」。
+  想改成免确认的自动安装需要静默安装权限（`INSTALL_PACKAGES`），本应用没有、也拿不到，
+  用无障碍去点安装框可以做到，但风险大于收益，**不做**。
+
+**电源菜单**
+
+- 按电源键弹出的三选一菜单里：**再按一次电源键 → 真关机**；**按 OK 选「息屏」→ 仍然是息屏**。
+- 不改 SystemUI（那个菜单是 `com.android.systemui` 的 `GlobalActionsDialog`，动不了），改为**接管**：
+  菜单窗口一出现就上膛，随后到来的快捷待机 `QUICK` 被改写成 `DEPTH`（真关机）。
+- 命令映射是实测的：`disPatchCommand("ModulePower", 4, ["QUICK"])` = 快捷待机，
+  参数换成 `"DEPTH"` = 真关机。调用走 `custom/files/OppoPower.kt`。
+- **区分「按 OK」和「按电源」靠按键过滤**：菜单弹出的 **12 秒**内临时打开
+  `FLAG_REQUEST_FILTER_KEY_EVENTS`，菜单里按方向键 / OK 会进 `onKeyEvent` → 撤销改写（保持息屏）；
+  按电源键不会产生按键事件（它在 `PhoneWindowManager` 就被吃掉）→ 上膛保持 → 改写成关机。
+  12 秒后（或按过键后 300ms）立刻把过滤关回去。
+- **这个 12 秒有上界，不能随手改大**：菜单自己带一个 **15 秒倒计时**，到点会执行「息屏」
+  （实测：菜单 15:51:27 弹出，15:51:42 自动 QUICK，中间没有任何按键）。倒计时那条必须保持
+  息屏，所以窗口得明显小于 15 秒——12 秒是「手慢也来得及」和「不碰倒计时」的折中。
+  这一步是必须的：上游默认**在 Aerial 是默认桌面时关掉按键过滤**（`homeWanted = wanted && !isDefaultHome()`），
+  不临时打开的话 `onKeyEvent` 一个键都收不到。
+- 判据够窄：菜单里选「重启」不进 QUICK，自动待机超时也没有菜单，两者都不受影响。
+- **按键过滤的影响范围**：只在「屏幕亮着 + 菜单出现过（12 秒内）」时开，三个出口都是即时的
+  （按过键 300ms、屏幕熄灭立刻、12 秒定时）。平时**一次都不开**（上游规则是
+  `homeWanted = wanted && !isDefaultHome()`，Aerial 就是默认桌面）。这 12 秒里音量键**原样放行**
+  （`filteringForMenu` 区分「只为菜单开」和「为 CEC 开」），HOME 也放行。上游特意在待机时不拦键
+  （issue #371：TCL 那台待机时拦键会再也唤不醒），这个条件被保留。
 
 ---
 
@@ -204,7 +237,7 @@ notes = 1.61 定制版：\n\n- 亮度条确认键进图像设置\n- 遥控器菜
 
 | 环节 | 做法 |
 |---|---|
-| 发现新版 | `schedule` 每小时查 `pengchujin/aerial-tv` 的最新 release（fork 收不到上游的 release 事件，只能轮询） |
+| 发现新版 | `schedule` 每小时查 `pengchujin/aerial-tv` 的最新 release（fork 收不到上游的 release 事件，只能轮询）。**不要加 `push` 触发**：文件是逐个上传的，每传一个都会触发一次，等于拿半套补丁去编译 |
 | 拉源码 | `codeload.github.com` 下 `tar.gz`，解到临时目录，`--strip-components=1` |
 | 打补丁 | `python3 custom/apply.py <目录> --version <tag> --repo <本仓库>` |
 | 编译 | 只 `:app:assembleStandardRelease`，guard flavor 不参与 |
@@ -276,7 +309,7 @@ python3 custom/apply.py tmp --version 1.47 --repo tushoning/aerial-tv
 | 亮度条确认键 | 认 `onStep = vm::adjustBrightness,` 这一行，改**它所属调用**的 `onClick` | 这个参数改名，或整行被删 |
 | HomeViewModel 的钩子 | `import` 按字母序补；`init {}` / `onCleared()` 的代码插在**块尾** | 这两个块改名 |
 | 屏保那组（读写 / 档位 / 观察者） | 多数是结构化锚点：`insert_in_body` 认函数签名、`ensure_import` 补 import；只有 `WallpaperSheet` 里那两处是原文锚点 | 改了 `AerialSettings` / `SystemScreensaver` 的函数签名，或改了 `WallpaperSheet` 里那两行 |
-| 名称那组（第一排 / 抽屉） | **仍是原文锚点**（`patch()`），但只认两小段：`animateIntOffsetAsState` 那一段、以及 `showName`/`nameOnPlate` 那两行；「每行有几个」的标识符（1.65 前是常量 `COLUMNS`，1.65 起是变量 `columns`）由脚本**自动识别**，不写死 | 上游改了这两段里的**措辞**（1.65 把 `COLUMNS` 换成 `columns` 踩过一次，已做成自动识别） |
+| 名称那组（第一排 / 抽屉） | **按参数名找行**：`showName = …` / `nameOnPlate = …` 各认一行（不看右边写成什么样），并把上游自己写在 `nameOnPlate` 里的「这一格在托盘上」表达式**原样借来**当判据 | 上游把这两个参数**改名**，或 `AppTile(` 不再是独立一行（表达式怎么改都不影响：1.65 的 `COLUMNS→columns`、1.67 的 `columns * metrics.shelfRows` 都自动跟上了） |
 
 所以上游在函数体里加分支、加注释、调换参数顺序（1.57 的 AppTile 导入、1.61 的极米光机分支就是这种），
 都不会再把 CI 顶红。只有真的动了签名/参数名才会报错——那种情况本来也该人工看一眼。

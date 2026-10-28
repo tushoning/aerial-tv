@@ -1067,40 +1067,58 @@ def patch_names(root):
     # 「一排有几个」上游换过写法：1.65 起每行 4/5/6 可选，常量 COLUMNS 换成了变量 columns
     # （GridMetrics 也多了一个 columns 参数）。这里跟着上游用哪个就用哪个，两个版本都能编译；
     # 锚点里的标识符也因此不能写死。
-    home_text = read(root, home)
-    cols = "columns" if home_text and "val columns = AerialSettings.homeColumns" in home_text else "COLUMNS"
-    patch(
-        root, home,
-        "                        val slot = animateIntOffsetAsState(\n"
-        "                            slotPx,\n"
-        "                            spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),\n"
-        "                            label = \"slot\",\n"
-        "                        )\n"
-        "                        AppTile(\n",
-        "                        val slot = animateIntOffsetAsState(\n"
-        "                            slotPx,\n"
-        "                            spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),\n"
-        "                            label = \"slot\",\n"
-        "                        )\n"
-        "                        // On the shelf the top row is the plate's row. Once the focus is\n"
-        "                        // down in the grid, that row is just another row of it, and takes\n"
-        "                        // the grid's own rule for names instead.\n"
-        "                        val onPlateRow = !inGrid && index < %s\n" % cols +
-        "                        AppTile(\n",
-        "定义「台面第一排」判据",
+    # 这一组是唯一被上游顶开过三次的：1.57 的 import 段、1.65 的 COLUMNS→columns、1.67 的
+    # `columns * metrics.shelfRows`。共同点都是**照抄了上游的表达式**。所以改成：
+    #   1) 按参数名找行（`showName =` / `nameOnPlate =`），不看右边写成什么样；
+    #   2) 「这一格在托盘上」的判据**原样借用上游自己写在 nameOnPlate 里的表达式**，
+    #      上游加多少项（shelfRows、twoRow、将来的新条件）都自动跟得上。
+    home_text = read(root, home) or ""
+    arg = re.compile(r"(?m)^([ \t]*)nameOnPlate = (.+?),\r?$")
+    found = arg.search(home_text)
+    if found is None:
+        fail(
+            "%s\n    要改的地方：定义「台面第一排」判据\n"
+            "    问题：找不到 `nameOnPlate = …,` 这一行（上游可能改了参数名或挪了位置）。\n"
+            "    这一组补丁靠它推出「哪一格在玻璃托盘上」，没有它就做不出抽屉里的差异。"
+            % home
+        )
+        return
+    indent, plate_cond = found.group(1), found.group(2).strip()
+
+    if "val onPlateRow" not in home_text:
+        # 插在 AppTile( 那一行前面，缩进跟着它走
+        m = re.search(r"(?m)^([ \t]*)AppTile\($", home_text)
+        if m is None:
+            fail("%s\n    要改的地方：定义「台面第一排」判据\n    问题：找不到独立的 `AppTile(` 行" % home)
+            return
+        at = m.start()
+        lip = m.group(1)
+        line = "%s// On the shelf the top row is the plate's row; down in the grid it is just a row.\n" % lip
+        line += "%sval onPlateRow = !inGrid && %s\n" % (lip, plate_cond)
+        home_text = home_text[:at] + line + home_text[at:]
+        print("  ok  %-44s %s" % (short(home), "定义「台面第一排」判据"))
+
+    # 名字改画在图标里：showName 由 onPlateRow 决定；nameOnPlate 整行删掉（走默认值 false），
+    # 否则抽屉里的名字会被焦点环额外顶下去一截。
+    show = re.compile(r"(?m)^[ \t]*showName = .+?,\r?$")
+    if len(show.findall(home_text)) != 1:
+        fail(
+            "%s\n    要改的地方：第一排改用 plateName\n"
+            "    问题：`showName = …,` 命中了 %d 次（应当 1 次）"
+            % (home, len(show.findall(home_text)))
+        )
+        return
+    home_text = show.sub("%sshowName = !onPlateRow," % indent, home_text, count=1)
+    home_text = arg.sub(
+        "%s// The plate's row draws its names inside the tiles; every other row, including that\n"
+        "%s// same row while the grid is open, keeps the original name below the tile. nameOnPlate\n"
+        "%s// stays at its default of false on purpose.\n"
+        "%splateName = if (onPlateRow) AerialSettings.plateNames else null," % (indent, indent, indent, indent),
+        home_text,
+        count=1,
     )
-    patch(
-        root, home,
-        "                            showName = plate == null || index >= %s || plateNames,\n"
-        "                            nameOnPlate = plate != null && index < %s," % (cols, cols),
-        "                            // The plate's row draws its names inside the tiles. Every other\n"
-        "                            // row - including that same row while the grid is open - keeps\n"
-        "                            // the original name below the tile, always clear of the focus\n"
-        "                            // ring: nameOnPlate is left at its default of false on purpose.\n"
-        "                            showName = !onPlateRow,\n"
-        "                            plateName = if (onPlateRow) AerialSettings.plateNames else null,",
-        "第一排改用 plateName",
-    )
+    write(root, home, home_text)
+    print("  ok  %-44s %s" % (short(home), "第一排改用 plateName"))
 
     patch(
         root, sheet,
@@ -1133,6 +1151,141 @@ def patch_names(root):
         "                            AerialSettings.showAllNames, AerialSettings::chooseShowAllNames,\n"
         "                        )",
         "设置页拆成两条",
+    )
+
+
+def patch_power_menu(root):
+    """电源菜单里的「息屏」是快捷待机（QUICK，黑屏但 Android 不睡）；改成真关机（DEPTH）。
+
+    为什么不直接改选单：那个 Dialog 在 `com.android.systemui` 里，我们动不了。所以改成**接管**——
+    菜单一显示就上膛，紧随其后的 QUICK 待机被改写成 DEPTH。判据足够窄：
+    菜单里选「重启」根本不进 QUICK，自动待机超时也没有菜单在前台，两者都不会被误伤。
+
+    命令映射是实测的（OPPOCNM632，Android 9）：`disPatchCommand("ModulePower", 4, ["QUICK"])`
+    → `doSetStandbyMode QUICK`；参数换成 `"DEPTH"` 就是真关机（SystemUI 的字符串写着
+    `setpowermode DEPTH, do not need to do something to wifi`）。
+    """
+    guard = j("guard/HomeGuardService.kt")
+    ensure_import(root, guard, "import %s.system.OppoPower" % PKG, "HomeGuardService 引用 OppoPower")
+
+    # 电源菜单是个 Dialog，而 lastWindow 只记 Activity（上游注释写明了），所以自己记一笔。
+    patch(
+        root, guard,
+        "        val pkg = event.packageName?.toString() ?: return\n"
+        "        val cls = event.className?.toString() ?: return\n",
+        "        val pkg = event.packageName?.toString() ?: return\n"
+        "        val cls = event.className?.toString() ?: return\n"
+        "        // The power menu is a dialog, not an activity, so lastWindow below ignores it. Its\n"
+        "        // appearance arms the rewrite instead.\n"
+        "        if (cls.contains(\"ActionsDialog\") || cls.contains(\"GlobalActions\")) {\n"
+        "            Log.i(TAG, \"power menu shown; arming the shutdown rewrite\")\n"
+        "            OppoPower.arm()\n"
+        "            updateKeyFilter()\n"
+        "            handler.removeCallbacks(powerMenuGone)\n"
+        "            handler.postDelayed(powerMenuGone, OppoPower.WATCH_MS)\n"
+        "        }\n",
+        "电源菜单出现时上膛",
+    )
+
+    # 判据用**按键**，不用窗口焦点：实测两条路的焦点都在 QUICK 之后约 30ms 才回来，分不开。
+    # 菜单里按方向键 / OK 会产生按键事件（本服务开了按键过滤），按电源不会（它在
+    # PhoneWindowManager 就被吃掉了）。所以这里出现按键 = 用户自己选的「息屏」，保持息屏。
+    patch(
+        root, guard,
+        "    override fun onKeyEvent(event: KeyEvent): Boolean {\n"
+        "        if (!GuardSetup.isUserUnlocked(this)) return false\n",
+        "    override fun onKeyEvent(event: KeyEvent): Boolean {\n"
+        "        if (!GuardSetup.isUserUnlocked(this)) return false\n"
+        "        if (event.action == KeyEvent.ACTION_DOWN && OppoPower.armed()) {\n"
+        "            Log.i(TAG, \"key \" + event.keyCode + \" while the power menu was up; leaving the screen-off alone\")\n"
+        "            OppoPower.cancel()\n"
+        "            // Never touch the filter from inside this callback: reconfiguring it while the key\n"
+        "            // is being dispatched swallows that very event, and the menu then ignores the first\n"
+        "            // press. Hand it to the looper instead, so this event finishes its round trip.\n"
+        "            handler.removeCallbacks(powerMenuGone)\n"
+        "            handler.postDelayed(powerMenuGone, 300)\n"
+        "        }\n",
+        "菜单里按键就取消改写",
+    )
+
+    # 按键过滤默认是关的：上游只在「需要拦 Home」或「CEC」时才开，而 Aerial 就是默认桌面，
+    # 于是 homeWanted = false、一个键都收不到。但电源菜单那 12 秒里我们必须收到方向键 / OK ——
+    # 那是唯一能区分「按 OK 选息屏」和「按电源」的信号。所以只在那 12 秒里把过滤打开。
+    patch(
+        root, guard,
+        "    private var filteringForCecOnly = false\n",
+        "    private var filteringForCecOnly = false\n"
+        "\n"
+        "    /** 这次开过滤只是为了看电源菜单里的按键（不是 CEC）。音量键这时不该被接管。 */\n"
+        "    private var filteringForMenu = false\n",
+        "记录「只为菜单开过滤」",
+    )
+
+    patch(
+        root, guard,
+        "        val homeWanted = wanted && !isDefaultHome()\n"
+        "        val cecWanted = !screenOff && CecHome.active(this, lastWindow?.first)\n"
+        "        filteringForCecOnly = cecWanted && !homeWanted\n"
+        "        var want = if (homeWanted || cecWanted) info.flags or flag else info.flags and flag.inv()\n",
+        "        val homeWanted = wanted && !isDefaultHome()\n"
+        "        val cecWanted = !screenOff && CecHome.active(this, lastWindow?.first)\n"
+        "        // The power menu is up: take keys for a moment. Direction keys and OK land here and\n"
+        "        // tell the menu's own \"screen off\" (keep it) apart from a second press of the power\n"
+        "        // key (rewritten into a shutdown). Off again once the menu is gone.\n"
+        "        val menuWanted = !screenOff && OppoPower.armed()\n"
+        "        filteringForMenu = menuWanted\n"
+        "        filteringForCecOnly = cecWanted && !homeWanted && !menuWanted\n"
+        "        var want = if (homeWanted || cecWanted || menuWanted) info.flags or flag else info.flags and flag.inv()\n",
+        "菜单弹着时开按键过滤",
+    )
+
+    # 过滤只因为菜单才开着的时候，音量键不该被接管：这台电视平时从不开过滤，
+    # takeVolumeKey() 那条路根本没被走过，没必要为了 12 秒的菜单把它拉进来看。
+    patch(
+        root, guard,
+        "        if (event.keyCode in VOLUME_KEYS) return if (filteringForCecOnly) false else takeVolumeKey(event)\n",
+        "        // Only the power menu wanted keys: volume goes straight to the system, the way it\n"
+        "        // does when the guard filters nothing at all.\n"
+        "        if (event.keyCode in VOLUME_KEYS) {\n"
+        "            return if (filteringForCecOnly || filteringForMenu) false else takeVolumeKey(event)\n"
+        "        }\n",
+        "菜单期间音量键放行",
+    )
+
+    patch(
+        root, guard,
+        "    private val cecInputObserver = object : ContentObserver(handler) {",
+        "    /** 电源菜单那 12 秒过去后，把按键过滤关回去。 */\n"
+        "    private val powerMenuGone = Runnable { updateKeyFilter() }\n"
+        "\n"
+        "    /**\n"
+        "     * The power menu's \"screen off\" is a QUICK standby: black screen, Android still awake.\n"
+        "     * It is rewritten into a real shutdown here. The menu itself lives in SystemUI and cannot\n"
+        "     * be changed, but the standby mode it sets is observable. Only a QUICK that follows the\n"
+        "     * menu is rewritten: choosing \"restart\" never enters QUICK, and the auto-standby timeout\n"
+        "     * has no menu in front, so neither is touched.\n"
+        "     */\n"
+        "    private val powerModeObserver = object : ContentObserver(handler) {\n"
+        "        override fun onChange(selfChange: Boolean) {\n"
+        "            val mode = runCatching {\n"
+        "                Settings.Global.getString(contentResolver, \"tv_power_mode\")\n"
+        "            }.getOrNull()\n"
+        "            if (mode != \"QUICK\" || !OppoPower.armed()) return\n"
+        "            Log.i(TAG, \"QUICK standby right after the power menu; turning it into a real shutdown\")\n"
+        "            OppoPower.shutdown()\n"
+        "        }\n"
+        "    }\n"
+        "\n"
+        "    private val cecInputObserver = object : ContentObserver(handler) {",
+        "菜单息屏改写成真关机",
+    )
+
+    patch(
+        root, guard,
+        '        contentResolver.registerContentObserver(Settings.Secure.getUriFor("screensaver_components"), false, screensaverObserver)\n',
+        '        contentResolver.registerContentObserver(Settings.Secure.getUriFor("screensaver_components"), false, screensaverObserver)\n'
+        '        contentResolver.registerContentObserver(Settings.Global.getUriFor("tv_power_mode"), false, powerModeObserver)\n',
+        "挂上 tv_power_mode 观察",
     )
 
 
@@ -1225,133 +1378,6 @@ def patch_updates(root, repo):
         '        )' % (repo, repo, repo),
         "更新链接改本仓库",
     )
-
-
-# ---------------------------------------------------------------- 5. 终检
-
-
-def verify(root, repo, dropped):
-    """不看日志、只看源码：该在的都在，才允许打包。"""
-    # 老包名必须一个不剩。
-    leftovers = []
-    for dirpath, dirnames, filenames in os.walk(os.path.join(root, "app")):
-        dirnames[:] = [d for d in dirnames if d not in ("build", ".gradle", ".kotlin")]
-        for name in filenames:
-            if not name.endswith((".kt", ".java", ".xml", ".kts", ".pro")):
-                continue
-            path = os.path.join(dirpath, name)
-            try:
-                with open(path, encoding="utf-8") as f:
-                    if OLD in f.read():
-                        leftovers.append(os.path.relpath(path, root))
-            except (UnicodeDecodeError, OSError):
-                continue
-    if leftovers:
-        fail("这些文件还带着老包名 %s：\n%s" % (OLD, fence("\n".join(leftovers))))
-
-    manifest = read(root, MANIFEST) or ""
-    if "com.heytap.tv.launcher.category.MODERN_HOME" not in manifest:
-        fail("standard 清单里没写进 MODERN_HOME：OPPO 会把开机卡在品牌动画")
-    if PKG not in manifest:
-        fail("standard 清单里的 MainActivity 没跟着改名")
-
-    gradle = read(root, GRADLE) or ""
-    for needle in (
-        'namespace = "%s"' % PKG,
-        'applicationId = "%s"' % PKG,
-        "enableV1Signing = true",
-        "enableV2Signing = true",
-    ):
-        if needle not in gradle:
-            fail("%s 里缺 %s" % (GRADLE, needle))
-
-    # 新增文件必须搬到位，且包名跟着换了。
-    for name in dropped:
-        rel = j("system/" + name)
-        text = read(root, rel)
-        if text is None:
-            continue
-        if "package %s.system" % PKG not in text:
-            fail("%s 的 package 行没改：仍不是 %s.system" % (rel, PKG))
-
-    for rel, needles in (
-        # 亮度这几处是按结构插的：插不进去不会报错，只会「什么都没做」，所以这里再核一遍。
-        (
-            j("system/Brightness.kt"),
-            ("OppoBacklight.usable(context)", "OppoBacklight.set(context, next)"),
-        ),
-        (
-            j("ui/control/ControlCenter.kt"),
-            (
-                "vm.overlay = Overlay.None\n                SystemProbe.openPictureSettings(context)",
-            ),
-        ),
-        (
-            j("HomeViewModel.kt"),
-            (
-                "import %s.system.OppoBacklight" % PKG,
-                "OppoBacklight.onLevel = { percent -> brightness = percent / 100f }",
-                "OppoBacklight.onLevel = null",
-            ),
-        ),
-        # 屏保时间那一组：读写系统设置、档位加 1 分钟、设置页打开时刷新。
-        (
-            j("system/SystemScreensaver.kt"),
-            ("fun delayMinutes(context: Context)", "Settings.System.putLong("),
-        ),
-        (
-            j("settings/AerialSettings.kt"),
-            ("listOf(1, 2, 5, 10, 20, NEVER)", "screensaverChoicesNow",
-             "fun syncScreensaverFromSystem(", "SystemScreensaver.setDelayMinutes(app, minutes)",
-             "private fun watchScreensaverDelay()", "registerContentObserver(",
-             "watchScreensaverDelay()"),
-        ),
-        (
-            j("ui/wallpaper/WallpaperSheet.kt"),
-            ("AerialSettings.syncScreensaverFromSystem(context)", "AerialSettings.screensaverChoicesNow.map"),
-        ),
-        # 名字画在图标里要靠 PI / cos / sin：上游自己引的（PI、cos）和本脚本补的（sin）
-        # 必须都在，否则是 Kotlin 编译期才报错，比这里报得晚也更难懂。
-        (
-            j("ui/home/AppTile.kt"),
-            ("PlateTileName(", "plateName: PlateNames?", "import kotlin.math.PI",
-             "import kotlin.math.cos", "import kotlin.math.sin"),
-        ),
-        # 认前缀、不认 COLUMNS/columns：1.65 起每行个数是变量 columns，之前是常量 COLUMNS。
-        (j("ui/home/HomeScreen.kt"), ("AerialSettings.plateNames", "val onPlateRow = !inGrid && index < ", "showName = !onPlateRow,")),
-        (j("settings/AerialSettings.kt"), ("enum class PlateNames", "choosePlateNames")),
-        (STRINGS_ZH, ('name="st_plate_names"', 'name="st_names_off"')),
-        (STRINGS_EN, ('name="st_plate_names"',)),
-    ):
-        text = read(root, rel)
-        if text is None:
-            continue
-        for needle in needles:
-            if needle not in text:
-                fail("%s 里缺 %s：这一步没落地" % (rel, needle))
-
-    if repo:
-        updates = read(root, j("update/Updates.kt")) or ""
-        if "github.com/%s/releases/download" % repo not in updates:
-            fail("Update 的 APK 地址没写成 %s\n    （应用内更新会去别的仓库下载，必然 404）" % repo)
-        if "github.com/%s/releases/latest/download/version.txt" % repo not in updates:
-            fail("Update 的版本检查地址没写成 %s 的 version.txt" % repo)
-        if "gh-proxy.com/https://github.com/%s/releases/latest/download/version.txt" % repo not in updates:
-            fail("版本检查没有第二级加速源：镜像挂了就会一直显示「没有新版本」")
-        if "aerial.qust.me" in updates:
-            fail("Update 里还留着上游官网地址：版本会先于本仓库的包被播报，点下载就是 404")
-
-    if PROBLEMS:
-        print("\n[apply.py 失败] %d 处没改成：\n" % len(PROBLEMS), file=sys.stderr)
-        for i, problem in enumerate(PROBLEMS, 1):
-            print("%d) %s\n" % (i, problem), file=sys.stderr)
-        print(
-            "上游多半改了这些地方。照着上面的「期望原文」更新 custom/apply.py 里的锚点，"
-            "本地用上游源码重跑一遍再推。",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    print("  ok  %-44s 全绿" % "终检")
 
 
 def patch_update_row(root):
@@ -1575,6 +1601,137 @@ private fun UpdateRow(vm: HomeViewModel) {
     )
 
 
+# ---------------------------------------------------------------- 5. 终检
+
+
+def verify(root, repo, dropped):
+    """不看日志、只看源码：该在的都在，才允许打包。"""
+    # 老包名必须一个不剩。
+    leftovers = []
+    for dirpath, dirnames, filenames in os.walk(os.path.join(root, "app")):
+        dirnames[:] = [d for d in dirnames if d not in ("build", ".gradle", ".kotlin")]
+        for name in filenames:
+            if not name.endswith((".kt", ".java", ".xml", ".kts", ".pro")):
+                continue
+            path = os.path.join(dirpath, name)
+            try:
+                with open(path, encoding="utf-8") as f:
+                    if OLD in f.read():
+                        leftovers.append(os.path.relpath(path, root))
+            except (UnicodeDecodeError, OSError):
+                continue
+    if leftovers:
+        fail("这些文件还带着老包名 %s：\n%s" % (OLD, fence("\n".join(leftovers))))
+
+    manifest = read(root, MANIFEST) or ""
+    if "com.heytap.tv.launcher.category.MODERN_HOME" not in manifest:
+        fail("standard 清单里没写进 MODERN_HOME：OPPO 会把开机卡在品牌动画")
+    if PKG not in manifest:
+        fail("standard 清单里的 MainActivity 没跟着改名")
+
+    gradle = read(root, GRADLE) or ""
+    for needle in (
+        'namespace = "%s"' % PKG,
+        'applicationId = "%s"' % PKG,
+        "enableV1Signing = true",
+        "enableV2Signing = true",
+    ):
+        if needle not in gradle:
+            fail("%s 里缺 %s" % (GRADLE, needle))
+
+    # 新增文件必须搬到位，且包名跟着换了。
+    for name in dropped:
+        rel = j("system/" + name)
+        text = read(root, rel)
+        if text is None:
+            continue
+        if "package %s.system" % PKG not in text:
+            fail("%s 的 package 行没改：仍不是 %s.system" % (rel, PKG))
+
+    for rel, needles in (
+        # 亮度这几处是按结构插的：插不进去不会报错，只会「什么都没做」，所以这里再核一遍。
+        (
+            j("system/Brightness.kt"),
+            ("OppoBacklight.usable(context)", "OppoBacklight.set(context, next)"),
+        ),
+        (
+            j("ui/control/ControlCenter.kt"),
+            (
+                "vm.overlay = Overlay.None\n                SystemProbe.openPictureSettings(context)",
+            ),
+        ),
+        (
+            j("HomeViewModel.kt"),
+            (
+                "import %s.system.OppoBacklight" % PKG,
+                "OppoBacklight.onLevel = { percent -> brightness = percent / 100f }",
+                "OppoBacklight.onLevel = null",
+            ),
+        ),
+        # 屏保时间那一组：读写系统设置、档位加 1 分钟、设置页打开时刷新。
+        (
+            j("system/SystemScreensaver.kt"),
+            ("fun delayMinutes(context: Context)", "Settings.System.putLong("),
+        ),
+        (
+            j("settings/AerialSettings.kt"),
+            ("listOf(1, 2, 5, 10, 20, NEVER)", "screensaverChoicesNow",
+             "fun syncScreensaverFromSystem(", "SystemScreensaver.setDelayMinutes(app, minutes)",
+             "private fun watchScreensaverDelay()", "registerContentObserver(",
+             "watchScreensaverDelay()"),
+        ),
+        (
+            j("ui/wallpaper/WallpaperSheet.kt"),
+            ("AerialSettings.syncScreensaverFromSystem(context)", "AerialSettings.screensaverChoicesNow.map"),
+        ),
+        # 名字画在图标里要靠 PI / cos / sin：上游自己引的（PI、cos）和本脚本补的（sin）
+        # 必须都在，否则是 Kotlin 编译期才报错，比这里报得晚也更难懂。
+        (
+            j("ui/home/AppTile.kt"),
+            ("PlateTileName(", "plateName: PlateNames?", "import kotlin.math.PI",
+             "import kotlin.math.cos", "import kotlin.math.sin"),
+        ),
+        # 认前缀、不认 COLUMNS/columns：1.65 起每行个数是变量 columns，之前是常量 COLUMNS。
+        (j("ui/home/HomeScreen.kt"), ("AerialSettings.plateNames", "val onPlateRow = !inGrid && ", "showName = !onPlateRow,")),
+        # 电源菜单那组：菜单一显示就上膛，随后的 QUICK 待机被改写成真关机。
+        (
+            j("guard/HomeGuardService.kt"),
+            ("OppoPower.arm()", "powerModeObserver", 'Settings.Global.getUriFor("tv_power_mode")'),
+        ),
+        (j("system/OppoPower.kt"), ("setStandbyMode", "CMD_STANDBY_MODE", "fun cancel()", '"ModulePower", CMD_STANDBY_MODE')),
+        (j("settings/AerialSettings.kt"), ("enum class PlateNames", "choosePlateNames")),
+        (STRINGS_ZH, ('name="st_plate_names"', 'name="st_names_off"')),
+        (STRINGS_EN, ('name="st_plate_names"',)),
+    ):
+        text = read(root, rel)
+        if text is None:
+            continue
+        for needle in needles:
+            if needle not in text:
+                fail("%s 里缺 %s：这一步没落地" % (rel, needle))
+
+    if repo:
+        updates = read(root, j("update/Updates.kt")) or ""
+        if "github.com/%s/releases/download" % repo not in updates:
+            fail("Update 的 APK 地址没写成 %s\n    （应用内更新会去别的仓库下载，必然 404）" % repo)
+        if "github.com/%s/releases/latest/download/version.txt" % repo not in updates:
+            fail("Update 的版本检查地址没写成 %s 的 version.txt" % repo)
+        if "gh-proxy.com/https://github.com/%s/releases/latest/download/version.txt" % repo not in updates:
+            fail("版本检查没有第二级加速源：镜像挂了就会一直显示「没有新版本」")
+        if "aerial.qust.me" in updates:
+            fail("Update 里还留着上游官网地址：版本会先于本仓库的包被播报，点下载就是 404")
+
+    if PROBLEMS:
+        print("\n[apply.py 失败] %d 处没改成：\n" % len(PROBLEMS), file=sys.stderr)
+        for i, problem in enumerate(PROBLEMS, 1):
+            print("%d) %s\n" % (i, problem), file=sys.stderr)
+        print(
+            "上游多半改了这些地方。照着上面的「期望原文」更新 custom/apply.py 里的锚点，"
+            "本地用上游源码重跑一遍再推。",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print("  ok  %-44s 全绿" % "终检")
 # ---------------------------------------------------------------- main
 
 
@@ -1613,6 +1770,7 @@ def main():
     patch_brightness(root)
     patch_screensaver(root)
     patch_names(root)
+    patch_power_menu(root)
     patch_strings(root)
     patch_updates(root, repo)
     patch_update_row(root)
