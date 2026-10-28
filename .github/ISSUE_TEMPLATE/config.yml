@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 帮 Aerial 适配你的电视（交给 AI Agent）/ Adapt Aerial to your TV with an AI agent
+    url: https://github.com/pengchujin/aerial-tv#adapt
+    about: "复制一段提示词给电脑版 Agent，它会自检、当场改好能改的，再整理成报告给你提交 / A prompt for a desktop agent: it tests, fixes what it can, and writes the report for you to post"
+  - name: 安装说明 / Install guide
+    url: https://aerial.qust.me/agent.md
+    about: 安装、升级、还原的步骤，各品牌打开 ADB 的方法 / Installing, updating and undoing; turning on ADB
+  - name: 常见问题 / FAQ
+    url: https://github.com/pengchujin/aerial-tv#常见问题
+    about: 装完找不到图标、TCL 多屏互动、创维装不上等 / No icon after installing, TCL's 多屏互动, Skyworth install errors
