@@ -1,6 +1,6 @@
 # Aerial OPPO 定制版：自动同步上游 + 自动发版
 
-配置一次，之后**上游发新 release，6 小时内本仓库自动出一个同版本号的定制包**（签名、包名、全部定制都在）。
+配置一次，之后**上游发新 release，1 小时内本仓库自动出一个同版本号的定制包**（签名、包名、全部定制都在）。
 你只需要装一次，以后电视上点「检查更新」就能装到新版本。
 
 ---
@@ -161,7 +161,7 @@ gh secret set AERIAL_KEY_PASSWORD    --repo $R -b "aerial123"
 2. 分支列表多出 `src/v1.46`（打完补丁的源码，可以直接对照看改了什么）
 3. 日志最后一行有 `已发布：https://github.com/...`
 
-之后**不用再管**：定时任务每 6 小时看一次上游，有新 tag 就自动出包。
+之后**不用再管**：定时任务每小时看一次上游，有新 tag 就自动出包。
 
 ### 自己写版本描述（可选）
 
@@ -204,7 +204,7 @@ notes = 1.61 定制版：\n\n- 亮度条确认键进图像设置\n- 遥控器菜
 
 | 环节 | 做法 |
 |---|---|
-| 发现新版 | `schedule` 每 6 小时查 `pengchujin/aerial-tv` 的最新 release（fork 收不到上游的 release 事件，只能轮询） |
+| 发现新版 | `schedule` 每小时查 `pengchujin/aerial-tv` 的最新 release（fork 收不到上游的 release 事件，只能轮询） |
 | 拉源码 | `codeload.github.com` 下 `tar.gz`，解到临时目录，`--strip-components=1` |
 | 打补丁 | `python3 custom/apply.py <目录> --version <tag> --repo <本仓库>` |
 | 编译 | 只 `:app:assembleStandardRelease`，guard flavor 不参与 |
@@ -276,7 +276,7 @@ python3 custom/apply.py tmp --version 1.47 --repo tushoning/aerial-tv
 | 亮度条确认键 | 认 `onStep = vm::adjustBrightness,` 这一行，改**它所属调用**的 `onClick` | 这个参数改名，或整行被删 |
 | HomeViewModel 的钩子 | `import` 按字母序补；`init {}` / `onCleared()` 的代码插在**块尾** | 这两个块改名 |
 | 屏保那组（读写 / 档位 / 观察者） | 多数是结构化锚点：`insert_in_body` 认函数签名、`ensure_import` 补 import；只有 `WallpaperSheet` 里那两处是原文锚点 | 改了 `AerialSettings` / `SystemScreensaver` 的函数签名，或改了 `WallpaperSheet` 里那两行 |
-| 名称那组（第一排 / 抽屉） | **仍是原文锚点**（`patch()`），但只认两小段：`animateIntOffsetAsState` 那一段、以及 `showName`/`nameOnPlate` 那两行 | 上游改了这两段里的措辞 |
+| 名称那组（第一排 / 抽屉） | **仍是原文锚点**（`patch()`），但只认两小段：`animateIntOffsetAsState` 那一段、以及 `showName`/`nameOnPlate` 那两行；「每行有几个」的标识符（1.65 前是常量 `COLUMNS`，1.65 起是变量 `columns`）由脚本**自动识别**，不写死 | 上游改了这两段里的**措辞**（1.65 把 `COLUMNS` 换成 `columns` 踩过一次，已做成自动识别） |
 
 所以上游在函数体里加分支、加注释、调换参数顺序（1.57 的 AppTile 导入、1.61 的极米光机分支就是这种），
 都不会再把 CI 顶红。只有真的动了签名/参数名才会报错——那种情况本来也该人工看一眼。
@@ -378,6 +378,12 @@ diff -rq upstream-src patched-src
 - **fork 的默认分支**必须是放着 `custom/` 与 `.github/` 的那个分支，否则 `schedule` 不会触发。
 - GitHub 对 **60 天无提交**的仓库会暂停定时任务。这里每次发版都会 push `src/<tag>` 分支，所以会一直活着；
   万一被停了，Actions 页面点一下 **Enable workflow**。
+- **GitHub 的定时任务不保证准点**：`schedule` 是 best effort，高峰期会被延后，严重时整班都不出现
+  （2026-10-28 实测过 08:23 那一班完全没有 run 记录）。所以频率设成**每小时一次**
+  （`cron: "23 * * * *"`，UTC 的每小时第 23 分 = 北京时间 0X:23），不要设成每 6 小时 ——
+  上游一天能发好几个版本，6 小时一轮最坏要等 6 小时。跑得勤几乎不要钱：已经做过的版本会走到
+  「取上游最新 release」就 `skip`，**根本不编译**；而漏掉一班最多也只晚 1 小时。
+  注意看运行记录里的 `workflow_dispatch` / `schedule` 区分：手动跑和定时跑走的是同一条路。
 - **不要手动改 release 里的 `aerial-standard.apk` 文件名**：应用内更新按 `aerial-<flavor>.apk` 精确取名字。
 - 电视上覆盖安装前，确认旧包也是这把密钥签的（`apksigner verify --print-certs` 看 SHA-256）。
 - **Gradle 偶发在写 APK 那一步抛 `IOException: Failed to create …apk`**：不是代码问题（Kotlin
