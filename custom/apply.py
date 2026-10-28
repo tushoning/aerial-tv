@@ -1063,6 +1063,12 @@ def patch_names(root):
     # 一旦焦点下到网格（抽屉），第一排就只是网格里的普通一行：名字回到图标下方，和第二排及以下
     # 完全同一套规则（显示全部还是仅焦点，由 showAllNames 决定）。
     # 做法是算一个 onPlateRow，下面三个参数都只看它 —— 一个判断，不会出现改了一处漏了另一处。
+    #
+    # 「一排有几个」上游换过写法：1.65 起每行 4/5/6 可选，常量 COLUMNS 换成了变量 columns
+    # （GridMetrics 也多了一个 columns 参数）。这里跟着上游用哪个就用哪个，两个版本都能编译；
+    # 锚点里的标识符也因此不能写死。
+    home_text = read(root, home)
+    cols = "columns" if home_text and "val columns = AerialSettings.homeColumns" in home_text else "COLUMNS"
     patch(
         root, home,
         "                        val slot = animateIntOffsetAsState(\n"
@@ -1079,14 +1085,14 @@ def patch_names(root):
         "                        // On the shelf the top row is the plate's row. Once the focus is\n"
         "                        // down in the grid, that row is just another row of it, and takes\n"
         "                        // the grid's own rule for names instead.\n"
-        "                        val onPlateRow = !inGrid && index < COLUMNS\n"
+        "                        val onPlateRow = !inGrid && index < %s\n" % cols +
         "                        AppTile(\n",
         "定义「台面第一排」判据",
     )
     patch(
         root, home,
-        "                            showName = plate == null || index >= COLUMNS || plateNames,\n"
-        "                            nameOnPlate = plate != null && index < COLUMNS,",
+        "                            showName = plate == null || index >= %s || plateNames,\n"
+        "                            nameOnPlate = plate != null && index < %s," % (cols, cols),
         "                            // The plate's row draws its names inside the tiles. Every other\n"
         "                            // row - including that same row while the grid is open - keeps\n"
         "                            // the original name below the tile, always clear of the focus\n"
@@ -1311,7 +1317,8 @@ def verify(root, repo, dropped):
             ("PlateTileName(", "plateName: PlateNames?", "import kotlin.math.PI",
              "import kotlin.math.cos", "import kotlin.math.sin"),
         ),
-        (j("ui/home/HomeScreen.kt"), ("AerialSettings.plateNames", "val onPlateRow = !inGrid && index < COLUMNS", "showName = !onPlateRow,")),
+        # 认前缀、不认 COLUMNS/columns：1.65 起每行个数是变量 columns，之前是常量 COLUMNS。
+        (j("ui/home/HomeScreen.kt"), ("AerialSettings.plateNames", "val onPlateRow = !inGrid && index < ", "showName = !onPlateRow,")),
         (j("settings/AerialSettings.kt"), ("enum class PlateNames", "choosePlateNames")),
         (STRINGS_ZH, ('name="st_plate_names"', 'name="st_names_off"')),
         (STRINGS_EN, ('name="st_plate_names"',)),
