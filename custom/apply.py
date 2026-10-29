@@ -38,6 +38,9 @@ STRINGS_ZH = "app/src/main/res/values-zh/strings.xml"
 # 收集所有失败，最后一起报，一次就能把上游的改动全看明白。
 PROBLEMS = []
 
+# 屏保压暗这次是不是真加了（1.68 之前上游自己压，就不加）。终检只核对加过的那一种。
+SAVER_SHADE_ADDED = False
+
 
 def j(rel):
     """app/src/main/java/<新包名>/ 下的文件。"""
@@ -76,21 +79,78 @@ def write(root, rel, text):
         f.write(text)
 
 
+def _reindent(text, base, to):
+    """把 text 每行的公共缩进 base 换成 to：只动以 base 开头的行，空行和更深的缩进原样。"""
+    if base == to:
+        return text
+    out = []
+    for line in text.split("\n"):
+        if line.strip() == "":
+            out.append(line)
+        elif line.startswith(base):
+            out.append(to + line[len(base):])
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _flexible_match(text, old):
+    """只让「首行缩进」浮动，块内部的相对缩进仍然钉死。
+
+    上游整块挪进/挪出一个 if、换一层 Box，缩进就整体变了 —— 这是照抄式锚点最常见的死法
+    （1.69 的 WallpaperSheet 就是这样：内容一字没改，每行少 4 个空格）。这里把首行缩进当变量，
+    命中之后再把要写进去的代码按同样的位移缩进，内容本身仍然必须逐字对上。
+
+    返回 (start, end, indent)；命中 0 次给 None，命中多次给 False（宁可报错也不猜）。
+    """
+    core = old[:-1] if old.endswith("\n") else old
+    lines = core.split("\n")
+    if not lines:
+        return None
+    base = _indent_of(lines[0])
+    parts = [r"(?m)^([ \t]*)"]
+    for i, line in enumerate(lines):
+        rest = line[len(base):] if line.startswith(base) else line.lstrip()
+        if i:
+            parts.append(r"[ \t]*\r?\n[ \t]*")
+        parts.append(re.escape(rest))
+    found = list(re.finditer("".join(parts), text))
+    if not found:
+        return None
+    if len(found) > 1:
+        return False
+    m = found[0]
+    return m.start(), m.end(), m.group(1)
+
+
 def patch(root, rel, old, new, what):
-    """把 old 换成 new；old 必须恰好出现一次，否则记账等最后统一报错。"""
+    """把 old 换成 new；old 必须恰好出现一次，否则记账等最后统一报错。
+
+    先按原文逐字找；找不到再放宽成「缩进可变」找一次（见 _flexible_match）。
+    """
     text = read(root, rel)
     if text is None:
         return
     hits = text.count(old)
-    if hits != 1:
-        why = "上游可能删了或改了这一段" if hits == 0 else "这段在上游出现了 %d 次，锚点不够独特" % hits
-        fail(
-            "%s\n    要改的地方：%s\n    问题：锚点命中 %d 次（应当 1 次），%s\n    期望原文：\n%s"
-            % (rel, what, hits, why, fence(old))
-        )
+    if hits == 1:
+        write(root, rel, text.replace(old, new, 1))
+        print("  ok  %-44s %s" % (short(rel), what))
         return
-    write(root, rel, text.replace(old, new))
-    print("  ok  %-44s %s" % (short(rel), what))
+    if hits == 0:
+        found = _flexible_match(text, old)
+        if found:
+            start, end, indent = found
+            base = _indent_of(old.split("\n")[0])
+            body = new[:-1] if new.endswith("\n") else new
+            body = _reindent(body, base, indent) + ("\n" if old.endswith("\n") else "")
+            write(root, rel, text[:start] + body + text[end:])
+            print("  ok  %-44s %s  （上游改了缩进，已自适应）" % (short(rel), what))
+            return
+    why = "上游可能删了或改了这一段" if hits == 0 else "这段在上游出现了 %d 次，锚点不够独特" % hits
+    fail(
+        "%s\n    要改的地方：%s\n    问题：锚点命中 %d 次（应当 1 次），%s\n    期望原文：\n%s"
+        % (rel, what, hits, why, fence(old))
+    )
 
 
 # ---------------------------------------------------------------- 结构化锚点
@@ -499,30 +559,16 @@ def patch_manifest(root):
         "HOME 加 MODERN_HOME 类别",
     )
 
-    # 背光只能由固件的 tvapisvc 驱动，它按「进程名包含 com.heytap.tv.remote」放行。
-    # 整个桌面直接跑在这个进程名里：进程数不增加，OppoBacklight 也就不必跨进程。
-    # 服务上再显式写一遍是双保险——merge 万一没带过来 application 的 process，
-    # 服务仍旧落在白名单进程里，功能不受影响，只是多回一个进程。
+    # 背光与关机的固件调用都只能由 tvapisvc 驱动，它按「进程名包含 com.heytap.tv.remote」放行。
+    # 整个桌面直接跑在这个进程名里，所以 OppoBacklight / OppoPower 都在本进程内反射调用，
+    # 不需要额外的 Service。
     patch(
         root, MANIFEST,
         '    <application>',
-        '    <!-- 进程名带 :com.heytap.tv.remote，固件的 tvapisvc 才会接受本应用的背光调用。\n'
-        '         主进程名不含白名单串，所以让进程名本身带上它，比另开一个进程省事。 -->\n'
+        '    <!-- 进程名带 :com.heytap.tv.remote，固件的 tvapisvc 才会接受本应用的背光 / 关机调用。\n'
+        '         主进程名不含白名单串，所以让进程名本身带上它。 -->\n'
         '    <application android:process=":com.heytap.tv.remote">',
         "主进程挂白名单进程名",
-    )
-
-    patch(
-        root, MANIFEST,
-        '        </activity>\n'
-        '    </application>',
-        '        </activity>\n'
-        '        <service\n'
-        '            android:name="%s.system.OppoBrightnessService"\n'
-        '            android:exported="false"\n'
-        '            android:process=":com.heytap.tv.remote" />\n'
-        '    </application>' % PKG,
-        "背光服务留在白名单进程",
     )
 
 
@@ -612,6 +658,38 @@ def patch_brightness(root):
         at="end",
     )
 
+    # 打开控制中心那一下，亮度直接问固件要真值（几毫秒），不等异步回读。
+    # 上游这条路径读的是「记着的值」，我们的记账值只有在 Aerial 自己调过时才准 —— 用电视自己的
+    # 亮度条调过之后再打开控制中心，会先显示旧值、一两秒后才被校正回来。
+    patch(
+        root, vm,
+        "            val (home, level) = withContext(Dispatchers.Default) { SystemProbe.homeStatus(ctx) to Brightness.level(ctx) }\n",
+        "            // OPPO 的亮度只有固件知道当前值：面板打开这一下同步问一次（阻塞几毫秒，\n"
+        "            // 本来就在 Default 线程上），否则先显示记账值、再等异步回读纠正，看着像慢半拍。\n"
+        "            val (home, level) = withContext(Dispatchers.Default) {\n"
+        "                val now = if (OppoBacklight.usable(ctx)) OppoBacklight.levelNow(ctx) / 100f else Brightness.level(ctx)\n"
+        "                SystemProbe.homeStatus(ctx) to now\n"
+        "            }\n",
+        "打开面板时同步读一次面板亮度",
+    )
+
+    # 上游是「先等 3 秒再刷一次」：面板刚打开时显示的其实是上一次的缓存。先刷再等，
+    # 打开瞬间就对齐（这条对所有机型都成立，只是我们的亮度非同步不可）。
+    patch(
+        root, j("MainActivity.kt"),
+        "                    while (open) {\n"
+        "                        delay(PANEL_REFRESH_MS)\n"
+        "                        vm.refreshPanel()\n"
+        "                    }\n",
+        "                    // Look once before waiting: the panel is drawn from cached values, and\n"
+        "                    // the first look used to be 3 s later (a stale brightness until then).\n"
+        "                    while (open) {\n"
+        "                        vm.refreshPanel()\n"
+        "                        delay(PANEL_REFRESH_MS)\n"
+        "                    }\n",
+        "控制中心一打开就先刷新一次",
+    )
+
 
 def patch_screensaver(root):
     """个性化里的「进入时间」直接读写系统的屏保时间，另加 1 分钟档、文案压成「N分」。
@@ -636,8 +714,9 @@ def patch_screensaver(root):
             "",
             "/**",
             " * Writes the setting the firmware starts its screensaver from, so Aerial's row and the TV's",
-            " * own screensaver page agree. 0 means the system's screensaver is off (\"Never\"). False",
-            " * where WRITE_SETTINGS was not granted, or the firmware has no such key.",
+            " * own screensaver page agree. False where WRITE_SETTINGS was not granted, or the firmware",
+            " * has no such key. \"Never\" (0) never gets here: AerialSettings turns the system screensaver",
+            " * off through GuardSetup before this is called, so there is nothing to write.",
             " */",
             "fun setDelayMinutes(context: Context, minutes: Int): Boolean {",
             "    if (minutes <= 0) return true",
@@ -804,10 +883,9 @@ def patch_screensaver(root):
         "        AerialSettings.syncScreensaverFromSystem(context)\n",
         "打开设置页时刷新屏保时间",
     )
+    # 锚点里不带上游的注释行：1.69 只删了这两行注释就整条失配，而代码一字未改。
     patch(
         root, sheet,
-        '                        // The firmware\'s screensaver starts on the firmware\'s timer: Aerial\'s delay\n'
-        '                        // did nothing there, and Xiaomi\'s 1 minute came before the 5 chosen (issue #675).\n'
         '                        if (Wallpapers.screensaver == ScreensaverMode.System) SettingRow(R.string.ss_delay, null, note) {\n'
         '                            val delay = remember { SystemScreensaver.firmwareDelayMs(context) }\n'
         '                            BasicText(\n'
@@ -837,6 +915,63 @@ def patch_screensaver(root):
         '    <string name="ss_minutes">%d分</string>',
         "中文文案：档位写成分",
     )
+
+
+def patch_saver_shade(root, version):
+    """把屏保画面的「压暗」补回来。
+
+    1.68 起上游不再给影片压暗 —— release notes 原话是「航拍壁纸、我的视频壁纸和航拍屏保不再压暗，
+    画面更亮」；1.69 也一样：HomeChrome 里那层 Images.SHADE 现在只在 shadeMoving（输入源的画面）
+    时才画，AerialSaver 自己也不画。这台电视的屏保就是航拍影片，少了这层，夜里看着发白。
+
+    只补屏保这一处（Home 保持上游新的亮法）：在影片之上、黑色遮罩之下画一层 Images.homeShade，
+    也就是 1.67 屏保上原本那一层（渐变参数一个不改），所以观感就是「原来那种」。
+
+    三道判断：
+      1) 1.68 之前的版本上游本来就压暗，跳过（不然屏保会被压两遍，反而偏黑）；
+      2) 上游若自己又开始给屏保压暗（Screensaver.kt 里出现 Images.homeShade 的**代码**引用，
+         注释里提到不算），跳过；
+      3) 这段之前已经加过，跳过。
+    """
+    saver = j("ui/home/Screensaver.kt")
+    try:
+        floor = tuple(int(x) for x in version.split(".")[:2])
+    except ValueError:
+        floor = (0, 0)
+    if floor < (1, 68):
+        print("  ok  %-44s %s" % (short(saver), "屏保压暗（1.68 之前上游本来就压，跳过）"))
+        return
+    text = read(root, saver)
+    if text is None:
+        return
+    if "OWNER: the film's shade" in text:
+        print("  ok  %-44s %s" % (short(saver), "屏保压暗（已加过，跳过）"))
+        return
+    if re.search(r"(?m)^(?![ \t]*(?://|\*|/\*))[^\n]*Images\.homeShade", text):
+        print("  ok  %-44s %s" % (short(saver), "屏保压暗（上游自己做了，跳过）"))
+        return
+
+    ensure_import(root, saver, "import %s.wallpaper.Images" % PKG, "屏保压暗 引用 Images")
+
+    patch(
+        root, saver,
+        "    Box(Modifier.fillMaxSize().graphicsLayer { alpha = veil }.background(Color.Black))\n",
+        "    // OWNER: the film's shade, as up to 1.67. Upstream stopped shading films in 1.68 and the\n"
+        "    // aerials read washed out here, mostly at night. Only the screensaver gets it back: Home\n"
+        "    // keeps upstream's brighter look. The same layer and the same values as 1.67's screensaver.\n"
+        "    val saverShade = remember { Images.homeShade.asImageBitmap() }\n"
+        "    Canvas(Modifier.fillMaxSize()) {\n"
+        "        drawImage(\n"
+        "            saverShade,\n"
+        "            dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),\n"
+        "            filterQuality = FilterQuality.Low,\n"
+        "        )\n"
+        "    }\n"
+        "    Box(Modifier.fillMaxSize().graphicsLayer { alpha = veil }.background(Color.Black))\n",
+        "屏保画面压暗（补回 1.67）",
+    )
+    global SAVER_SHADE_ADDED
+    SAVER_SHADE_ADDED = True
 
 
 def patch_names(root):
@@ -955,9 +1090,11 @@ def patch_names(root):
         "        // On the glass plate the name sits inside the tile, bottom centre: the grid's own\n"
         "        // type at its own size, one step bolder, outlined and shadowed so the artwork\n"
         "        // underneath cannot swallow it.\n"
-        "        if (plateName != null && plateName != PlateNames.Off &&\n"
-        "            (plateName == PlateNames.All || lift > 0.01f)\n"
-        "        ) {\n"
+        "        //\n"
+        "        // `lift` is read only inside graphicsLayer below, never here: that is the draw phase,\n"
+        "        // so the focus animation does not recompose the tile on every one of its frames. Read\n"
+        "        // in this condition it would (upstream keeps it out of composition for the same reason).\n"
+        "        if (plateName != null && plateName != PlateNames.Off) {\n"
         "            Box(\n"
         "                modifier = Modifier\n"
         "                    .align(Alignment.BottomCenter)\n"
@@ -976,9 +1113,19 @@ def patch_names(root):
         "}",
         "图标内画名称",
     )
+    # 插在 focusedPx **之后**，而不是它的签名前面：那样会把它自己的 KDoc 和函数拆开，
+    # 注释挂到我们新加的函数头上。锚点用那四行函数体（纯代码，不带注释）。
     patch(
         root, tile,
-        "private fun focusedPx(px: Float): Int {",
+        "private fun focusedPx(px: Float): Int {\n"
+        "    val r = px.roundToInt()\n"
+        "    return r + 2 * (r * (FOCUSED_SCALE - 1f) / 2f).roundToInt()\n"
+        "}\n",
+        "private fun focusedPx(px: Float): Int {\n"
+        "    val r = px.roundToInt()\n"
+        "    return r + 2 * (r * (FOCUSED_SCALE - 1f) / 2f).roundToInt()\n"
+        "}\n"
+        "\n"
         "/**\n"
         " * The name inside a plate's tile: [Type.Headline] at its own size, one step bolder, with a\n"
         " * hard outline and a short drop shadow.\n"
@@ -1045,9 +1192,7 @@ def patch_names(root):
         "    Canvas(Modifier.fillMaxSize()) {\n"
         "        drawImage(name)\n"
         "    }\n"
-        "}\n"
-        "\n"
-        "private fun focusedPx(px: Float): Int {",
+        "}\n",
         "图标内名称：烘焙成一张位图",
     )
 
@@ -1196,9 +1341,11 @@ def patch_power_menu(root):
         "        if (!GuardSetup.isUserUnlocked(this)) return false\n",
         "    override fun onKeyEvent(event: KeyEvent): Boolean {\n"
         "        if (!GuardSetup.isUserUnlocked(this)) return false\n"
-        "        if (event.action == KeyEvent.ACTION_DOWN && OppoPower.armed()) {\n"
+        "        if (event.action == KeyEvent.ACTION_DOWN && event.keyCode !in VOLUME_KEYS && OppoPower.armed()) {\n"
         "            Log.i(TAG, \"key \" + event.keyCode + \" while the power menu was up; leaving the screen-off alone\")\n"
         "            OppoPower.cancel()\n"
+        "            // Volume is skipped on purpose: it neither dismisses the menu nor picks a row, so\n"
+        "            // pressing it must not cancel the rewrite (else volume, then power = screen off).\n"
         "            // Never touch the filter from inside this callback: reconfiguring it while the key\n"
         "            // is being dispatched swallows that very event, and the menu then ignores the first\n"
         "            // press. Hand it to the looper instead, so this event finishes its round trip.\n"
@@ -1252,9 +1399,17 @@ def patch_power_menu(root):
         "菜单期间音量键放行",
     )
 
+    # 插在 cecInputObserver **之后**：它上面有一句讲 CecHome 的注释，插在前面会让那句注释
+    # 悬空指着我们新加的字段。锚点取它完整的三行（纯代码）。
     patch(
         root, guard,
-        "    private val cecInputObserver = object : ContentObserver(handler) {",
+        "    private val cecInputObserver = object : ContentObserver(handler) {\n"
+        "        override fun onChange(selfChange: Boolean) = updateKeyFilter()\n"
+        "    }\n",
+        "    private val cecInputObserver = object : ContentObserver(handler) {\n"
+        "        override fun onChange(selfChange: Boolean) = updateKeyFilter()\n"
+        "    }\n"
+        "\n"
         "    /** 电源菜单那 12 秒过去后，把按键过滤关回去。 */\n"
         "    private val powerMenuGone = Runnable { updateKeyFilter() }\n"
         "\n"
@@ -1275,8 +1430,7 @@ def patch_power_menu(root):
         "            OppoPower.shutdown()\n"
         "        }\n"
         "    }\n"
-        "\n"
-        "    private val cecInputObserver = object : ContentObserver(handler) {",
+        "\n",
         "菜单息屏改写成真关机",
     )
 
@@ -1342,7 +1496,20 @@ def patch_updates(root, repo):
         '        "https://ghfast.top/https://github.com/%s/releases/latest/download/version.txt",\n'
         '        "https://gh-proxy.com/https://github.com/%s/releases/latest/download/version.txt",\n'
         '        "https://github.com/%s/releases/latest/download/version.txt",\n'
-        "    )" % (repo, repo, repo),
+        "    )\n"
+        "\n"
+        "    /**\n"
+        "     * The version the first source that answers with one reports; null when none did. A mirror\n"
+        "     * can answer with an error page rather than fail outright, so a reply that is not a version\n"
+        "     * number moves on to the next source. Blocking: both callers already run it on IO, and this\n"
+        "     * is the only place the list is read.\n"
+        "     */\n"
+        "    private fun fetchLatest(): String? = VERSION_URLS.firstNotNullOfOrNull { url ->\n"
+        "        runCatching { read(url).trim().removePrefix(\"v\") }\n"
+        '            .onFailure { Log.w(TAG, "could not check for a new version at $url", it) }\n'
+        "            .getOrNull()\n"
+        '            ?.takeIf { it.matches(Regex("\\\\d+(\\\\.\\\\d+)*")) }\n'
+        "    }" % (repo, repo, repo),
         "版本检查：三级国内加速",
     )
     patch(
@@ -1351,14 +1518,7 @@ def patch_updates(root, repo):
         '                    .onFailure { Log.w(TAG, "could not check for a new version", it) }\n'
         '                    .getOrNull()\n'
         '                    ?.takeIf { it.matches(Regex("\\\\d+(\\\\.\\\\d+)*")) }',
-        "                // A mirror can answer with an error page rather than fail outright, so a\n"
-        "                // reply that is not a version number moves on to the next source.\n"
-        "                VERSION_URLS.firstNotNullOfOrNull { url ->\n"
-        "                    runCatching { read(url).trim().removePrefix(\"v\") }\n"
-        '                        .onFailure { Log.w(TAG, "could not check for a new version at $url", it) }\n'
-        "                        .getOrNull()\n"
-        '                        ?.takeIf { it.matches(Regex("\\\\d+(\\\\.\\\\d+)*")) }\n'
-        "                }",
+        "                fetchLatest()",
         "版本检查：逐个源试",
     )
     patch(
@@ -1400,14 +1560,7 @@ def patch_update_row(root):
     suspend fun checkNow(): String? {
         if (!started) return null
         lastAttempt = System.currentTimeMillis()
-        val latest = withContext(Dispatchers.IO) {
-            VERSION_URLS.firstNotNullOfOrNull { url ->
-                runCatching { read(url).trim().removePrefix("v") }
-                    .onFailure { Log.w(TAG, "could not check for a new version at $url", it) }
-                    .getOrNull()
-                    ?.takeIf { it.matches(Regex("\\\\d+(\\\\.\\\\d+)*")) }
-            }
-        } ?: return null
+        val latest = withContext(Dispatchers.IO) { fetchLatest() } ?: return null
         prefs.edit { putString("latest", latest); putLong("checked_at", System.currentTimeMillis()) }
         available = latest.takeIf { newer(it, current) }
         return available
@@ -1664,6 +1817,7 @@ def verify(root, repo, dropped):
             j("HomeViewModel.kt"),
             (
                 "import %s.system.OppoBacklight" % PKG,
+                "OppoBacklight.levelNow(ctx)",
                 "OppoBacklight.onLevel = { percent -> brightness = percent / 100f }",
                 "OppoBacklight.onLevel = null",
             ),
@@ -1698,7 +1852,13 @@ def verify(root, repo, dropped):
             j("guard/HomeGuardService.kt"),
             ("OppoPower.arm()", "powerModeObserver", 'Settings.Global.getUriFor("tv_power_mode")'),
         ),
-        (j("system/OppoPower.kt"), ("setStandbyMode", "CMD_STANDBY_MODE", "fun cancel()", '"ModulePower", CMD_STANDBY_MODE')),
+        (j("system/OppoPower.kt"), ("setStandbyMode", "CMD_STANDBY_MODE", "fun cancel()", 'TvApi.dispatch("ModulePower"')),
+        # 固件反射收在一处：背光和待机都从 TvApi 走，缺了它两个功能一起失效。
+        (
+            j("system/TvApi.kt"),
+            ("fun dispatch(", "fun query(", "tvapisvc", "com.oneplus.tvapi.ITvApi"),
+        ),
+        (j("system/OppoBacklight.kt"), ('TvApi.dispatch("ModulePicture"', 'TvApi.query("ModulePicture"')),
         (j("settings/AerialSettings.kt"), ("enum class PlateNames", "choosePlateNames")),
         (STRINGS_ZH, ('name="st_plate_names"', 'name="st_names_off"')),
         (STRINGS_EN, ('name="st_plate_names"',)),
@@ -1709,6 +1869,13 @@ def verify(root, repo, dropped):
         for needle in needles:
             if needle not in text:
                 fail("%s 里缺 %s：这一步没落地" % (rel, needle))
+
+    # 屏保压暗只核对「这次真加了」的那一版（1.68 起）；更早的版本上游自己压，不加也不核对。
+    if SAVER_SHADE_ADDED:
+        text = read(root, j("ui/home/Screensaver.kt")) or ""
+        for needle in ("Images.homeShade", "val saverShade"):
+            if needle not in text:
+                fail("%s 里缺 %s：屏保压暗没落地" % (j("ui/home/Screensaver.kt"), needle))
 
     if repo:
         updates = read(root, j("update/Updates.kt")) or ""
@@ -1735,16 +1902,64 @@ def verify(root, repo, dropped):
 # ---------------------------------------------------------------- main
 
 
+def lint_anchors():
+    """只看锚点有多「脆」，不跑补丁、不写文件（`apply.py --lint`）。
+
+    反复被顶开的三类原因，前两类已经能从机制上免疫：
+      1) 整块重新缩进        → patch() 现在会自适应（_flexible_match）
+      2) import / 函数体 / 参数 → 走 insert_in_body / set_call_arg / ensure_import
+      3) 锚点里抄了上游的注释 → 上游随手删两行注释就失配（1.69 的 ss_delay 就是这样）
+    这里就把第 3 类全部列出来，好一次性清掉。
+    """
+    import ast
+
+    with open(os.path.abspath(__file__), encoding="utf-8") as f:
+        tree = ast.parse(f.read())
+    rows = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or getattr(node.func, "id", "") != "patch":
+            continue
+        if len(node.args) < 4:
+            continue
+        try:
+            rel = ast.literal_eval(node.args[1])
+            old = ast.literal_eval(node.args[2])
+            what = ast.literal_eval(node.args[3])
+        except (ValueError, SyntaxError):
+            continue
+        if not isinstance(old, str) or not isinstance(what, str):
+            continue
+        comment = [l for l in old.split("\n") if l.strip().startswith(("//", "*", "/*"))]
+        if comment:
+            rows.append((node.lineno, short(rel), what, len(comment), comment[0].strip()))
+
+    print("锚点里抄了上游注释的：%d 处（上游删/改注释就失配）\n" % len(rows))
+    for lineno, rel, what, n, sample in rows:
+        print("  L%-5d %-34s %-30s %d 行  %s" % (lineno, rel, what[:28], n, sample[:52]))
+    print("\n缩进这一类的已经免疫：patch() 命中不到时会放宽首行缩进再找一次。")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Aerial -> OPPO ColorOS TV 定制")
-    parser.add_argument("source", help="上游源码解压后的目录")
+    parser.add_argument("source", nargs="?", default="", help="上游源码解压后的目录")
     parser.add_argument("--version", default="", help="上游 tag 去掉 v，例如 1.46")
+    parser.add_argument(
+        "--lint",
+        action="store_true",
+        help="只检查锚点有多脆，不跑补丁、不写文件",
+    )
     parser.add_argument(
         "--repo",
         default=os.environ.get("AERIAL_REPO") or os.environ.get("GITHUB_REPOSITORY", ""),
         help="自己仓库的 用户名/仓库名，应用内更新从这里下载",
     )
     args = parser.parse_args()
+
+    if args.lint:
+        lint_anchors()
+        return
+    if not args.source:
+        parser.error("要给上游源码目录（只想检查锚点就用 --lint）")
 
     root = os.path.abspath(args.source)
     repo = args.repo.strip().strip("/")
@@ -1769,6 +1984,7 @@ def main():
     patch_manifest(root)
     patch_brightness(root)
     patch_screensaver(root)
+    patch_saver_shade(root, args.version)
     patch_names(root)
     patch_power_menu(root)
     patch_strings(root)
