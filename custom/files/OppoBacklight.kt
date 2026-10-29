@@ -1,16 +1,10 @@
 package com.oneplus.tv.launcher2.system
 
-import android.app.Service
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
 import android.database.ContentObserver
 import android.os.Handler
-import android.os.IBinder
+import android.os.HandlerThread
 import android.os.Looper
-import android.os.Message
-import android.os.Messenger
 import android.os.SystemClock
 import android.provider.Settings
 
@@ -36,14 +30,12 @@ import android.provider.Settings
  * 调的：`disPatchCommand("ModulePicture", 1, [亮度], false)`。
  *
  * 但该服务放行前会查调用方**进程名**，要求包含它白名单里的某一串（`com.heytap.tv.remote`、
- * `com.heytap.speechassist.tv` …）。所以本文件里的服务在清单中声明了
- * `android:process=":com.heytap.tv.remote"`——进程名因此是
- * `com.oneplus.tv.launcher2:com.heytap.tv.remote`，包含白名单串，调用才会被接受。
+ * `com.heytap.speechassist.tv` …）。本应用的清单把主进程直接声明成了
+ * `android:process=":com.heytap.tv.remote"`，进程名因此是
+ * `com.oneplus.tv.launcher2:com.heytap.tv.remote`，包含白名单串，在**本进程内**直接调用即可
+ * （反射那一层收在 [TvApi] 里，和 [OppoPower] 共用）。
  *
- * 主界面进程不在白名单里，所以它只负责记账和转发，真正的调用由那个进程里的
- * [OppoBrightnessService] 完成，两者用 [Messenger] 通信（不需要写 AIDL）。
- *
- * 读这条腿走的是同一个服务：`query("ModulePicture", 1, ret)`，返回值恒为 0，真值写回 `ret`。
+ * 读这条腿走同一个服务：`query("ModulePicture", 1, ret)`，返回值恒为 0，真值写回 `ret`。
  * 只有固件知道面板当下的真实电平——用户用小布或设置页改过之后，记账值就是错的，所以 [level]
  * 在给出记账值的同时顺手要一次真值（[calibrate]），对不上就改记账并回调 [onLevel]。
  *
@@ -64,14 +56,11 @@ object OppoBacklight {
     /** query 迟迟不回（tvapisvc 没起、Binder 卡住）时，多久之后允许再发一次。 */
     private const val QUERY_TIMEOUT_MS = 2_000L
 
-    const val MSG_SET = 1
-    const val MSG_QUERY = 2
-    const val MSG_LEVEL = 3
-
-    @Volatile private var messenger: Messenger? = null
-    @Volatile private var binding = false
-    @Volatile private var pending: Int? = null
-    @Volatile private var last = 0
+    /**
+     * 记账值。-1 = 还不知道，别用 0 当"未知"：0 是合法的亮度（最低档），用它当哨兵会让
+     * 进程刚起来时 [remembered] 直接返回 0，控制中心先显示 0 再被回读纠正过来。
+     */
+    @Volatile private var last = -1
     @Volatile private var appContext: Context? = null
 
     /** 每次 set 加一。query 带着发起时的号回来，号变了说明中途 set 过，那次回读作废。 */
@@ -79,15 +68,9 @@ object OppoBacklight {
     @Volatile private var querying = false
     @Volatile private var queriedAt = 0L
     @Volatile private var lastSetAt = 0L
-    @Volatile private var pendingQuery = false
 
     /** 校准时发现面板真值和记账值不一样，把真值报出来（0..100），在主线程调用。 */
     @Volatile var onLevel: ((Int) -> Unit)? = null
-
-    private val reply = Messenger(Handler(Looper.getMainLooper()) { msg ->
-        if (msg.what == MSG_LEVEL) onRead(msg.arg1, msg.arg2)
-        true
-    })
 
     /**
      * 电视自己的「图像与亮度」页改亮度时会写 Settings.Global 的 tv_picture_backlight
@@ -106,13 +89,28 @@ object OppoBacklight {
                 Settings.Global.getInt(ctx.contentResolver, GLOBAL_KEY, -1)
             }.getOrDefault(-1)
             if (value !in 0..100 || value == last) return
-            last = value
-            runCatching {
-                ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY, value).apply()
-            }
+            remember(ctx, value)
             onLevel?.invoke(value)
         }
     }
+
+    /**
+     * 回读面板真值的那条线程。`query` 是阻塞的 Binder 调用，放在主线程上会在打开控制中心时
+     * 顶掉一帧；以前它绕道一个同进程的 Service，其实还是回主线程执行，等于没躲开。
+     */
+    private val worker by lazy {
+        HandlerThread("OppoBacklight").apply { start() }
+    }
+
+    private val workerHandler by lazy { Handler(worker.looper) }
+
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
+
+    /** [usable] 的答案，查过一次就记住。 */
+    @Volatile private var usableKnown: Boolean? = null
+
+    /** 回读数组的槽位数：固件只写它认的那一格，长度对不上 AIDL 会抛，见 [read]。 */
+    @Volatile private var slots = 1
 
     /** 第一次拿到 context 时挂上，只挂一次。 */
     private fun watch(context: Context) {
@@ -126,9 +124,18 @@ object OppoBacklight {
         }
     }
 
-    /** 这台电视有没有那套固件接口。没有就走上游原来的分支。 */
-    fun usable(context: Context): Boolean =
-        runCatching { context.packageManager.getPackageInfo(SERVICE_PKG, 0) }.isSuccess
+    /**
+     * 这台电视有没有那套固件接口。没有就走上游原来的分支。
+     *
+     * 每按一下亮度键都会问一次，所以查过一次就记住 —— `getPackageInfo` 要走一次
+     * PackageManager，没必要按着键反复问。
+     */
+    fun usable(context: Context): Boolean {
+        usableKnown?.let { return it }
+        val known = runCatching { context.packageManager.getPackageInfo(SERVICE_PKG, 0) }.isSuccess
+        usableKnown = known
+        return known
+    }
 
     /** 当前亮度，0..100。先给记账值，真值由 [calibrate] 稍后校正。 */
     fun level(context: Context): Int {
@@ -136,6 +143,32 @@ object OppoBacklight {
         val value = remembered(context)
         calibrate(context)
         return value
+    }
+
+    /**
+     * 现在就要一个准的值：向固件查一次（阻塞几毫秒），查不到才退回记账值。
+     *
+     * 只在「打开控制中心」这种必须一次就对的路径用 —— [level] 是先给记账值、回读异步纠正，
+     * 面板刚画出来的那一两帧还是旧值。调用方必须不在主线程上（HomeViewModel 走 Default）。
+     */
+    fun levelNow(context: Context): Int {
+        watch(context)
+        // 刚设过就别问：面板还在渐变，读回来的是中间电平，此时记账值才是对的。
+        if (SystemClock.uptimeMillis() - lastSetAt < SETTLE_MS) return remembered(context)
+        // 作废在途的异步回读，免得它回来把刚读到的值改回旧的。
+        version++
+        val panel = read()
+        if (panel !in 0..100) return remembered(context)
+        remember(context, panel)
+        return panel
+    }
+
+    /** 记下这个值：内存 + 本地，进程重启后不必再猜一个 50。 */
+    private fun remember(context: Context, value: Int) {
+        last = value
+        runCatching {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY, value).apply()
+        }
     }
 
     private fun remembered(context: Context): Int {
@@ -162,22 +195,12 @@ object OppoBacklight {
         // 记下这一笔：在途的 query 读的是旧电平，之后 SETTLE_MS 内的回读也是渐变中的值。
         version++
         lastSetAt = SystemClock.uptimeMillis()
-        last = value
+        remember(context, value)
         // 顺手把快照也写一份：设置应用在跑时会把它推给面板（就是刚设的那个值，无副作用），
         // 它不在跑时就只是冷启动快照，不同步的话重启后亮度会跳回旧值。
         // 没有 WRITE_SECURE_SETTINGS 时静默失败。
         runCatching { Settings.Global.putInt(context.contentResolver, GLOBAL_KEY, value) }
-        runCatching {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putInt(KEY, value).apply()
-        }
-        pending = value
-        val ready = messenger
-        if (ready != null) {
-            flush(ready)
-            return
-        }
-        bind(context)
+        push(value)
     }
 
     /**
@@ -188,22 +211,13 @@ object OppoBacklight {
         appContext = context.applicationContext
         val now = SystemClock.uptimeMillis()
         if (querying && now - queriedAt < QUERY_TIMEOUT_MS) return
-        val ready = messenger
-        if (ready == null) {
-            // 还没连上：先连，连上之后 onServiceConnected 补发。
-            pendingQuery = true
-            bind(context)
-            return
-        }
         querying = true
         queriedAt = now
-        val sent = runCatching {
-            ready.send(Message.obtain(null, MSG_QUERY).apply {
-                arg1 = version
-                replyTo = reply
-            })
-        }.isSuccess
-        if (!sent) querying = false
+        val asked = version
+        workerHandler.post {
+            val value = read()
+            mainHandler.post { onRead(value, asked) }
+        }
     }
 
     /** 面板真值回来了。对不上就改记账，并让界面跟上。 */
@@ -213,155 +227,28 @@ object OppoBacklight {
         if (SystemClock.uptimeMillis() - lastSetAt < SETTLE_MS) return
         if (value !in 0..100) return
         if (value == last) return
-        last = value
         val ctx = appContext ?: return
         // 只记到本地，进程重启后不必再猜一个 50。
         //
         // 这里**不再回写 tv_picture_backlight**：那个键在设置应用活着时能推动面板（见文件头），
         // 而校准读到的可能是渐变中途的电平，回写等于把面板钉在一个我们并不想要的值上。它是
         // 「外界改过亮度的信号」，我们只读不写 —— 要写也只在 [set] 里写我们自己刚设的那个值。
-        runCatching {
-            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putInt(KEY, value).apply()
-        }
+        remember(ctx, value)
         onLevel?.invoke(value)
     }
 
-    private fun flush(m: Messenger) {
-        val value = pending ?: return
-        pending = null
-        runCatching { m.send(Message.obtain(null, MSG_SET, value, 0)) }
-    }
-
-    private fun bind(context: Context) {
-        if (binding || messenger != null) return
-        val app = context.applicationContext
-        binding = true
-        val ok = runCatching {
-            app.bindService(
-                Intent(app, OppoBrightnessService::class.java),
-                connection,
-                Context.BIND_AUTO_CREATE
-            )
-        }.getOrDefault(false)
-        if (!ok) binding = false
-    }
-
-    private val connection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            binding = false
-            val m = Messenger(binder)
-            messenger = m
-            flush(m)
-            if (pendingQuery) {
-                pendingQuery = false
-                appContext?.let { calibrate(it) }
-            }
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            messenger = null
-        }
-    }
-}
-
-/**
- * 跑在 `:com.heytap.tv.remote` 进程里的那一半。它的唯一工作是把亮度值交给固件的 `tvapisvc`，
- * 以及把面板的真实电平读回来（`query`）。
- */
-class OppoBrightnessService : Service() {
-
-    private var api: Any? = null
-    private var queryMethod: java.lang.reflect.Method? = null
-
-    /** 写命令的方法，第一次用到时查一次就存着。 */
-    private var dispatchMethod: java.lang.reflect.Method? = null
-
-    /** 回读数组的槽位数：固件只写它认的那一格，长度对不上 AIDL 会抛，见 [reading]。 */
-    private var slots = 1
-
-    private val handler = object : Handler(Looper.getMainLooper()) {
-        override fun handleMessage(msg: Message) {
-            when (msg.what) {
-                OppoBacklight.MSG_SET -> push(msg.arg1)
-                OppoBacklight.MSG_QUERY -> read(msg.arg1, msg.replyTo)
-            }
-        }
-    }
-
-    private val bridge = Messenger(handler)
-
-    override fun onBind(intent: Intent?): IBinder = bridge.binder
-
-    override fun onCreate() {
-        super.onCreate()
-        connect()
-    }
-
-    /** `ServiceManager` 是 @hide，只能反射；接口类在 boot classpath 上，能直接加载。 */
-    private fun connect() {
-        if (api != null) return
-        runCatching {
-            val binder = Class.forName("android.os.ServiceManager")
-                .getMethod("getService", String::class.java)
-                .invoke(null, "tvapisvc") as? IBinder ?: return
-            api = Class.forName("com.oneplus.tvapi.ITvApi\$Stub")
-                .getMethod("asInterface", IBinder::class.java)
-                .invoke(null, binder)
-        }
-    }
-
-    /**
-     * 写亮度这条路每次按键都走，所以反射查方法只做一次（`query` 那边早就是这样了）。
-     * `Class.forName` + `getMethod` 都在主线程上，按一次键查一次纯属浪费。
-     */
     private fun push(percent: Int) {
-        connect()
-        val target = api ?: return
-        val method = dispatchMethod ?: runCatching {
-            Class.forName("com.oneplus.tvapi.ITvApi")
-                .getMethod(
-                    "disPatchCommand",
-                    String::class.java,
-                    Int::class.javaPrimitiveType,
-                    Array<String>::class.java,
-                    Boolean::class.javaPrimitiveType
-                )
-        }.getOrNull()?.also { dispatchMethod = it } ?: return
-        runCatching { method.invoke(target, "ModulePicture", 1, arrayOf(percent.toString()), false) }
-    }
-
-    private fun read(version: Int, caller: Messenger?) {
-        connect()
-        val target = api
-        val level = if (target == null) -1 else reading(target)
-        if (caller == null) return
-        runCatching {
-            caller.send(Message.obtain(null, OppoBacklight.MSG_LEVEL).apply {
-                arg1 = level
-                arg2 = version
-            })
-        }
+        TvApi.dispatch("ModulePicture", 1, arrayOf(percent.toString()))
     }
 
     /**
-     * `query` 的返回值恒为 0（-1 只表示模块名不认识），真值写回传进去的数组。而 AIDL 的 out 数组
-     * 回程要求两边长度相等（Parcel.readStringArray 长度不符直接抛），长度由固件那边决定，看不出来，
-     * 只能试：先用上次成功的槽位数，不对再换。读到的第一格合法值（0..100）就是背光。
+     * 面板真值。`query` 的返回值恒为 0（-1 只表示模块名不认识），真值写回传进去的数组；AIDL 的
+     * out 数组回程要求两边长度相等（`Parcel.readStringArray` 长度不符直接抛），长度由固件那边
+     * 决定、看不出来，只能试：先用上次成功的槽位数，不对再换。第一格合法值（0..100）就是背光。
      */
-    private fun reading(target: Any): Int {
-        val method = queryMethod ?: runCatching {
-            Class.forName("com.oneplus.tvapi.ITvApi")
-                .getMethod(
-                    "query",
-                    String::class.java,
-                    Int::class.javaPrimitiveType,
-                    Array<String>::class.java
-                )
-        }.getOrNull()?.also { queryMethod = it } ?: return -1
+    private fun read(): Int {
         for (n in intArrayOf(slots, 1, 2, 4, 8)) {
-            val back = Array(n) { "" }
-            if (runCatching { method.invoke(target, "ModulePicture", 1, back) }.isFailure) continue
+            val back = TvApi.query("ModulePicture", 1, Array(n) { "" }) ?: continue
             val value = back.asSequence()
                 .mapNotNull { it.trim().toIntOrNull() }
                 .firstOrNull { it in 0..100 }
