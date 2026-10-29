@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 进程名带 :com.heytap.tv.remote，固件的 tvapisvc 才会接受本应用的背光 / 关机调用。
+         主进程名不含白名单串，所以让进程名本身带上它。 -->
+    <application android:process=":com.heytap.tv.remote">
+        <activity android:name="com.oneplus.tv.launcher2.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <!-- OPPO ColorOS TV only hands the launcher role to a home activity that
+                     carries this marker; without it the TV waits forever for "its"
+                     launcher and hangs on the boot logo. See docs/devices/oppo-coloros-tv.md. -->
+                <category android:name="com.heytap.tv.launcher.category.MODERN_HOME" />
+            </intent-filter>
+            <!-- Coocaa's private Home category, which its firmware picks the launcher by (Skyworth
+                 9S52_Q4A, Android 6, issue #397; also what makes Dangbei's launcher selectable there).
+                 Not verified to change the boot launcher yet. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME.CC" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
