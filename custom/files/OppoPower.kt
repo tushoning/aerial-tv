@@ -1,11 +1,10 @@
 package com.oneplus.tv.launcher2.system
 
-import android.os.IBinder
 import android.os.SystemClock
 import android.util.Log
 
 /**
- * ColorOS TV 的待机 / 关机走固件服务 `tvapisvc`（`ITvApi.disPatchCommand`）。
+ * ColorOS TV 的待机 / 关机走固件服务 `tvapisvc`（`ITvApi.disPatchCommand`，见 [TvApi]）。
  *
  * 实测到的映射（OPPOCNM632，Android 9，从 logcat 抓的）：
  *
@@ -20,9 +19,8 @@ import android.util.Log
  * 参数换成 `"DEPTH"` 就是真关机 —— SystemUI 自己的字符串写着
  * `setpowermode DEPTH, do not need to do something to wifi`（真关机后不用再收拾 wifi）。
  *
- * 该服务按**进程名**放行（要求包含 `com.heytap.tv.remote` 之类白名单串）。本应用的主进程
- * 已经挂在 `:com.heytap.tv.remote` 上（manifest 的 `android:process`），所以这里直接调即可，
- * 不像背光那样要再跨一次进程。
+ * 这个 object 只负责「上膛」这笔账：电源菜单出现过之后的一小段时间里，随后到来的 QUICK 才被
+ * 认作菜单那个「息屏」（改写由 HomeGuardService 里的观察者执行）。
  */
 object OppoPower {
 
@@ -40,8 +38,6 @@ object OppoPower {
      */
     const val WATCH_MS = 12_000L
 
-    private const val ARM_MS = WATCH_MS
-
     /** 电源菜单刚显示过的截止时刻（uptime ms）。只有这段里的 QUICK 才是菜单那个「息屏」。 */
     @Volatile
     private var armedUntil = 0L
@@ -58,55 +54,24 @@ object OppoPower {
 
     /** 电源菜单（那个 Dialog）显示过了：接下来一小段时间里的 QUICK 待机是它触发的。 */
     fun arm() {
-        armedUntil = SystemClock.uptimeMillis() + ARM_MS
+        armedUntil = SystemClock.uptimeMillis() + WATCH_MS
     }
 
     fun armed(): Boolean = SystemClock.uptimeMillis() < armedUntil
 
-    /** 服务代理，第一次用到时连一次就存着（连的是固件服务，不会断）。 */
-    @Volatile
-    private var api: Any? = null
-
-    /** `disPatchCommand` 的方法句柄。反射查一次就够，别每次关机都查。 */
-    @Volatile
-    private var dispatchMethod: java.lang.reflect.Method? = null
-
-    private fun connect(): Any? {
-        api?.let { return it }
-        val made = runCatching {
-            val binder = Class.forName("android.os.ServiceManager")
-                .getMethod("getService", String::class.java)
-                .invoke(null, "tvapisvc") as? IBinder ?: return null
-            Class.forName("com.oneplus.tvapi.ITvApi\$Stub")
-                .getMethod("asInterface", IBinder::class.java)
-                .invoke(null, binder)
-        }.getOrNull() ?: return null
-        api = made
-        return made
-    }
-
     /** 待机模式：`"QUICK"` 快捷待机（黑屏不睡），`"DEPTH"` 真关机。 */
     fun setStandbyMode(mode: String) {
-        val target = connect() ?: run {
-            Log.w(TAG, "tvapisvc not reachable; $mode not sent")
-            return
-        }
-        val method = dispatchMethod ?: runCatching {
-            Class.forName("com.oneplus.tvapi.ITvApi")
-                .getMethod(
-                    "disPatchCommand",
-                    String::class.java,
-                    Int::class.javaPrimitiveType,
-                    Array<String>::class.java,
-                    Boolean::class.javaPrimitiveType
-                )
-        }.getOrNull()?.also { dispatchMethod = it } ?: return
-        runCatching {
-            method.invoke(target, "ModulePower", CMD_STANDBY_MODE, arrayOf(mode), false)
+        if (TvApi.dispatch("ModulePower", CMD_STANDBY_MODE, arrayOf(mode))) {
             Log.i(TAG, "setStandbyMode($mode) sent to tvapisvc")
-        }.onFailure { Log.w(TAG, "setStandbyMode($mode) failed", it) }
+        }
     }
 
-    /** 真关机。 */
-    fun shutdown() = setStandbyMode("DEPTH")
+    /**
+     * 真关机。发出去就把窗口关掉：真关机过程中若 12 秒内又来一个 QUICK（比如用户又按了电源），
+     * 不该再补一发 DEPTH。
+     */
+    fun shutdown() {
+        armedUntil = 0
+        setStandbyMode("DEPTH")
+    }
 }
