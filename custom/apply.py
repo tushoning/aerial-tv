@@ -123,19 +123,61 @@ def _flexible_match(text, old):
     return m.start(), m.end(), m.group(1)
 
 
-def patch(root, rel, old, new, what):
-    """把 old 换成 new；old 必须恰好出现一次，否则记账等最后统一报错。
+def _is_comment_line(line):
+    """整行就是注释（`//`、`/*`、`*`、`*/`）—— 这种行不承载任何代码。"""
+    s = line.strip()
+    return s.startswith("//") or s.startswith("/*") or s.startswith("*") or s.endswith("*/")
+
+
+def _tolerant_match(text, old):
+    """最后一档放宽：锚点里那些**整行注释**当作可有可无，代码行仍然逐字对上。
+
+    上游最常干的事就是只动注释、代码一字不改（1.69 删掉 WallpaperSheet 里两行注释，
+    整条补丁当场命中 0 次）。所以按行比对：注释行能对上就吃掉，对不上就当它不存在。
+
+    返回 (首行号, 结束行号, 首行缩进)；命中 0 次给 None，命中多次给 False（宁可报错也不猜）。
+    """
+    core = old[:-1] if old.endswith("\n") else old
+    want = core.split("\n")
+    if not any(_is_comment_line(line) for line in want):
+        return None
+    have = text.split("\n")
+    hits = []
+    last = len(have) - len(want)
+    for start in range(max(last, 0) + 1):
+        i, j = start, 0
+        while j < len(want):
+            if _is_comment_line(want[j]):
+                if i < len(have) and _is_comment_line(have[i]):
+                    i += 1
+                j += 1
+                continue
+            if i >= len(have) or have[i].strip() != want[j].strip():
+                break
+            i += 1
+            j += 1
+        if j == len(want):
+            hits.append((start, i, _indent_of(have[start])))
+    if not hits:
+        return None
+    if len(hits) > 1:
+        return False
+    return hits[0]
+
+
+def _try_patch(root, rel, old, new, what):
+    """试着改一次：命中就写回去并返回 True，否则返回 False（不记账）。
 
     先按原文逐字找；找不到再放宽成「缩进可变」找一次（见 _flexible_match）。
     """
     text = read(root, rel)
     if text is None:
-        return
+        return True
     hits = text.count(old)
     if hits == 1:
         write(root, rel, text.replace(old, new, 1))
         print("  ok  %-44s %s" % (short(rel), what))
-        return
+        return True
     if hits == 0:
         found = _flexible_match(text, old)
         if found:
@@ -145,11 +187,63 @@ def patch(root, rel, old, new, what):
             body = _reindent(body, base, indent) + ("\n" if old.endswith("\n") else "")
             write(root, rel, text[:start] + body + text[end:])
             print("  ok  %-44s %s  （上游改了缩进，已自适应）" % (short(rel), what))
+            return True
+        tol = _tolerant_match(text, old)
+        if tol:
+            start, end, indent = tol
+            base = _indent_of(old.split("\n")[0])
+            body = new[:-1] if new.endswith("\n") else new
+            body = _reindent(body, base, indent)
+            lines = text.split("\n")
+            lines[start:end] = body.split("\n")
+            write(root, rel, "\n".join(lines))
+            print("  ok  %-44s %s  （锚点里的注释变了，已自适应）" % (short(rel), what))
+            return True
+    return False
+
+
+def patch(root, rel, old, new, what, marker=None):
+    """把 old 换成 new；old 必须恰好出现一次，否则记账等最后统一报错。
+
+    marker 给了「已经改过」的判据时，文件里已经有它就跳过（同一份源码重复跑不会红）。
+    """
+    if marker:
+        text = read(root, rel)
+        if text is None:
             return
+        if marker in text:
+            print("  ok  %-44s %s（已改过，跳过）" % (short(rel), what))
+            return
+    if _try_patch(root, rel, old, new, what):
+        return
+    text = read(root, rel) or ""
+    hits = text.count(old)
     why = "上游可能删了或改了这一段" if hits == 0 else "这段在上游出现了 %d 次，锚点不够独特" % hits
     fail(
         "%s\n    要改的地方：%s\n    问题：锚点命中 %d 次（应当 1 次），%s\n    期望原文：\n%s"
         % (rel, what, hits, why, fence(old))
+    )
+
+
+def patch_any(root, rel, candidates, what):
+    """一条补丁给几组候选 (old, new)，按顺序试，第一组命中的就用。
+
+    上游重构同一处代码时（1.72 把 refreshPanel 拆成两句、把版本检查收进 UpdateCheck），
+    只写一组原文必然红；写成「新写法 + 旧写法」两组候选，两代版本就都能过，
+    不必等到红了一次再回来补。
+    """
+    if read(root, rel) is None:
+        return
+    for old, new in candidates:
+        if _try_patch(root, rel, old, new, what):
+            return
+    detail = "\n".join(
+        "    候选 %d：命中 %d 次\n%s" % (i + 1, (read(root, rel) or "").count(old), fence(old))
+        for i, (old, _) in enumerate(candidates)
+    )
+    fail(
+        "%s\n    要改的地方：%s\n    问题：%d 组候选锚点一组都没命中\n%s"
+        % (rel, what, len(candidates), detail)
     )
 
 
@@ -408,6 +502,269 @@ def ensure_import(root, rel, line, what):
     print("  ok  %-44s %s" % (short(rel), what))
 
 
+def _line_hit(text, anchor, rel, what):
+    """按「整行」定位 anchor，返回唯一的那个 match；不唯一就记账并返回 None。
+
+    anchor 可以给一组候选：上游在新旧版本里对同一处写法不同时（1.69 起名字那行的条件
+    多了 DiagLayers.shows("names")），哪一代唯一命中就用哪一代。
+    """
+    candidates = anchor if isinstance(anchor, (list, tuple)) else [anchor]
+    tried = []
+    for cand in candidates:
+        found = list(re.finditer(r"(?m)^([ \t]*)%s[ \t]*$" % re.escape(cand), text))
+        tried.append((cand, len(found)))
+        if len(found) == 1:
+            return found[0]
+    detail = "\n".join("    候选 %d：命中 %d 次   %s" % (i + 1, n, c) for i, (c, n) in enumerate(tried))
+    fail(
+        "%s\n    要改的地方：%s\n    问题：%d 组整行锚点都没能唯一命中\n%s"
+        % (rel, what, len(tried), detail)
+    )
+    return None
+
+
+def insert_after_line(root, rel, anchor, lines, what, marker=None):
+    """在 anchor 那一行**之后**插几行，缩进沿用 anchor 自己的。
+
+    比「整块原文锚点」耐改得多：凡是「往一个列表里加一条」的地方都该用它 —— 上游在
+    同一处插了自己的行（1.70 就往 HOME 的 intent-filter 里塞了 COMMON_HOME），
+    整块锚点立刻 0 命中，而单行锚点完全不受影响。
+
+    anchor 是整行内容（不含缩进，按整行精确匹配，必须恰好命中一次）。
+    marker 给一个「已经加过」的判据字符串（幂等）。
+    """
+    text = read(root, rel)
+    if text is None:
+        return
+    if marker and marker in text:
+        print("  ok  %-44s %s（已加过，跳过）" % (short(rel), what))
+        return
+    hit = _line_hit(text, anchor, rel, what)
+    if hit is None:
+        return
+    ind = hit.group(1)
+    block = "\n".join((ind + line) if line.strip() else "" for line in lines)
+    at = hit.end()
+    write(root, rel, text[:at] + "\n" + block + text[at:])
+    print("  ok  %-44s %s" % (short(rel), what))
+
+
+def insert_before_line(root, rel, anchor, lines, what, marker=None):
+    """在 anchor 那一行**之前**插几行（缩进沿用 anchor）。与 insert_after_line 同源。"""
+    text = read(root, rel)
+    if text is None:
+        return
+    if marker and marker in text:
+        print("  ok  %-44s %s（已加过，跳过）" % (short(rel), what))
+        return
+    hit = _line_hit(text, anchor, rel, what)
+    if hit is None:
+        return
+    ind = hit.group(1)
+    block = "\n".join((ind + line) if line.strip() else "" for line in lines)
+    at = hit.start()
+    write(root, rel, text[:at] + block + "\n\n" + text[at:])
+    print("  ok  %-44s %s" % (short(rel), what))
+
+
+def insert_after_block(root, rel, signature, lines, what, marker):
+    """在 signature 命中的那个块（函数、object、companion…）**闭合花括号之后**插几行。
+
+    只认签名所在的这一行，块里有多少行、怎么写的都不看，也不用把函数体抄进锚点。
+    上游改函数体（1.69 的 level() 里加极米分支、focusedPx 换个算法）不再影响这里。
+    """
+    text = read(root, rel)
+    if text is None:
+        return
+    if marker and marker in text:
+        print("  ok  %-44s %s（已加过，跳过）" % (short(rel), what))
+        return
+    found = _only_match(text, signature, rel, what)
+    if found is None:
+        return
+    brace = text.find("{", found.end())
+    if brace < 0:
+        fail("%s\n    要改的地方：%s\n    问题：签名后面没有 '{'，定位不到块" % (rel, what))
+        return
+    close = _close_brace(text, brace + 1)
+    if close < 0:
+        fail("%s\n    要改的地方：%s\n    问题：花括号没闭合，定位不到块尾" % (rel, what))
+        return
+    eol = text.find("\n", close)
+    eol = len(text) if eol < 0 else eol + 1
+    line_start = text.rfind("\n", 0, found.start()) + 1
+    ind = _indent_of(text[line_start:])
+    block = "".join((ind + line + "\n") if line.strip() else "\n" for line in lines)
+    rest = text[eol:]
+    # 后面已经空了一行就别再补，免得插出两个空行。
+    write(root, rel, text[:eol] + "\n" + block + ("" if rest.startswith("\n") else "\n") + rest)
+    print("  ok  %-44s %s" % (short(rel), what))
+
+
+def insert_before_call(root, rel, anchor, call, lines, what, marker):
+    """anchor 那一行落在某个 call 的参数里；在**那个调用的开头行之前**插几行。
+
+    用来「在一个已有的调用前面再加一个同类的」：不用把整个调用抄进锚点，上游改它的
+    参数、加一项、换顺序都不影响 —— 只要 anchor 那一行还在。
+    """
+    text = read(root, rel)
+    if text is None:
+        return
+    if marker and marker in text:
+        print("  ok  %-44s %s（已加过，跳过）" % (short(rel), what))
+        return
+    hits = list(re.finditer(anchor, text, re.M))
+    if len(hits) != 1:
+        fail(
+            "%s\n    要改的地方：%s\n    问题：锚点命中 %d 次（应当 1 次）。\n    期望原文：\n%s"
+            % (rel, what, len(hits), fence(anchor))
+        )
+        return
+    all_lines = text.split("\n")
+    at = text.count("\n", 0, hits[0].start())
+    for k in range(at, max(at - 200, -1), -1):
+        if all_lines[k].strip() == call:
+            ind = _indent_of(all_lines[k])
+            block = [(ind + line) if line.strip() else "" for line in lines]
+            all_lines[k:k] = block
+            write(root, rel, "\n".join(all_lines))
+            print("  ok  %-44s %s" % (short(rel), what))
+            return
+    fail("%s\n    要改的地方：%s\n    问题：锚点上面 200 行内找不到「%s」那一行" % (rel, what, call))
+
+
+def patch_span(root, rel, start, end, new, what, absorb=None, marker=None):
+    """把「start 命中的那一行 → end 命中的那一行（含）」整段换成 new。
+
+    中间写了什么一概不看：这一段本来就是要整个换掉的，上游在里面加行、改缩进、改措辞
+    都不影响。end 之后还想连吃几行（比如紧接着的 `}`）就再给一个 absorb。
+    """
+    text = read(root, rel)
+    if text is None:
+        return
+    if marker and marker in text:
+        print("  ok  %-44s %s（已改过，跳过）" % (short(rel), what))
+        return
+    heads = list(re.finditer(start, text, re.M))
+    if len(heads) != 1:
+        fail(
+            "%s\n    要改的地方：%s\n    问题：起点命中 %d 次（应当 1 次）。\n    起点正则：\n%s"
+            % (rel, what, len(heads), fence(start))
+        )
+        return
+    head = heads[0]
+    tail = re.compile(end, re.M).search(text, head.start())
+    if tail is None:
+        fail(
+            "%s\n    要改的地方：%s\n    问题：起点之后找不到终点。\n    终点正则：\n%s"
+            % (rel, what, fence(end))
+        )
+        return
+    stop = text.find("\n", tail.start())
+    stop = len(text) if stop < 0 else stop + 1
+    if absorb:
+        more = re.compile(absorb, re.M).search(text, stop)
+        if more is None:
+            fail("%s\n    要改的地方：%s\n    问题：终点之后找不到要连带吃掉的行：\n%s" % (rel, what, fence(absorb)))
+            return
+        stop = text.find("\n", more.start())
+        stop = len(text) if stop < 0 else stop + 1
+    line_start = text.rfind("\n", 0, head.start()) + 1
+    ind = _indent_of(text[line_start:])
+    body = _reindent(new, _indent_of(new.split("\n")[0]), ind)
+    if not body.endswith("\n"):
+        body += "\n"
+    write(root, rel, text[: head.start()] + body + text[stop:])
+    print("  ok  %-44s %s" % (short(rel), what))
+
+
+def move_line_before(root, rel, line, before, what, note=None, marker=None):
+    """把 line 那一整行挪到 before 那一行之前（两行都按整行认，各须唯一）。
+
+    用于「同一块里两条语句换顺序」：上游在块里多写一句、换个措辞都不影响，
+    比抄下整块原文稳得多。
+    """
+    text = read(root, rel)
+    if text is None:
+        return
+    if marker and marker in text:
+        print("  ok  %-44s %s（已改过，跳过）" % (short(rel), what))
+        return
+    all_lines = text.split("\n")
+
+    def only(needle):
+        return [i for i, item in enumerate(all_lines) if item.strip() == needle]
+
+    a, b = only(line), only(before)
+    if len(a) != 1 or len(b) != 1:
+        fail(
+            "%s\n    要改的地方：%s\n    问题：要挪的那行命中 %d 次、目标行命中 %d 次（都应当 1 次）。\n"
+            "    要挪的：%s\n    放到它前面的：%s"
+            % (rel, what, len(a), len(b), line.strip(), before.strip())
+        )
+        return
+    moved = all_lines.pop(a[0])
+    target = b[0] - 1 if a[0] < b[0] else b[0]
+    all_lines[target:target] = (list(note) if note else []) + [moved]
+    write(root, rel, "\n".join(all_lines))
+    print("  ok  %-44s %s" % (short(rel), what))
+
+
+def set_string(root, rel, name, value, what):
+    """把一个 `<string name="…">` 的值换掉：按 name 认，不看原来的文案写的是什么。
+
+    上游改文案（1.68 就把好几个字符串重写过）不再影响这里 —— 只要求这个名字还在。
+    """
+    text = read(root, rel)
+    if text is None:
+        return
+    pat = re.compile(r'(?m)^([ \t]*)<string name="%s">.*?</string>[ \t]*$' % re.escape(name))
+    hits = list(pat.finditer(text))
+    if len(hits) != 1:
+        fail(
+            "%s\n    要改的地方：%s\n    问题：<string name=\"%s\"> 命中 %d 次（应当 1 次）。"
+            "上游可能把这个字符串改名或删了。" % (rel, what, name, len(hits))
+        )
+        return
+    want = '%s<string name="%s">%s</string>' % (hits[0].group(1), name, value)
+    if hits[0].group(0) == want:
+        print("  ok  %-44s %s（已是目标文案）" % (short(rel), what))
+        return
+    write(root, rel, text[: hits[0].start()] + want + text[hits[0].end():])
+    print("  ok  %-44s %s" % (short(rel), what))
+
+
+def insert_strings(root, rel, anchor, entries, what, marker, where="before"):
+    """在 `<string name="anchor">` 那一行前后插入若干条 (name, value)。
+
+    按 name 认位置：上游改这些字符串的文案、调顺序、在中间插自己的条目，都不影响。
+    """
+    text = read(root, rel)
+    if text is None:
+        return
+    if marker and marker in text:
+        print("  ok  %-44s %s（已加过，跳过）" % (short(rel), what))
+        return
+    pat = re.compile(r'(?m)^([ \t]*)<string name="%s">.*?</string>[ \t]*$' % re.escape(anchor))
+    hits = list(pat.finditer(text))
+    if len(hits) != 1:
+        fail(
+            "%s\n    要改的地方：%s\n    问题：<string name=\"%s\"> 命中 %d 次（应当 1 次）。"
+            % (rel, what, anchor, len(hits))
+        )
+        return
+    ind = hits[0].group(1)
+    block = "".join('%s<string name="%s">%s</string>\n' % (ind, n, v) for n, v in entries)
+    if where == "before":
+        text = text[: hits[0].start()] + block + text[hits[0].start():]
+    else:
+        eol = text.find("\n", hits[0].end())
+        eol = len(text) if eol < 0 else eol + 1
+        text = text[:eol] + block + text[eol:]
+    write(root, rel, text)
+    print("  ok  %-44s %s" % (short(rel), what))
+
+
 # ---------------------------------------------------------------- 1. 预检
 
 
@@ -544,19 +901,19 @@ def patch_signature(root):
 
 def patch_manifest(root):
     # 少了 MODERN_HOME，OPPO 开机不把桌面角色交出去，会一直卡在品牌动画。
-    patch(
+    # 按「HOME 那一行之后」插，锚点只占一行：1.70 往这个 filter 里加了 COMMON_HOME，
+    # 整块原文的写法当场 0 命中，单行写法不受影响。
+    insert_after_line(
         root, MANIFEST,
-        '                <category android:name="android.intent.category.HOME" />\n'
-        '                <category android:name="android.intent.category.DEFAULT" />\n'
-        '            </intent-filter>',
-        '                <category android:name="android.intent.category.HOME" />\n'
-        '                <category android:name="android.intent.category.DEFAULT" />\n'
-        '                <!-- OPPO ColorOS TV only hands the launcher role to a home activity that\n'
-        '                     carries this marker; without it the TV waits forever for "its"\n'
-        '                     launcher and hangs on the boot logo. See docs/devices/oppo-coloros-tv.md. -->\n'
-        '                <category android:name="com.heytap.tv.launcher.category.MODERN_HOME" />\n'
-        '            </intent-filter>',
+        '<category android:name="android.intent.category.HOME" />',
+        [
+            "<!-- OPPO ColorOS TV only hands the launcher role to a home activity that",
+            "     carries this marker; without it the TV waits forever for \"its\"",
+            "     launcher and hangs on the boot logo. See docs/devices/oppo-coloros-tv.md. -->",
+            '<category android:name="com.heytap.tv.launcher.category.MODERN_HOME" />',
+        ],
         "HOME 加 MODERN_HOME 类别",
+        marker="com.heytap.tv.launcher.category.MODERN_HOME",
     )
 
     # 背光与关机的固件调用都只能由 tvapisvc 驱动，它按「进程名包含 com.heytap.tv.remote」放行。
@@ -661,34 +1018,54 @@ def patch_brightness(root):
     # 打开控制中心那一下，亮度直接问固件要真值（几毫秒），不等异步回读。
     # 上游这条路径读的是「记着的值」，我们的记账值只有在 Aerial 自己调过时才准 —— 用电视自己的
     # 亮度条调过之后再打开控制中心，会先显示旧值、一两秒后才被校正回来。
-    patch(
+    # 1.72 把这一行拆成了两句（homeStatus / brightness 各一次 withContext），两代写法都备着。
+    patch_any(
         root, vm,
-        "            val (home, level) = withContext(Dispatchers.Default) { SystemProbe.homeStatus(ctx) to Brightness.level(ctx) }\n",
-        "            // OPPO 的亮度只有固件知道当前值：面板打开这一下同步问一次（阻塞几毫秒，\n"
-        "            // 本来就在 Default 线程上），否则先显示记账值、再等异步回读纠正，看着像慢半拍。\n"
-        "            val (home, level) = withContext(Dispatchers.Default) {\n"
-        "                val now = if (OppoBacklight.usable(ctx)) OppoBacklight.levelNow(ctx) / 100f else Brightness.level(ctx)\n"
-        "                SystemProbe.homeStatus(ctx) to now\n"
-        "            }\n",
+        [
+            (
+                "            homeStatus = withContext(Dispatchers.Default) { SystemProbe.homeStatus(ctx) }\n"
+                "            brightness = withContext(Dispatchers.Default) { Brightness.level(ctx) }\n",
+                "            homeStatus = withContext(Dispatchers.Default) { SystemProbe.homeStatus(ctx) }\n"
+                "            // OPPO 的亮度只有固件知道当前值：面板打开这一下同步问一次（阻塞几毫秒，\n"
+                "            // 本来就在 Default 线程上），否则先显示记账值、再等异步回读纠正。\n"
+                "            brightness = withContext(Dispatchers.Default) {\n"
+                "                if (OppoBacklight.usable(ctx)) OppoBacklight.levelNow(ctx) / 100f else Brightness.level(ctx)\n"
+                "            }\n",
+            ),
+            (
+                "            val (home, level) = withContext(Dispatchers.Default) { SystemProbe.homeStatus(ctx) to Brightness.level(ctx) }\n",
+                "            // OPPO 的亮度只有固件知道当前值：面板打开这一下同步问一次（阻塞几毫秒，\n"
+                "            // 本来就在 Default 线程上），否则先显示记账值、再等异步回读纠正，看着像慢半拍。\n"
+                "            val (home, level) = withContext(Dispatchers.Default) {\n"
+                "                val now = if (OppoBacklight.usable(ctx)) OppoBacklight.levelNow(ctx) / 100f else Brightness.level(ctx)\n"
+                "                SystemProbe.homeStatus(ctx) to now\n"
+                "            }\n",
+            ),
+        ],
         "打开面板时同步读一次面板亮度",
     )
 
-    # 上游是「先等 3 秒再刷一次」：面板刚打开时显示的其实是上一次的缓存。先刷再等，
-    # 打开瞬间就对齐（这条对所有机型都成立，只是我们的亮度非同步不可）。
-    patch(
-        root, j("MainActivity.kt"),
-        "                    while (open) {\n"
-        "                        delay(PANEL_REFRESH_MS)\n"
-        "                        vm.refreshPanel()\n"
-        "                    }\n",
-        "                    // Look once before waiting: the panel is drawn from cached values, and\n"
-        "                    // the first look used to be 3 s later (a stale brightness until then).\n"
-        "                    while (open) {\n"
-        "                        vm.refreshPanel()\n"
-        "                        delay(PANEL_REFRESH_MS)\n"
-        "                    }\n",
-        "控制中心一打开就先刷新一次",
-    )
+    # 上游是「先等 3 秒再刷一次」：面板刚打开时显示的其实是上一次的缓存。把这两句换个体位，
+    # 打开瞬间就对齐（只认这两行本身，while 块里还写了什么一概不管）。
+    #
+    # 1.70 起上游自己在 ControlCenter 里加了 `LaunchedEffect(visible) { vm.refreshPanel() }`
+    # （#892「每次打开都重新确认是不是默认桌面」）—— 那一版就不必再改，否则每次开面板刷两遍。
+    center_text = read(root, j("ui/control/ControlCenter.kt")) or ""
+    if "LaunchedEffect(visible) { if (visible) vm.refreshPanel() }" in center_text:
+        print("  ok  %-44s %s（1.70+ 上游自己做了，跳过）"
+              % (short(j("MainActivity.kt")), "控制中心一打开就先刷新一次"))
+    else:
+        move_line_before(
+            root, j("MainActivity.kt"),
+            "vm.refreshPanel()",
+            "delay(PANEL_REFRESH_MS)",
+            "控制中心一打开就先刷新一次",
+            note=[
+                "                        // Look once before waiting: the panel is drawn from cached values,",
+                "                        // and the first look used to be 3 s later (a stale brightness until then).",
+            ],
+            marker="Look once before waiting",
+        )
 
 
 def patch_screensaver(root):
@@ -883,29 +1260,19 @@ def patch_screensaver(root):
         "        AerialSettings.syncScreensaverFromSystem(context)\n",
         "打开设置页时刷新屏保时间",
     )
-    # 锚点里不带上游的注释行：1.69 只删了这两行注释就整条失配，而代码一字未改。
-    patch(
+    # 这一段本来就要整个换掉（「系统模式只显示、不能改」→ 统一成可选档位），所以中间写了
+    # 什么一概不看：上游改缩进、改 BasicText 里的 when、改两行注释，都不再失配。
+    patch_span(
         root, sheet,
-        '                        if (Wallpapers.screensaver == ScreensaverMode.System) SettingRow(R.string.ss_delay, null, note) {\n'
-        '                            val delay = remember { SystemScreensaver.firmwareDelayMs(context) }\n'
-        '                            BasicText(\n'
-        '                                when {\n'
-        '                                    delay == null -> stringResource(R.string.ss_delay_system)\n'
-        '                                    delay == 0L -> stringResource(R.string.ss_delay_system_off)\n'
-        '                                    else -> stringResource(R.string.ss_delay_system_minutes, ((delay + 30_000) / 60_000).coerceAtLeast(1).toInt())\n'
-        '                                },\n'
-        '                                style = Type.Body.copy(color = Palette.SecondaryLabel),\n'
-        '                                modifier = Modifier.padding(end = 8.dp),\n'
-        '                            )\n'
-        '                        } else Choices(\n'
-        '                            R.string.ss_delay, null, note,\n'
-        '                            AerialSettings.screensaverChoices.map {',
-        '                        // One setting, and it is the TV\'s own: the same key the system\'s screensaver\n'
-        '                        // page writes, so choosing here changes the TV and the other way round.\n'
-        '                        Choices(\n'
-        '                            R.string.ss_delay, null, note,\n'
-        '                            AerialSettings.screensaverChoicesNow.map {',
+        r"^[ \t]*if \(Wallpapers\.screensaver == ScreensaverMode\.System\) SettingRow\(R\.string\.ss_delay",
+        r"^[ \t]*AerialSettings\.screensaverChoices\.map \{",
+        "                        // One setting, and it is the TV's own: the same key the system's screensaver\n"
+        "                        // page writes, so choosing here changes the TV and the other way round.\n"
+        "                        Choices(\n"
+        "                            R.string.ss_delay, null, note,\n"
+        "                            AerialSettings.screensaverChoicesNow.map {",
         "屏保时间改成可选档位（含系统值）",
+        marker="AerialSettings.screensaverChoicesNow.map",
     )
 
     # 4) 文案：档位压成「1分 / 2分 / …」，菜单一行放得下。
@@ -1013,22 +1380,19 @@ def patch_names(root):
         '        plateNames = PlateNames.of(prefs.getString("plate_names", null))',
         "读 plateNames",
     )
-    patch(
+    # 新方法加在 chooseShowAllNames **之后**：只认它的签名，函数体怎么变都不影响
+    # （原来的锚点把函数体三行抄了进去，上游改一下写 prefs 的写法就失配）。
+    insert_after_block(
         root, settings,
-        "    fun chooseShowAllNames(on: Boolean) {\n"
-        "        showAllNames = on\n"
-        '        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean("show_all_names", on) }\n'
-        "    }",
-        "    fun chooseShowAllNames(on: Boolean) {\n"
-        "        showAllNames = on\n"
-        '        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean("show_all_names", on) }\n'
-        "    }\n"
-        "\n"
-        "    fun choosePlateNames(names: PlateNames) {\n"
-        "        plateNames = names\n"
-        '        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("plate_names", names.key) }\n'
-        "    }",
+        r"^[ \t]*fun chooseShowAllNames\(",
+        [
+            "fun choosePlateNames(names: PlateNames) {",
+            "    plateNames = names",
+            '    app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("plate_names", names.key) }',
+            "}",
+        ],
         "写 plateNames",
+        marker="fun choosePlateNames(",
     )
 
     # kotlin.math.PI / cos 不补：上游 1.57 起 AppTile 自己引了（SineEasing 用），再补一遍就是两份。
@@ -1064,137 +1428,132 @@ def patch_names(root):
         "private val NameDrop = 1.0.dp",
         "图标内名称的尺寸常量",
     )
-    patch(
+    # 参数这一层按「整行」加：上游在它上面写什么注释都不影响。
+    insert_after_line(
         root, tile,
-        "    /** False on the glass plate: the top row shows no names there, as on tvOS 26. */\n"
-        "    showName: Boolean = true,",
-        "    /** False on the glass plate: the top row shows no names there, as on tvOS 26. */\n"
-        "    showName: Boolean = true,\n"
-        "    /** On the glass plate: whose name shows inside the tile. Null off the plate. */\n"
-        "    plateName: PlateNames? = null,",
+        "showName: Boolean = true,",
+        [
+            "/** On the glass plate: whose name shows inside the tile. Null off the plate. */",
+            "plateName: PlateNames? = null,",
+        ],
         "AppTile 新增 plateName 参数",
+        marker="plateName: PlateNames? = null,",
     )
-    patch(
+    # 名字画在图标里这一段，插在「图标下方那个名字」之前 —— 只认它那一行。
+    # 原来抄的是「translationY … ) } }」六行尾巴，上游动一下名字的偏移或缩进就失配；
+    # 而这两块并不重叠（一个在图标里，一个在图标下方），先后顺序对画面没有影响。
+    insert_before_line(
         root, tile,
-        "                    translationY = height.toPx() * (scale - 1f) / 2f - (1f - lift) * 6.dp.toPx() +\n"
-        "                        if (nameOnPlate) 0f else ring * ringIn * (RingGap + RingWidth).toPx() * scale\n"
-        "                },\n"
-        "        )\n"
-        "    }\n"
-        "}",
-        "                    translationY = height.toPx() * (scale - 1f) / 2f - (1f - lift) * 6.dp.toPx() +\n"
-        "                        if (nameOnPlate) 0f else ring * ringIn * (RingGap + RingWidth).toPx() * scale\n"
-        "                },\n"
-        "        )\n"
-        "\n"
-        "        // On the glass plate the name sits inside the tile, bottom centre: the grid's own\n"
-        "        // type at its own size, one step bolder, outlined and shadowed so the artwork\n"
-        "        // underneath cannot swallow it.\n"
-        "        //\n"
-        "        // `lift` is read only inside graphicsLayer below, never here: that is the draw phase,\n"
-        "        // so the focus animation does not recompose the tile on every one of its frames. Read\n"
-        "        // in this condition it would (upstream keeps it out of composition for the same reason).\n"
-        "        if (plateName != null && plateName != PlateNames.Off) {\n"
-        "            Box(\n"
-        "                modifier = Modifier\n"
-        "                    .align(Alignment.BottomCenter)\n"
-        "                    .offset(y = -NameInTileBottom)\n"
-        "                    .requiredSize(width - 12.dp, NameInTileBand)\n"
-        "                    .graphicsLayer {\n"
-        "                        alpha = if (plateName == PlateNames.All) 0.7f + 0.3f * lift else lift\n"
-        "                        // The tile grows about its centre, so its bottom edge travels down by half.\n"
-        "                        translationY = height.toPx() * (scale - 1f) / 2f\n"
-        "                    },\n"
-        "            ) {\n"
-        "                PlateTileName(app.label, width - 12.dp)\n"
-        "            }\n"
-        "        }\n"
-        "    }\n"
-        "}",
+        [
+            # 1.69 起这行多了 DiagLayers 判据，1.67 及以前没有 —— 两代都备着。
+            'if (showName && DiagLayers.shows("names")) BasicText(',
+            "if (showName) BasicText(",
+        ],
+        [
+            "// On the glass plate the name sits inside the tile, bottom centre: the grid's own",
+            "// type at its own size, one step bolder, outlined and shadowed so the artwork",
+            "// underneath cannot swallow it.",
+            "//",
+            "// `lift` is read only inside graphicsLayer below, never here: that is the draw phase,",
+            "// so the focus animation does not recompose the tile on every one of its frames. Read",
+            "// in this condition it would (upstream keeps it out of composition for the same reason).",
+            "if (plateName != null && plateName != PlateNames.Off) {",
+            "    Box(",
+            "        modifier = Modifier",
+            "            .align(Alignment.BottomCenter)",
+            "            .offset(y = -NameInTileBottom)",
+            "            .requiredSize(width - 12.dp, NameInTileBand)",
+            "            .graphicsLayer {",
+            "                alpha = if (plateName == PlateNames.All) 0.7f + 0.3f * lift else lift",
+            "                // The tile grows about its centre, so its bottom edge travels down by half.",
+            "                translationY = height.toPx() * (scale - 1f) / 2f",
+            "            },",
+            "    ) {",
+            "        PlateTileName(app.label, width - 12.dp)",
+            "    }",
+            "}",
+        ],
         "图标内画名称",
+        marker="PlateTileName(app.label, width - 12.dp)",
     )
     # 插在 focusedPx **之后**，而不是它的签名前面：那样会把它自己的 KDoc 和函数拆开，
     # 注释挂到我们新加的函数头上。锚点用那四行函数体（纯代码，不带注释）。
-    patch(
+        # 新函数插在 focusedPx **之后**：只认它的签名，函数体怎么算一概不看
+    # （原来的锚点把 focusedPx 的三行函数体抄了进去，算法一改就失配）。
+    insert_after_block(
         root, tile,
-        "private fun focusedPx(px: Float): Int {\n"
-        "    val r = px.roundToInt()\n"
-        "    return r + 2 * (r * (FOCUSED_SCALE - 1f) / 2f).roundToInt()\n"
-        "}\n",
-        "private fun focusedPx(px: Float): Int {\n"
-        "    val r = px.roundToInt()\n"
-        "    return r + 2 * (r * (FOCUSED_SCALE - 1f) / 2f).roundToInt()\n"
-        "}\n"
-        "\n"
-        "/**\n"
-        " * The name inside a plate's tile: [Type.Headline] at its own size, one step bolder, with a\n"
-        " * hard outline and a short drop shadow.\n"
-        " *\n"
-        " * Not a blurred [Shadow]. While a tile is still growing the name is drawn through a fading\n"
-        " * layer, and a blur reaches past this band, so the layer crops it and leaves a rectangle of\n"
-        " * half-transparent grey over the artwork - a seam that shows on light tiles mid-animation.\n"
-        " *\n"
-        " * Baked into one picture, not drawn ten times a frame: the outline is the same text at eight\n"
-        " * offsets, and separate text passes can land a frame apart while the tile is growing, which\n"
-        " * reads as the name sliding off its own shadow. One picture cannot come apart.\n"
-        " */\n"
-        "@Composable\n"
-        "private fun PlateTileName(text: String, maxWidth: Dp) {\n"
-        "    val measurer = rememberTextMeasurer()\n"
-        "    val density = LocalDensity.current\n"
-        "    val direction = LocalLayoutDirection.current\n"
-        "    val style = remember {\n"
-        "        Type.Headline.copy(fontWeight = FontWeight.W700, textAlign = TextAlign.Center)\n"
-        "    }\n"
-        "    val widthPx = with(density) { maxWidth.roundToPx() }\n"
-        "    val bandPx = with(density) { NameInTileBand.roundToPx() }\n"
-        "    val name = remember(text, widthPx, bandPx, style, density, direction) {\n"
-        "        val layout = measurer.measure(\n"
-        "            text = text,\n"
-        "            style = style,\n"
-        "            maxLines = 1,\n"
-        "            overflow = TextOverflow.Ellipsis,\n"
-        "            constraints = Constraints(maxWidth = widthPx),\n"
-        "        )\n"
-        "        val image = ImageBitmap(widthPx.coerceAtLeast(1), bandPx.coerceAtLeast(1))\n"
-        "        CanvasDrawScope().draw(\n"
-        "            density,\n"
-        "            direction,\n"
-        "            GraphicsCanvas(image),\n"
-        "            Size(widthPx.toFloat(), bandPx.toFloat()),\n"
-        "        ) {\n"
-        "            val at = Offset(\n"
-        "                (widthPx - layout.size.width) / 2f,\n"
-        "                (bandPx - layout.size.height) / 2f,\n"
-        "            )\n"
-        "            // The drop shadow: one more copy, a little lower.\n"
-        "            drawText(\n"
-        "                layout,\n"
-        "                color = Color.Black,\n"
-        "                alpha = 0.35f,\n"
-        "                topLeft = at + Offset(0f, NameDrop.toPx()),\n"
-        "            )\n"
-        "            // The outline: the same glyphs all round the fill.\n"
-        "            val r = NameOutline.toPx()\n"
-        "            for (i in 0 until 8) {\n"
-        "                val a = i * PI / 4\n"
-        "                drawText(\n"
-        "                    layout,\n"
-        "                    color = Color.Black,\n"
-        "                    alpha = 0.8f,\n"
-        "                    topLeft = at + Offset(cos(a).toFloat() * r, sin(a).toFloat() * r),\n"
-        "                )\n"
-        "            }\n"
-        "            drawText(layout, topLeft = at)\n"
-        "        }\n"
-        "        image\n"
-        "    }\n"
-        "    Canvas(Modifier.fillMaxSize()) {\n"
-        "        drawImage(name)\n"
-        "    }\n"
-        "}\n",
-        "图标内名称：烘焙成一张位图",
-    )
+        r"^[ \t]*private fun focusedPx\(",
+        [
+            '/**',
+            " * The name inside a plate's tile: [Type.Headline] at its own size, one step bolder, with a",
+            ' * hard outline and a short drop shadow.',
+            ' *',
+            ' * Not a blurred [Shadow]. While a tile is still growing the name is drawn through a fading',
+            ' * layer, and a blur reaches past this band, so the layer crops it and leaves a rectangle of',
+            ' * half-transparent grey over the artwork - a seam that shows on light tiles mid-animation.',
+            ' *',
+            ' * Baked into one picture, not drawn ten times a frame: the outline is the same text at eight',
+            ' * offsets, and separate text passes can land a frame apart while the tile is growing, which',
+            ' * reads as the name sliding off its own shadow. One picture cannot come apart.',
+            ' */',
+            '@Composable',
+            'private fun PlateTileName(text: String, maxWidth: Dp) {',
+            '    val measurer = rememberTextMeasurer()',
+            '    val density = LocalDensity.current',
+            '    val direction = LocalLayoutDirection.current',
+            '    val style = remember {',
+            '        Type.Headline.copy(fontWeight = FontWeight.W700, textAlign = TextAlign.Center)',
+            '    }',
+            '    val widthPx = with(density) { maxWidth.roundToPx() }',
+            '    val bandPx = with(density) { NameInTileBand.roundToPx() }',
+            '    val name = remember(text, widthPx, bandPx, style, density, direction) {',
+            '        val layout = measurer.measure(',
+            '            text = text,',
+            '            style = style,',
+            '            maxLines = 1,',
+            '            overflow = TextOverflow.Ellipsis,',
+            '            constraints = Constraints(maxWidth = widthPx),',
+            '        )',
+            '        val image = ImageBitmap(widthPx.coerceAtLeast(1), bandPx.coerceAtLeast(1))',
+            '        CanvasDrawScope().draw(',
+            '            density,',
+            '            direction,',
+            '            GraphicsCanvas(image),',
+            '            Size(widthPx.toFloat(), bandPx.toFloat()),',
+            '        ) {',
+            '            val at = Offset(',
+            '                (widthPx - layout.size.width) / 2f,',
+            '                (bandPx - layout.size.height) / 2f,',
+            '            )',
+            '            // The drop shadow: one more copy, a little lower.',
+            '            drawText(',
+            '                layout,',
+            '                color = Color.Black,',
+            '                alpha = 0.35f,',
+            '                topLeft = at + Offset(0f, NameDrop.toPx()),',
+            '            )',
+            '            // The outline: the same glyphs all round the fill.',
+            '            val r = NameOutline.toPx()',
+            '            for (i in 0 until 8) {',
+            '                val a = i * PI / 4',
+            '                drawText(',
+            '                    layout,',
+            '                    color = Color.Black,',
+            '                    alpha = 0.8f,',
+            '                    topLeft = at + Offset(cos(a).toFloat() * r, sin(a).toFloat() * r),',
+            '                )',
+            '            }',
+            '            drawText(layout, topLeft = at)',
+            '        }',
+            '        image',
+            '    }',
+            '    Canvas(Modifier.fillMaxSize()) {',
+            '        drawImage(name)',
+            '    }',
+            '}',
+        ],
+        '图标内名称：烘焙成一张位图',
+        marker="private fun PlateTileName(",)
 
     # 桌面上把两套设置分开：第一排的名称画在图标里，底板不再为它变高。
     patch(
@@ -1204,6 +1563,7 @@ def patch_names(root):
         "        // The top row's names sit inside its tiles now, so the plate never grows to hold them.\n"
         "        val plateNames = false",
         "底板不再为名称增高",
+        marker="val plateNames = false",
     )
     # 一旦焦点下到网格（抽屉），第一排就只是网格里的普通一行：名字回到图标下方，和第二排及以下
     # 完全同一套规则（显示全部还是仅焦点，由 showAllNames 决定）。
@@ -1271,31 +1631,28 @@ def patch_names(root):
         "import %s.settings.AerialSettings\nimport %s.settings.PlateNames" % (PKG, PKG),
         "设置页导入 PlateNames",
     )
-    patch(
+    # 在原来那条 Choices **前面**再插一条：只认它里面的一行参数，上游加一项、换一行、
+    # 重新排顺序都不影响（原来抄的是整个调用，上游动一个参数就失配）。
+    insert_before_call(
         root, sheet,
-        "                        Choices(\n"
-        "                            R.string.st_names, stringResource(R.string.st_names_hint), note,\n"
-        "                            listOf(false to R.string.st_names_focused, true to R.string.st_names_all),\n"
-        "                            AerialSettings.showAllNames, AerialSettings::chooseShowAllNames,\n"
-        "                        )",
-        "                        // The glass plate and the grid under it are set apart: the top\n"
-        "                        // row's names sit inside its icons, so \"off\" looks nothing like\n"
-        "                        // the grid's \"off\".\n"
-        "                        Choices(\n"
-        "                            R.string.st_plate_names, stringResource(R.string.st_plate_names_hint), note,\n"
-        "                            listOf(\n"
-        "                                PlateNames.Selected to R.string.st_names_focused,\n"
-        "                                PlateNames.All to R.string.st_names_all,\n"
-        "                                PlateNames.Off to R.string.st_names_off,\n"
-        "                            ),\n"
-        "                            AerialSettings.plateNames, AerialSettings::choosePlateNames,\n"
-        "                        )\n"
-        "                        Choices(\n"
-        "                            R.string.st_names, stringResource(R.string.st_names_hint), note,\n"
-        "                            listOf(false to R.string.st_names_focused, true to R.string.st_names_all),\n"
-        "                            AerialSettings.showAllNames, AerialSettings::chooseShowAllNames,\n"
-        "                        )",
+        r"AerialSettings\.showAllNames, AerialSettings::chooseShowAllNames,",
+        "Choices(",
+        [
+            "// The glass plate and the grid under it are set apart: the top",
+            '// row\'s names sit inside its icons, so "off" looks nothing like',
+            '// the grid\'s "off".',
+            "Choices(",
+            "    R.string.st_plate_names, stringResource(R.string.st_plate_names_hint), note,",
+            "    listOf(",
+            "        PlateNames.Selected to R.string.st_names_focused,",
+            "        PlateNames.All to R.string.st_names_all,",
+            "        PlateNames.Off to R.string.st_names_off,",
+            "    ),",
+            "    AerialSettings.plateNames, AerialSettings::choosePlateNames,",
+            ")",
+        ],
         "设置页拆成两条",
+        marker="AerialSettings::choosePlateNames",
     )
 
 
@@ -1368,22 +1725,34 @@ def patch_power_menu(root):
         "记录「只为菜单开过滤」",
     )
 
+    # 这一段原来抄了 updateKeyFilter 里连续四行。改成「插两行 + 各改一行」：
+    # 上游在其中任何一行上动手，坏掉的只有那一条，报错也直接指到那一行。
+    insert_after_line(
+        root, guard,
+        "val cecWanted = !screenOff && CecHome.active(this, lastWindow?.first)",
+        [
+            "// The power menu is up: take keys for a moment. Direction keys and OK land here and",
+            '// tell the menu\'s own "screen off" (keep it) apart from a second press of the power',
+            "// key (rewritten into a shutdown). Off again once the menu is gone.",
+            "val menuWanted = !screenOff && OppoPower.armed()",
+            "filteringForMenu = menuWanted",
+        ],
+        "菜单弹着时开按键过滤：加一条判据",
+        marker="val menuWanted =",
+    )
     patch(
         root, guard,
-        "        val homeWanted = wanted && !isDefaultHome()\n"
-        "        val cecWanted = !screenOff && CecHome.active(this, lastWindow?.first)\n"
-        "        filteringForCecOnly = cecWanted && !homeWanted\n"
+        "        filteringForCecOnly = cecWanted && !homeWanted\n",
+        "        filteringForCecOnly = cecWanted && !homeWanted && !menuWanted\n",
+        "菜单弹着时开按键过滤：CEC 判据让位",
+        marker="cecWanted && !homeWanted && !menuWanted",
+    )
+    patch(
+        root, guard,
         "        var want = if (homeWanted || cecWanted) info.flags or flag else info.flags and flag.inv()\n",
-        "        val homeWanted = wanted && !isDefaultHome()\n"
-        "        val cecWanted = !screenOff && CecHome.active(this, lastWindow?.first)\n"
-        "        // The power menu is up: take keys for a moment. Direction keys and OK land here and\n"
-        "        // tell the menu's own \"screen off\" (keep it) apart from a second press of the power\n"
-        "        // key (rewritten into a shutdown). Off again once the menu is gone.\n"
-        "        val menuWanted = !screenOff && OppoPower.armed()\n"
-        "        filteringForMenu = menuWanted\n"
-        "        filteringForCecOnly = cecWanted && !homeWanted && !menuWanted\n"
         "        var want = if (homeWanted || cecWanted || menuWanted) info.flags or flag else info.flags and flag.inv()\n",
-        "菜单弹着时开按键过滤",
+        "菜单弹着时开按键过滤：真的开",
+        marker="if (homeWanted || cecWanted || menuWanted)",
     )
 
     # 过滤只因为菜单才开着的时候，音量键不该被接管：这台电视平时从不开过滤，
@@ -1399,39 +1768,35 @@ def patch_power_menu(root):
         "菜单期间音量键放行",
     )
 
-    # 插在 cecInputObserver **之后**：它上面有一句讲 CecHome 的注释，插在前面会让那句注释
-    # 悬空指着我们新加的字段。锚点取它完整的三行（纯代码）。
-    patch(
+    # 插在 cecInputObserver **之后**（它上面有一句讲 CecHome 的注释，插在前面会让注释悬空），
+    # 但只认它那一行签名：观察者的 onChange 怎么写、上游在它里面加什么，都不影响。
+    insert_after_block(
         root, guard,
-        "    private val cecInputObserver = object : ContentObserver(handler) {\n"
-        "        override fun onChange(selfChange: Boolean) = updateKeyFilter()\n"
-        "    }\n",
-        "    private val cecInputObserver = object : ContentObserver(handler) {\n"
-        "        override fun onChange(selfChange: Boolean) = updateKeyFilter()\n"
-        "    }\n"
-        "\n"
-        "    /** 电源菜单那 12 秒过去后，把按键过滤关回去。 */\n"
-        "    private val powerMenuGone = Runnable { updateKeyFilter() }\n"
-        "\n"
-        "    /**\n"
-        "     * The power menu's \"screen off\" is a QUICK standby: black screen, Android still awake.\n"
-        "     * It is rewritten into a real shutdown here. The menu itself lives in SystemUI and cannot\n"
-        "     * be changed, but the standby mode it sets is observable. Only a QUICK that follows the\n"
-        "     * menu is rewritten: choosing \"restart\" never enters QUICK, and the auto-standby timeout\n"
-        "     * has no menu in front, so neither is touched.\n"
-        "     */\n"
-        "    private val powerModeObserver = object : ContentObserver(handler) {\n"
-        "        override fun onChange(selfChange: Boolean) {\n"
-        "            val mode = runCatching {\n"
-        "                Settings.Global.getString(contentResolver, \"tv_power_mode\")\n"
-        "            }.getOrNull()\n"
-        "            if (mode != \"QUICK\" || !OppoPower.armed()) return\n"
-        "            Log.i(TAG, \"QUICK standby right after the power menu; turning it into a real shutdown\")\n"
-        "            OppoPower.shutdown()\n"
-        "        }\n"
-        "    }\n"
-        "\n",
+        r"^[ \t]*private val cecInputObserver = object : ContentObserver\(handler\)",
+        [
+            "/** 电源菜单那 12 秒过去后，把按键过滤关回去。 */",
+            "private val powerMenuGone = Runnable { updateKeyFilter() }",
+            "",
+            "/**",
+            ' * The power menu\'s "screen off" is a QUICK standby: black screen, Android still awake.',
+            " * It is rewritten into a real shutdown here. The menu itself lives in SystemUI and cannot",
+            " * be changed, but the standby mode it sets is observable. Only a QUICK that follows the",
+            ' * menu is rewritten: choosing "restart" never enters QUICK, and the auto-standby timeout',
+            " * has no menu in front, so neither is touched.",
+            " */",
+            "private val powerModeObserver = object : ContentObserver(handler) {",
+            "    override fun onChange(selfChange: Boolean) {",
+            "        val mode = runCatching {",
+            '            Settings.Global.getString(contentResolver, "tv_power_mode")',
+            "        }.getOrNull()",
+            '        if (mode != "QUICK" || !OppoPower.armed()) return',
+            '        Log.i(TAG, "QUICK standby right after the power menu; turning it into a real shutdown")',
+            "        OppoPower.shutdown()",
+            "    }",
+            "}",
+        ],
         "菜单息屏改写成真关机",
+        marker="private val powerModeObserver",
     )
 
     patch(
@@ -1444,35 +1809,44 @@ def patch_power_menu(root):
 
 
 def patch_strings(root):
-    patch(
-        root, STRINGS_EN,
-        '    <string name="st_names">App Names</string>\n'
-        '    <string name="st_names_focused">Selected App</string>\n'
-        '    <string name="st_names_all">All Apps</string>\n'
-        '    <string name="st_names_hint">Names under every app, or only under the selected one, as on Apple TV. With every name shown, the top row\\\'s names sit on its glass plate too.</string>',
-        '    <string name="st_plate_names">Top Row Names</string>\n'
-        '    <string name="st_plate_names_hint">Names of the apps on the glass plate, drawn inside the icons: the selected app\\\'s, every name, or none at all.</string>\n'
-        '    <string name="st_names">Other App Names</string>\n'
-        '    <string name="st_names_focused">Selected App</string>\n'
-        '    <string name="st_names_all">All Apps</string>\n'
-        '    <string name="st_names_off">Off</string>\n'
-        '    <string name="st_names_hint">Names of the apps below the top row, under their icons: every app, or only the selected one, as on Apple TV. The top row has its own setting.</string>',
-        "英文文案",
+    # 文案改成按 <string name> 认：上游重写某一句（1.68 就重写过好几个）不再失配。
+    insert_strings(
+        root, STRINGS_EN, "st_names",
+        [
+            ("st_plate_names", "Top Row Names"),
+            ("st_plate_names_hint", "Names of the apps on the glass plate, drawn inside the icons: the selected app\\'s, every name, or none at all."),
+            ("st_names_off", "Off"),
+        ],
+        "英文文案：新增第一排那一组",
+        marker='name="st_plate_names"',
     )
-    patch(
-        root, STRINGS_ZH,
-        '    <string name="st_names">App 名称</string>\n'
-        '    <string name="st_names_focused">只显示选中的</string>\n'
-        '    <string name="st_names_all">全部显示</string>\n'
-        '    <string name="st_names_hint">每个 App 下面都显示名称，或者像 Apple TV 一样只显示选中的。全部显示时，第一排的名称也显示在玻璃底板里。</string>',
-        '    <string name="st_plate_names">第一排 APP 名称</string>\n'
-        '    <string name="st_plate_names_hint">玻璃底板上那一排的名称，显示在图标内部：只显示选中的、全部显示，或者关闭显示。</string>\n'
-        '    <string name="st_names">其他 APP 名称</string>\n'
-        '    <string name="st_names_focused">只显示选中的</string>\n'
-        '    <string name="st_names_all">全部显示</string>\n'
-        '    <string name="st_names_off">关闭显示</string>\n'
-        '    <string name="st_names_hint">第一排以下各排的名称，显示在图标下方：每个 App 都显示，或者像 Apple TV 一样只显示选中的。不影响第一排。</string>',
-        "中文文案",
+    set_string(
+        root, STRINGS_EN, "st_names", "Other App Names",
+        "英文文案：st_names 改名",
+    )
+    set_string(
+        root, STRINGS_EN, "st_names_hint",
+        "Names of the apps below the top row, under their icons: every app, or only the selected one, as on Apple TV. The top row has its own setting.",
+        "英文文案：st_names_hint 改说明",
+    )
+    insert_strings(
+        root, STRINGS_ZH, "st_names",
+        [
+            ("st_plate_names", "第一排 APP 名称"),
+            ("st_plate_names_hint", "玻璃底板上那一排的名称，显示在图标内部：只显示选中的、全部显示，或者关闭显示。"),
+            ("st_names_off", "关闭显示"),
+        ],
+        "中文文案：新增第一排那一组",
+        marker='name="st_plate_names"',
+    )
+    set_string(
+        root, STRINGS_ZH, "st_names", "其他 APP 名称",
+        "中文文案：st_names 改名",
+    )
+    set_string(
+        root, STRINGS_ZH, "st_names_hint",
+        "第一排以下各排的名称，显示在图标下方：每个 App 都显示，或者像 Apple TV 一样只显示选中的。不影响第一排。",
+        "中文文案：st_names_hint 改说明",
     )
 
 
@@ -1512,21 +1886,36 @@ def patch_updates(root, repo):
         "    }" % (repo, repo, repo),
         "版本检查：三级国内加速",
     )
-    patch(
+    # 1.72 把版本检查收进了 UpdateCheck，取版本的那段变成了 init 里的一个 lambda；
+    # 更早的版本是直接一段 runCatching。两种写法都备着。
+    patch_any(
         root, updates,
-        '                runCatching { read(VERSION_URL).trim().removePrefix("v") }\n'
-        '                    .onFailure { Log.w(TAG, "could not check for a new version", it) }\n'
-        '                    .getOrNull()\n'
-        '                    ?.takeIf { it.matches(Regex("\\\\d+(\\\\.\\\\d+)*")) }',
-        "                fetchLatest()",
+        [
+            (
+                "            read = { withContext(Dispatchers.IO) { read(VERSION_URL) } },\n",
+                # UpdateCheck 的 read 是非空 String，失败要靠抛异常报上去（它会退避重试）；
+                # 所以所有镜像都没给出像样版本号时就抛，而不是回 null。
+                "            read = {\n"
+                "                withContext(Dispatchers.IO) {\n"
+                '                    fetchLatest() ?: throw IllegalStateException("no source answered with a version")\n'
+                "                }\n"
+                "            },\n",
+            ),
+            (
+                '                runCatching { read(VERSION_URL).trim().removePrefix("v") }\n'
+                '                    .onFailure { Log.w(TAG, "could not check for a new version", it) }\n'
+                '                    .getOrNull()\n'
+                '                    ?.takeIf { it.matches(Regex("\\\\d+(\\\\.\\\\d+)*")) }',
+                "                fetchLatest()",
+            ),
+        ],
         "版本检查：逐个源试",
     )
-    patch(
+    # 这个列表整个换掉，所以中间列了几个源一概不看（上游加减镜像都不影响）。
+    patch_span(
         root, updates,
-        '        val sources = listOf(\n'
-        '            "https://aerial.qust.me/download/$name",\n'
-        '            "https://github.com/pengchujin/aerial-tv/releases/latest/download/$name",\n'
-        '        )',
+        r"^[ \t]*val sources = listOf\(",
+        r"^[ \t]*\)$",
         '        // This build\'s updates come from its own fork\'s release of the same version, through\n'
         '        // domestic mirrors: the upstream APK is another package signed with another key, so\n'
         '        // verify() would turn it away anyway.\n'
@@ -1537,6 +1926,7 @@ def patch_updates(root, repo):
         '            "https://github.com/%s/releases/download/$tag/$name",\n'
         '        )' % (repo, repo, repo),
         "更新链接改本仓库",
+        marker='val tag = "v" + (available ?: current)',
     )
 
 
@@ -1549,70 +1939,73 @@ def patch_update_row(root):
     """
     # Updates 加一个「等结果」的检查。原来的 checkIfStale 发起就返回，界面问不到结果，
     # 也就无从知道该显示「暂无新版本」还是「有新版本」。
+    # 1.72 删掉了 lastAttempt（重试逻辑搬进了 UpdateCheck），这句要按版本给。
+    updates = j("update/Updates.kt")
+    text = read(root, updates) or ""
+    body = [
+        "    /**",
+        "     * Asks once, now, and waits for the answer. Control Center's Check for Updates row has to say",
+        "     * what came of the check, which [checkIfStale] cannot tell it: that one launches and returns.",
+        "     * Null means either that no source answered or that this build is already the latest.",
+        "     */",
+        "    suspend fun checkNow(): String? {",
+        "        if (!started) return null",
+    ]
+    if "private var lastAttempt" in text:
+        body.append("        lastAttempt = System.currentTimeMillis()")
+    body += [
+        '        val latest = withContext(Dispatchers.IO) { fetchLatest() } ?: return null',
+        '        prefs.edit { putString("latest", latest); putLong("checked_at", System.currentTimeMillis()) }',
+        "        available = latest.takeIf { newer(it, current) }",
+        "        return available",
+        "    }",
+        "",
+    ]
+    anchor_after = (
+        '    /** Whether version [a] comes after [b], comparing dotted numbers ("1.10" after "1.9"). */'
+    )
     patch(
-        root, j("update/Updates.kt"),
-        '''    /** Whether version [a] comes after [b], comparing dotted numbers ("1.10" after "1.9"). */''',
-        '''    /**
-     * Asks once, now, and waits for the answer. Control Center's Check for Updates row has to say
-     * what came of the check, which [checkIfStale] cannot tell it: that one launches and returns.
-     * Null means either that no source answered or that this build is already the latest.
-     */
-    suspend fun checkNow(): String? {
-        if (!started) return null
-        lastAttempt = System.currentTimeMillis()
-        val latest = withContext(Dispatchers.IO) { fetchLatest() } ?: return null
-        prefs.edit { putString("latest", latest); putLong("checked_at", System.currentTimeMillis()) }
-        available = latest.takeIf { newer(it, current) }
-        return available
-    }
-
-    /** Whether version [a] comes after [b], comparing dotted numbers ("1.10" after "1.9"). */''',
+        root, updates,
+        anchor_after,
+        "\n".join(body) + "\n" + anchor_after,
         "Updates 增加可等待的检查",
     )
 
     # 聚焦底板是浅色surface。Apple 的 label 每套外观各有一份值，上游只搬了深色那套，
     # 于是「白 60%」压在白板上等于没有字。这里补上浅色外观的 secondaryLabel。
-    patch(
+    insert_after_line(
         root, j("ui/theme/Theme.kt"),
-        '''    /** tvOS draws a focused control as a near-white plate with dark content. */
-    val Focus = Color(0xFFF5F5F7)
-    val OnFocus = Color(0xFF1D1D1F)
-}''',
-        '''    /** tvOS draws a focused control as a near-white plate with dark content. */
-    val Focus = Color(0xFFF5F5F7)
-    val OnFocus = Color(0xFF1D1D1F)
-
-    /**
-     * The labels above, resolved for the plate. Apple gives every label a value per appearance,
-     * and the focused plate is the light one: `secondaryLabel` there is rgb(60,60,67) at 60%, not
-     * the white at 60% used on glass. Drawing the dark value on the plate puts white on white.
-     */
-    val OnFocusSecondary = Color(0x993C3C43)
-}''',
+        "val OnFocus = Color(0xFF1D1D1F)",
+        [
+            "",
+            "/**",
+            " * The labels above, resolved for the plate. Apple gives every label a value per appearance,",
+            " * and the focused plate is the light one: `secondaryLabel` there is rgb(60,60,67) at 60%, not",
+            " * the white at 60% used on glass. Drawing the dark value on the plate puts white on white.",
+            " */",
+            "val OnFocusSecondary = Color(0x993C3C43)",
+        ],
         "Palette 补上浅色外观的次要文字色",
+        marker="OnFocusSecondary",
     )
 
     # 菜单行要能变灰：灰色自成一档，聚焦时不跟着变白，否则看起来仍然可以点。
     overlay = j("ui/home/Overlays.kt")
-    patch(
+    insert_after_line(
         root, overlay,
-        """    destructive: Boolean = false,
-    trailing: String? = null,
-) {""",
-        """    destructive: Boolean = false,
-    /** Dimmed: the row is showing an answer rather than offering itself (Control Center's check). */
-    muted: Boolean = false,
-    trailing: String? = null,
-) {""",
+        "destructive: Boolean = false,",
+        [
+            "/** Dimmed: the row is showing an answer rather than offering itself (Control Center's check). */",
+            "muted: Boolean = false,",
+        ],
         "MenuRow 支持变灰",
+        marker="muted: Boolean = false,",
     )
-    patch(
+    # 这个 when 整个换掉，中间几档一概不看（连随后的 `}` 一起吃掉）。
+    patch_span(
         root, overlay,
-        """        val fg = when {
-            state.focused -> if (destructive) Color(0xFFD70015) else Palette.OnFocus
-            destructive -> Palette.Red
-            else -> Palette.Label
-        }""",
+        r"^[ \t]*val fg = when \{",
+        r"^[ \t]*else -> Palette\.Label$",
         """        // The colour is resolved against the surface the row is drawn on, not against the dark
         // appearance the rest of Home uses: on the near-white plate a white-at-60% label reads as
         // nothing at all. Focus fades the plate in over 140 ms, so the text fades with it rather
@@ -1630,17 +2023,14 @@ def patch_update_row(root):
             tween(140, easing = Motion.EaseOut), label = "row-fg",
         )""",
         "MenuRow 变灰的取色",
+        absorb=r"^[ \t]*\}$",
+        marker='label = "row-fg"',
     )
-    # 右侧说明文字同理，并且跟底板一起过渡。
-    patch(
+    # 右侧说明文字同理，并且跟底板一起过渡。整块换掉，同样只认首尾两行。
+    patch_span(
         root, overlay,
-        """            if (trailing != null) {
-                BasicText(
-                    trailing,
-                    style = Type.Callout.copy(color = if (state.focused) Palette.OnFocus.copy(alpha = 0.6f) else Palette.SecondaryLabel),
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp),
-                )
-            }""",
+        r"^[ \t]*if \(trailing != null\) \{",
+        r"^[ \t]*\}$",
         """            if (trailing != null) {
                 // Same pairing as the label: dark and muted on the plate, light and muted on glass.
                 val trailingFg by animateColorAsState(
@@ -1654,22 +2044,18 @@ def patch_update_row(root):
                 )
             }""",
         "MenuRow 右侧文字与底板同步过渡",
+        marker='label = "row-trailing"',
     )
 
     center = j("ui/control/ControlCenter.kt")
-    patch(
+    # 这一块整个换成一行，中间那个 MenuRow 怎么写都不看。
+    patch_span(
         root, center,
-        """        Updates.available?.let { latest ->
-            MenuRow(
-                Glyph.Info,
-                stringResource(R.string.cc_update_available, latest),
-                onClick = { vm.overlay = Overlay.ControlCenter(CcPage.Update) },
-            )
-        }
-""",
-        """        UpdateRow(vm)
-""",
+        r"^[ \t]*Updates\.available\?\.let \{ latest ->",
+        r"^[ \t]*\}$",
+        "        UpdateRow(vm)",
         "更新行改为常驻",
+        marker="UpdateRow(vm)",
     )
     patch(
         root, center,
@@ -1734,23 +2120,28 @@ private fun UpdateRow(vm: HomeViewModel) {
         "新增常驻更新行",
     )
 
-    patch(
-        root, STRINGS_EN,
-        '''    <string name="cc_update_available">New Version: %s</string>''',
-        '''    <string name="cc_update_available">New Version: %s</string>
-    <string name="cc_update_check">Check for Updates</string>
-    <string name="cc_update_checking">Checking…</string>
-    <string name="cc_update_none">No New Version</string>''',
+    # 三条新文案挂在 cc_update_available 后面，按 name 认位置。
+    insert_strings(
+        root, STRINGS_EN, "cc_update_available",
+        [
+            ("cc_update_check", "Check for Updates"),
+            ("cc_update_checking", "Checking…"),
+            ("cc_update_none", "No New Version"),
+        ],
         "英文文案：检测更新",
+        marker='name="cc_update_check"',
+        where="after",
     )
-    patch(
-        root, STRINGS_ZH,
-        '''    <string name="cc_update_available">有新版本 %s</string>''',
-        '''    <string name="cc_update_available">有新版本 %s</string>
-    <string name="cc_update_check">检测更新</string>
-    <string name="cc_update_checking">正在检测…</string>
-    <string name="cc_update_none">暂无新版本</string>''',
+    insert_strings(
+        root, STRINGS_ZH, "cc_update_available",
+        [
+            ("cc_update_check", "检测更新"),
+            ("cc_update_checking", "正在检测…"),
+            ("cc_update_none", "暂无新版本"),
+        ],
         "中文文案：检测更新",
+        marker='name="cc_update_check"',
+        where="after",
     )
 
 
@@ -1903,40 +2294,59 @@ def verify(root, repo, dropped):
 
 
 def lint_anchors():
-    """只看锚点有多「脆」，不跑补丁、不写文件（`apply.py --lint`）。
+    """看锚点有多「脆」，不跑补丁、不写文件（`apply.py --lint`）。
 
-    反复被顶开的三类原因，前两类已经能从机制上免疫：
-      1) 整块重新缩进        → patch() 现在会自适应（_flexible_match）
-      2) import / 函数体 / 参数 → 走 insert_in_body / set_call_arg / ensure_import
-      3) 锚点里抄了上游的注释 → 上游随手删两行注释就失配（1.69 的 ss_delay 就是这样）
-    这里就把第 3 类全部列出来，好一次性清掉。
+    四类失配原因，前三类已经从机制上免疫：
+      1) 整块重新缩进        → patch() 先放宽首行缩进再找（_flexible_match）
+      2) 锚点里抄了上游注释  → 注释行当通配，删了改了都还认（_tolerant_match）
+      3) import / 函数体 / 调用参数 / 字符串 → 走 insert_in_body / set_call_arg / ensure_import /
+                                               insert_after_block / insert_before_call / set_string
+      4) 剩下「整块原文」的   → 这一档仍然会红（上游删掉整段、改了函数名），所以要盯住数量
+    这里把第 4 类的锚点列出来，再多就说明又有人往 patch() 里抄了一整段。
     """
     import ast
 
     with open(os.path.abspath(__file__), encoding="utf-8") as f:
         tree = ast.parse(f.read())
-    rows = []
+    blocks, comments, total = [], 0, 0
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or getattr(node.func, "id", "") != "patch":
+        name = getattr(node.func, "id", "") if isinstance(node, ast.Call) else ""
+        if name not in ("patch", "patch_any"):
             continue
         if len(node.args) < 4:
             continue
         try:
             rel = ast.literal_eval(node.args[1])
-            old = ast.literal_eval(node.args[2])
-            what = ast.literal_eval(node.args[3])
         except (ValueError, SyntaxError):
-            continue
-        if not isinstance(old, str) or not isinstance(what, str):
-            continue
-        comment = [l for l in old.split("\n") if l.strip().startswith(("//", "*", "/*"))]
-        if comment:
-            rows.append((node.lineno, short(rel), what, len(comment), comment[0].strip()))
+            rel = "?"
+        if name == "patch":
+            pairs = [(node.args[2], node.args[3], node.args[4] if len(node.args) > 4 else "")]
+        else:
+            pairs = []
+            if isinstance(node.args[1], (ast.List, ast.Tuple)):
+                for elt in node.args[1].elts:
+                    if isinstance(elt, ast.Tuple) and len(elt.elts) >= 2:
+                        pairs.append((elt.elts[0], elt.elts[1], node.args[2] if len(node.args) > 2 else ""))
+        for old_node, _new_node, what_node in pairs:
+            try:
+                old = ast.literal_eval(old_node)
+                what = ast.literal_eval(what_node)
+            except (ValueError, SyntaxError):
+                continue
+            if not isinstance(old, str):
+                continue
+            total += 1
+            lines = [l for l in old.split("\n") if l.strip()]
+            if any(_is_comment_line(l) for l in lines):
+                comments += 1
+            if len(lines) >= 3:
+                blocks.append((node.lineno, str(rel), str(what), len(lines), lines[0].strip()))
 
-    print("锚点里抄了上游注释的：%d 处（上游删/改注释就失配）\n" % len(rows))
-    for lineno, rel, what, n, sample in rows:
-        print("  L%-5d %-34s %-30s %d 行  %s" % (lineno, rel, what[:28], n, sample[:52]))
-    print("\n缩进这一类的已经免疫：patch() 命中不到时会放宽首行缩进再找一次。")
+    print("整块原文锚点（>=3 行）：%d 处 / 共 %d 个锚点" % (len(blocks), total))
+    for lineno, rel, what, n, sample in blocks:
+        print("  L%-5d %-34s %-28s %d 行  %s" % (lineno, rel, what[:26], n, sample[:46]))
+    print("\n含上游注释的锚点：%d 处 —— 已免疫（注释行当通配，删了改了都还认）。" % comments)
+    print("缩进整块变了的也免疫：命中不到时会放宽首行缩进再找一次。")
 
 
 def main():
