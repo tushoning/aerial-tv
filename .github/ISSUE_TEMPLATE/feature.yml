@@ -1,0 +1,35 @@
+name: 功能建议 / Feature request
+description: 想让 Aerial 多做点什么，或者换一种做法 / Something Aerial could do, or do differently
+title: "[建议] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先在 [Issues](https://github.com/pengchujin/aerial-tv/issues?q=is%3Aissue+label%3Aenhancement) 搜一下，已经有人提过的话点个 👍、在下面补充你的用法，比开新帖更有用。
+        Search first; a 👍 and your use case on an existing request helps more than a new one.
+  - type: textarea
+    id: idea
+    attributes:
+      label: 想要什么 / What you'd like
+      description: 一两句话说清楚 / In a sentence or two
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: 为什么需要 / Why
+      description: 什么时候会用到，现在是怎么将就的 / When you'd use it, and how you manage today
+    validations:
+      required: true
+  - type: textarea
+    id: refs
+    attributes:
+      label: 参考（可选）/ References (optional)
+      description: tvOS 或其他桌面上类似的样子，截图、照片都行 / How tvOS or another launcher does it; pictures welcome
+  - type: input
+    id: model
+    attributes:
+      label: 你的电视（可选）/ Your TV (optional)
+      description: 有的功能只有部分电视做得到 / Some things only some TVs allow
+      placeholder: TCL 75Q10L / Android 11
