@@ -16,6 +16,8 @@ Aerial TV 的 OPPO 定制版，版本号与上游保持一致。
 
 ---
 
+以下是上游原文：
+
 <div align="center">
 
 <img src="docs/brand/icon.png" width="96" alt="Aerial 图标">
