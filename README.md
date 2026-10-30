@@ -1,3 +1,21 @@
+Aerial TV 的 OPPO 定制版，版本号与上游保持一致。
+
+已做下列修改：
+
+1. 根据[笔记](https://github.com/pengchujin/aerial-tv/blob/main/docs/devices/oppo-coloros-tv.md)做的适应性修改
+2. 屏保进入时间桌面与系统双向同步
+3. 亮度调节桌面与系统双向同步
+4. 第一排 app 名称内显优化
+5. 第一排与第二排分别设置 app 名称显示方式
+6. 增加检测更新按钮
+7. 修改遥控电源键行为：
+   把原来的双击电源键息屏改为直接关机，
+   不影响单击电源键弹出的电源选单。
+
+安装：与源仓库签名不同，所以相互切换需要卸载后安装。
+
+---
+
 <div align="center">
 
 <img src="docs/brand/icon.png" width="96" alt="Aerial 图标">
