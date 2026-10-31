@@ -507,11 +507,15 @@ def _line_hit(text, anchor, rel, what):
 
     anchor 可以给一组候选：上游在新旧版本里对同一处写法不同时（1.69 起名字那行的条件
     多了 DiagLayers.shows("names")），哪一代唯一命中就用哪一代。
+
+    候选写成 "re:..." 时按正则整行匹配 —— 用在「上游老往同一行里加减条件」的地方
+    （1.75 给 cecWanted 塞了 !mouseAttached）。正则只认开头那个变量名，后面怎么加都不管。
     """
     candidates = anchor if isinstance(anchor, (list, tuple)) else [anchor]
     tried = []
     for cand in candidates:
-        found = list(re.finditer(r"(?m)^([ \t]*)%s[ \t]*$" % re.escape(cand), text))
+        body = r"%s" % cand[3:] if cand.startswith("re:") else re.escape(cand)
+        found = list(re.finditer(r"(?m)^([ \t]*)%s[ \t]*$" % body, text))
         tried.append((cand, len(found)))
         if len(found) == 1:
             return found[0]
@@ -523,14 +527,46 @@ def _line_hit(text, anchor, rel, what):
     return None
 
 
-def insert_after_line(root, rel, anchor, lines, what, marker=None):
+def patch_re(root, rel, pattern, repl, what, marker=None):
+    """按正则替换，必须恰好命中一次。
+
+    专门对付「上游爱在同一行里加减条件」的地方：锚点只钉住行首那段（变量名），
+    中间塞什么都跟得上，替换时把原内容整段接回去再补自己那一项。
+    pattern 用 (?m) 开头；repl 里用 \\g<1> 之类引用分组。
+    """
+    text = read(root, rel)
+    if text is None:
+        return
+    if marker and marker in text:
+        print("  ok  %-44s %s（已加过，跳过）" % (short(rel), what))
+        return
+    found = list(re.finditer(pattern, text))
+    if len(found) != 1:
+        fail(
+            "%s\n    要改的地方：%s\n    问题：正则锚点命中 %d 次（要恰好 1 次）\n"
+            "    正则：%s" % (rel, what, len(found), pattern)
+        )
+        return
+    m = found[0]
+    write(root, rel, text[: m.start()] + m.expand(repl) + text[m.end():])
+    print("  ok  %-44s %s" % (short(rel), what))
+
+
+
+def insert_after_line(root, rel, anchor, lines, what, marker=None, overwrite=None):
     """在 anchor 那一行**之后**插几行，缩进沿用 anchor 自己的。
 
     比「整块原文锚点」耐改得多：凡是「往一个列表里加一条」的地方都该用它 —— 上游在
     同一处插了自己的行（1.70 就往 HOME 的 intent-filter 里塞了 COMMON_HOME），
     整块锚点立刻 0 命中，而单行锚点完全不受影响。
 
-    anchor 是整行内容（不含缩进，按整行精确匹配，必须恰好命中一次）。
+    anchor 是整行内容（不含缩进，按整行精确匹配，必须恰好命中一次）；写成 "re:..."
+    则按正则整行匹配 —— 只认行首那个变量名，上游往表达式里加条件也跟得上。
+
+    overwrite 填一个变量名：插完之后检查「这个变量在插入点之后还有没有别的赋值」。
+    覆盖式补丁（原句不动、后面补一句 if (x) y = z）最怕的就是上游以后在更后面又赋一次值 ——
+    那种情况不会编译错、不会报红，只会功能悄悄失灵。有这个检查就会红出来。
+
     marker 给一个「已经加过」的判据字符串（幂等）。
     """
     text = read(root, rel)
@@ -545,7 +581,25 @@ def insert_after_line(root, rel, anchor, lines, what, marker=None):
     ind = hit.group(1)
     block = "\n".join((ind + line) if line.strip() else "" for line in lines)
     at = hit.end()
-    write(root, rel, text[:at] + "\n" + block + text[at:])
+    new = text[:at] + "\n" + block + text[at:]
+    if overwrite:
+        # 只看插入点之后：同一作用域里再出现 `x = ...` 就说明我们的覆盖会被冲掉。
+        # `x = x and ...` 这种读-改-写不算（RHS 里提到了自己），那是上游原有的收尾处理。
+        tail = new[new.index(block, at) + len(block):]
+        clash = [
+            line
+            for line in tail.splitlines()
+            if re.match(r"^[ \t]*%s\s*(\+|-|\*|/)?=(?!=)" % re.escape(overwrite), line)
+            and not re.search(r"\b%s\b" % re.escape(overwrite), line.split("=", 1)[1])
+        ]
+        if clash:
+            fail(
+                "%s\n    要改的地方：%s\n    问题：覆盖 %s 之后，下面还有 %d 处重新赋值，"
+                "我们的 if 会被冲掉（上游新加的语句？）\n%s"
+                % (rel, what, overwrite, len(clash), fence("\n".join(clash)))
+            )
+            return
+    write(root, rel, new)
     print("  ok  %-44s %s" % (short(rel), what))
 
 
@@ -1111,12 +1165,13 @@ def patch_screensaver(root):
 
     # 2) 档位：多一个 1 分钟；列表要能带上系统里那种「不在档位表里」的值。
     settings = j("settings/AerialSettings.kt")
-    patch(
+    patch_re(
         root, settings,
-        "    val screensaverChoices = listOf(2, 5, 10, 20, NEVER)",
-        "    // 这台电视的系统屏保支持 1 分钟，Aerial 原版只有 2 起。\n"
-        "    val screensaverChoices = listOf(1, 2, 5, 10, 20, NEVER)",
+        r"(?m)^([ \t]*)val screensaverChoices = .*$",
+        "\\g<1>// 这台电视的系统屏保支持 1 分钟，Aerial 原版只有 2 起。\n"
+        "\\g<1>val screensaverChoices = listOf(1, 2, 5, 10, 20, NEVER)",
         "档位加 1 分钟",
+        marker="screensaverChoices = listOf(1,",
     )
     ensure_import(
         root, settings,
@@ -1556,12 +1611,12 @@ def patch_names(root):
         marker="private fun PlateTileName(",)
 
     # 桌面上把两套设置分开：第一排的名称画在图标里，底板不再为它变高。
-    patch(
+    # 只认行首的变量名（上游那行后面接什么都不看），上面那句陈旧注释留着也不影响编译。
+    patch_re(
         root, home,
-        "        // With every name shown, the top row's go on its glass plate, which grows to hold them.\n"
-        "        val plateNames = AerialSettings.showAllNames && AerialSettings.homePlate",
-        "        // The top row's names sit inside its tiles now, so the plate never grows to hold them.\n"
-        "        val plateNames = false",
+        r"(?m)^([ \t]*)val plateNames = .*$",
+        "\\g<1>// (custom) the plate no longer grows: the top row's names are drawn inside the tiles.\n"
+        "\\g<1>val plateNames = false",
         "底板不再为名称增高",
         marker="val plateNames = false",
     )
@@ -1729,7 +1784,7 @@ def patch_power_menu(root):
     # 上游在其中任何一行上动手，坏掉的只有那一条，报错也直接指到那一行。
     insert_after_line(
         root, guard,
-        "val cecWanted = !screenOff && CecHome.active(this, lastWindow?.first)",
+        r"re:val cecWanted = .*",
         [
             "// The power menu is up: take keys for a moment. Direction keys and OK land here and",
             '// tell the menu\'s own "screen off" (keep it) apart from a second press of the power',
@@ -1740,19 +1795,23 @@ def patch_power_menu(root):
         "菜单弹着时开按键过滤：加一条判据",
         marker="val menuWanted =",
     )
-    patch(
+    # 下面两条都不去理解上游那行写了什么：只认行首的变量名，改完在后面补一句覆盖。
+    # 上游往表达式里加多少条件（1.75 加了 !mouseAttached）都不影响这里。
+    insert_after_line(
         root, guard,
-        "        filteringForCecOnly = cecWanted && !homeWanted\n",
-        "        filteringForCecOnly = cecWanted && !homeWanted && !menuWanted\n",
+        r"re:filteringForCecOnly = .*",
+        ["if (menuWanted) filteringForCecOnly = false"],
         "菜单弹着时开按键过滤：CEC 判据让位",
-        marker="cecWanted && !homeWanted && !menuWanted",
+        marker="if (menuWanted) filteringForCecOnly = false",
+        overwrite="filteringForCecOnly",
     )
-    patch(
+    insert_after_line(
         root, guard,
-        "        var want = if (homeWanted || cecWanted) info.flags or flag else info.flags and flag.inv()\n",
-        "        var want = if (homeWanted || cecWanted || menuWanted) info.flags or flag else info.flags and flag.inv()\n",
+        r"re:var want = .*",
+        ["if (menuWanted) want = want or flag"],
         "菜单弹着时开按键过滤：真的开",
-        marker="if (homeWanted || cecWanted || menuWanted)",
+        marker="if (menuWanted) want = want or flag",
+        overwrite="want",
     )
 
     # 过滤只因为菜单才开着的时候，音量键不该被接管：这台电视平时从不开过滤，
