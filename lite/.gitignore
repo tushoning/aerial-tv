@@ -1,0 +1,3 @@
+/build
+# Copied from app/src/main/assets at build time (see build.gradle.kts).
+/lite-assets

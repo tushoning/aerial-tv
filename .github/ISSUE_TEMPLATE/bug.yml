@@ -1,0 +1,79 @@
+name: 问题反馈 / Bug report
+description: Aerial 某个功能不对、显示错了、闪退 / Something in Aerial is wrong, looks wrong or crashes
+title: "[问题] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        装不上、按主页键回不到 Aerial、开机或待机后回到原桌面、信号源不对：请用「机型适配」模板，那些要看诊断信息。
+        Can't install, Home doesn't come back to Aerial, the old launcher returns after boot or standby, inputs are wrong: use the Device support form instead.
+
+        提交前先在 [Issues](https://github.com/pengchujin/aerial-tv/issues?q=is%3Aissue) 搜一下，同样的问题在已有的帖子下面补充就好。
+        Search the existing issues first; if yours is there, add to it.
+  - type: input
+    id: version
+    attributes:
+      label: Aerial 版本 / Aerial version
+      description: 控制中心最下面右边写的版本 / Shown at the bottom right of Control Center
+      placeholder: Aerial 1.31
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: 电视品牌和型号 / TV brand and model
+      description: 包装或「设置 → 关于」里的型号 / As on the box or in Settings → About
+      placeholder: 小米 Redmi X65 2026 / Android 14
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 哪部分 / Where
+      options:
+        - 首页、磁贴、焦点 / Home, tiles, focus
+        - 控制中心（音量、亮度、网络、设置） / Control Center
+        - 信号源磁贴 / Input tiles
+        - 个性化、壁纸 / Personalize, wallpaper
+        - 屏保、航拍 / Screensaver, aerials
+        - 手机配置页 / Phone page
+        - 升级 / Updating
+        - 其他 / Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么 / What happens
+      description: 看到了什么，本来应该怎样 / What you see, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 怎么复现 / Steps
+      description: 一步一步写，比如「个性化 → App 名称选只显示选中的 → 回到首页第一排」/ Step by step
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: textarea
+    id: shots
+    attributes:
+      label: 截图或照片 / Screenshots or photos
+      description: 拍电视屏幕也可以，拖进这里就会上传 / A phone photo of the screen is fine; drop it here
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 诊断信息（可选）/ Diagnostics (optional)
+      description: 手机配置页最下面「反馈问题 → 显示诊断信息 → 复制」，或电脑上运行 `curl -fsSL https://aerial.qust.me/tools/report.sh | TV=<电视IP> bash` / From the phone page's 反馈问题, or report.sh
+      render: markdown
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认 / Checks
+      options:
+        - label: 我搜过已有的 issue，没有同样的问题 / I searched the existing issues
+          required: true
+        - label: 我用的是最新版（控制中心没有「有新版本」）/ I'm on the latest version
