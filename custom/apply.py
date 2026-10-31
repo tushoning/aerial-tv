@@ -1408,7 +1408,7 @@ def patch_names(root):
         "/** Aerial's own preferences. Compose state, written on the main thread only. */\nobject AerialSettings {",
         "/** The top row's names, drawn inside the tiles: the selected app's, every one, or none. */\n"
         "enum class PlateNames(val key: String) {\n"
-        '    Selected("selected"), All("all"), Off("off");\n'
+        '    Selected("selected"), All("all"), Off("off"), Above("above");\n'
         "\n"
         "    companion object {\n"
         "        fun of(key: String?) = entries.firstOrNull { it.key == key } ?: Selected\n"
@@ -1673,7 +1673,7 @@ def patch_names(root):
         "%s// The plate's row draws its names inside the tiles; every other row, including that\n"
         "%s// same row while the grid is open, keeps the original name below the tile. nameOnPlate\n"
         "%s// stays at its default of false on purpose.\n"
-        "%splateName = if (onPlateRow) AerialSettings.plateNames else null," % (indent, indent, indent, indent),
+        "%splateName = if (onPlateRow && AerialSettings.plateNames != PlateNames.Above) AerialSettings.plateNames else null," % (indent, indent, indent, indent),
         home_text,
         count=1,
     )
@@ -1702,6 +1702,7 @@ def patch_names(root):
             "        PlateNames.Selected to R.string.st_names_focused,",
             "        PlateNames.All to R.string.st_names_all,",
             "        PlateNames.Off to R.string.st_names_off,",
+            "        PlateNames.Above to R.string.st_names_above,",
             "    ),",
             "    AerialSettings.plateNames, AerialSettings::choosePlateNames,",
             ")",
@@ -1709,6 +1710,212 @@ def patch_names(root):
         "设置页拆成两条",
         marker="AerialSettings::choosePlateNames",
     )
+
+
+def patch_dock_title(root):
+    """第一排上方那块大字：焦点在第一排时，把当前应用名放大画在首排上沿。
+
+    来源是 CleanYourTV 的 dock 标题（MainActivity.showHero）：换名字时先淡出左移 120ms、
+    换字、再淡入归位 200ms，第一次出现 260ms 淡入。这里是 Compose 重写，用 Animatable 逐段跑，
+    不是照抄它的 View 动画。
+
+    只有把「第一排名称」设成 Above 时才画：画在图标里再画一块大字，同一个名字会出现两次。
+    """
+    home = j("ui/home/HomeScreen.kt")
+
+    call = [
+        "// (custom) The top row's names can sit above the row instead of inside the tiles.",
+        "if (AerialSettings.plateNames == PlateNames.Above && focusedIndex >= 0) {",
+        "    DockTitleAboveRow(",
+        "        text = apps[focusedIndex].label,",
+        "        index = focusedIndex,",
+        "        visible = !inGrid && overlay == Overlay.None && !pillFocused,",
+        "        topY = metrics.topRowY - 40.dp,",
+        "        startPad = metrics.margin,",
+        "        dim = 1f - (scroll.value / collapsePx * 1.6f).coerceIn(0f, 1f),",
+        "        reduced = reduced,",
+        "    )",
+        "}",
+    ]
+    insert_before_line(
+        root, home,
+        r"re:apps\.forEachIndexed \{ index, app ->",
+        call,
+        "第一排上方大字",
+        marker="DockTitleAboveRow(",
+    )
+
+    body = """
+
+// ---- (custom) the first row's name, large, just above the row --------------------------------
+
+/** The band the name sits in; the text is bottom-aligned, so this is the room above the row. */
+private val DockTitleHeight = 72.dp
+
+/**
+ * One name on the band. Every switch makes a fresh one and leaves the previous ones to finish
+ * their own fade-out; nothing shares a clock, so a new name can never inherit a half-run animation
+ * from the one before it. They may overlap briefly while crossing over, which is the intent.
+ */
+private class TitleSlot(val text: String, val dir: Int, val fromScratch: Boolean) {
+    val fade = Animatable(0f)
+    val slide = Animatable(0f)
+    var leaving by mutableStateOf(false)
+}
+
+/**
+ * The focused app's name, large, just above the top row: the top row's names moved out of the
+ * tiles and up here.
+ *
+ * The type and the timings are CleanYourTV's top shelf, measured off it: 48 sp, light, -0.02 em,
+ * pure white, the bottom of the line 40 dp above the row's top edge, the left edge on the row's
+ * own margin. CleanYourTV draws it in Outfit Light, a font it bundles; here it is Aerial's own
+ * Inter at 300 instead, so the band matches the clock and the labels around it rather than
+ * introducing a third face onto Home.
+ *
+ * Slides follow the remote the way a list does: Right brings the next name in from the right,
+ * Left from the left. [index] tells them apart — a name alone cannot say which way focus moved.
+ *
+ * Why a slot list instead of AnimatedContent: an interrupted transition hands the next state the
+ * outgoing content's running animation, so a quick Left-then-Right could put a name on screen at
+ * full opacity with no animation of its own. Here a switch never touches the newcomer's values —
+ * it starts at 0 / off to the side by construction — and the ones leaving are only asked to leave.
+ */
+@Composable
+private fun DockTitleAboveRow(
+    text: String,
+    index: Int,
+    visible: Boolean,
+    topY: Dp,
+    startPad: Dp,
+    dim: Float,
+    reduced: Boolean,
+) {
+    val slots = remember { mutableStateListOf<TitleSlot>() }
+    var lastIndex by remember { mutableStateOf(index) }
+    val isReduced by rememberUpdatedState(reduced)
+
+    LaunchedEffect(text, index) {
+        val current = slots.lastOrNull()
+        if (current != null && current.text == text && !current.leaving) {
+            lastIndex = index
+            return@LaunchedEffect
+        }
+        val forward = index > lastIndex
+        lastIndex = index
+        // Everything already on the band fades out on its own; nothing of it is carried over.
+        slots.forEach { it.leaving = true }
+        val fresh = TitleSlot(text, if (forward) 1 else -1, fromScratch = slots.isEmpty())
+        if (fresh.fromScratch) {
+            fresh.fade.snapTo(1f)
+            fresh.slide.snapTo(0f)
+        }
+        slots.add(fresh)
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .offset(y = topY - DockTitleHeight)
+            .padding(start = startPad)
+            .height(DockTitleHeight)
+            .graphicsLayer { this.alpha = dim },
+        contentAlignment = Alignment.BottomStart,
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(if (reduced) 0 else 260)),
+            exit = fadeOut(tween(if (reduced) 0 else 160)),
+        ) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
+                slots.forEach { slot ->
+                    key(slot) {
+                        LaunchedEffect(slot.leaving) {
+                            if (slot.leaving) {
+                                coroutineScope {
+                                    launch { slot.fade.animateTo(0f, tween(if (isReduced) 0 else 120)) }
+                                    launch {
+                                        slot.slide.animateTo(
+                                            -slot.dir * 18f,
+                                            tween(if (isReduced) 0 else 120),
+                                        )
+                                    }
+                                }
+                                slots.remove(slot)
+                            } else if (!slot.fromScratch) {
+                                // A newcomer always starts invisible and off to the side.
+                                slot.slide.snapTo(slot.dir * 18f)
+                                coroutineScope {
+                                    launch { slot.fade.animateTo(1f, tween(if (isReduced) 0 else 200)) }
+                                    launch { slot.slide.animateTo(0f, tween(if (isReduced) 0 else 200)) }
+                                }
+                            }
+                        }
+                        BasicText(
+                            text = slot.text,
+                            style = TextStyle(
+                                color = Color.White,
+                                // Aerial's own face, as the clock and every other label: a variable Inter
+                                // whose weights are declared per instance, so 300 really is 300. Left at
+                                // the default family it asked the system for Roboto Light, which is
+                                // heavier than CleanYourTV's Outfit Light, and drew Chinese names at 400
+                                // because the fallback for those has no light face at all.
+                                fontFamily = InterDisplay,
+                                fontSize = 48.sp,
+                                fontWeight = FontWeight.Light,
+                                letterSpacing = (-0.02).em,
+                                platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                // A tight edge rather than a wide halo: the 10 px blur spread a dark
+                                // smudge around every stroke and read as extra weight, which is what
+                                // made this look bolder than CleanYourTV's (it has no shadow at all).
+                                // White on a bright aerial still needs some edge to stay legible.
+                                shadow = Shadow(Color.Black.copy(alpha = 0.30f), Offset(0f, 1f), 3f),
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.graphicsLayer {
+                                alpha = slot.fade.value
+                                translationX = slot.slide.value.dp.toPx()
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+"""
+
+    text = read(root, home)
+    if text is None:
+        return
+    if "// ---- (custom) the first row's name" in text:
+        print("  ok  %-44s %s（已加过，跳过）" % ("HomeScreen.kt", "第一排上方大字：组件"))
+        return
+    write(root, home, text.rstrip("\n") + "\n" + body)
+    print("  ok  %-44s %s" % ("HomeScreen.kt", "第一排上方大字：组件"))
+
+    for imp in (
+        "import %s.settings.PlateNames" % PKG,
+        "import androidx.compose.ui.geometry.Offset",
+        "import androidx.compose.ui.graphics.Shadow",
+        "import androidx.compose.ui.text.TextStyle",
+        "import androidx.compose.ui.text.font.FontWeight",
+        "import androidx.compose.ui.text.style.TextOverflow",
+        "import androidx.compose.ui.unit.sp",
+        "import androidx.compose.ui.unit.em",
+        "import androidx.compose.ui.text.PlatformTextStyle",
+        "import %s.ui.theme.InterDisplay" % PKG,
+        "import androidx.compose.animation.AnimatedVisibility",
+        "import androidx.compose.animation.fadeIn",
+        "import androidx.compose.animation.fadeOut",
+        "import androidx.compose.runtime.rememberUpdatedState",
+        "import androidx.compose.runtime.mutableStateListOf",
+        "import androidx.compose.runtime.key",
+        "import kotlinx.coroutines.coroutineScope",
+        "import kotlinx.coroutines.launch",
+    ):
+        ensure_import(root, home, imp, "第一排上方大字：import %s" % imp.rsplit(".", 1)[-1])
 
 
 def patch_power_menu(root):
@@ -1873,8 +2080,9 @@ def patch_strings(root):
         root, STRINGS_EN, "st_names",
         [
             ("st_plate_names", "Top Row Names"),
-            ("st_plate_names_hint", "Names of the apps on the glass plate, drawn inside the icons: the selected app\\'s, every name, or none at all."),
+            ("st_plate_names_hint", "Names of the apps on the glass plate: the selected app\\'s, every name, or none; drawn inside the icons, or the focused one large above the row."),
             ("st_names_off", "Off"),
+            ("st_names_above", "Above the row"),
         ],
         "英文文案：新增第一排那一组",
         marker='name="st_plate_names"',
@@ -1892,8 +2100,9 @@ def patch_strings(root):
         root, STRINGS_ZH, "st_names",
         [
             ("st_plate_names", "第一排 APP 名称"),
-            ("st_plate_names_hint", "玻璃底板上那一排的名称，显示在图标内部：只显示选中的、全部显示，或者关闭显示。"),
+            ("st_plate_names_hint", "玻璃底板上那一排的名称：只显示选中的、全部显示、关闭显示，或者把当前应用的名称放大显示在首排上方。"),
             ("st_names_off", "关闭显示"),
+            ("st_names_above", "上方大字"),
         ],
         "中文文案：新增第一排那一组",
         marker='name="st_plate_names"',
@@ -2407,6 +2616,38 @@ def lint_anchors():
     print("\n含上游注释的锚点：%d 处 —— 已免疫（注释行当通配，删了改了都还认）。" % comments)
     print("缩进整块变了的也免疫：命中不到时会放宽首行缩进再找一次。")
 
+    # 插入行里自己写 `\n` 会绕开「每行统一加锚点缩进」那一步：换行后面的内容被当成同一行，
+    # 生成出来的缩进比上下文浅一截。能编译，但读起来是乱的，而且没人会注意到 —— 所以提前查。
+    insert_index = {
+        "insert_in_body": 3, "insert_after_line": 3, "insert_before_line": 3,
+        "insert_after_block": 3, "insert_before_call": 4, "insert_strings": 3,
+    }
+    joined = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        helper = getattr(node.func, "id", "")
+        idx = insert_index.get(helper)
+        if idx is None or len(node.args) <= idx:
+            continue
+        try:
+            seq = ast.literal_eval(node.args[idx])
+        except (ValueError, SyntaxError):
+            continue
+        if not isinstance(seq, (list, tuple)):
+            continue
+        for item in seq:
+            if isinstance(item, (tuple, list)):
+                item = item[-1] if len(item) == 2 else None
+            if isinstance(item, str) and "\n" in item.strip("\n"):
+                joined.append((node.lineno, helper, item.strip()[:56]))
+    print("\n插入行里写死换行的：%d 处%s" % (
+        len(joined),
+        " —— 这些的缩进会错，请拆成独立的一行。" if joined else " —— 没有，缩进都由锚点统一给。",
+    ))
+    for lineno, helper, sample in joined:
+        print("  L%-5d %-20s %s" % (lineno, helper, sample))
+
 
 def main():
     parser = argparse.ArgumentParser(description="Aerial -> OPPO ColorOS TV 定制")
@@ -2455,6 +2696,7 @@ def main():
     patch_screensaver(root)
     patch_saver_shade(root, args.version)
     patch_names(root)
+    patch_dock_title(root)
     patch_power_menu(root)
     patch_strings(root)
     patch_updates(root, repo)
