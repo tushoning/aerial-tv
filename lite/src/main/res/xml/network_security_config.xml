@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The system player fetches Apple's films from FilmProxy on 127.0.0.1 over plain HTTP. From
+     Android 9 an app targeting API 28+ may not use cleartext unless allowed; Android 4.x has no
+     such rule and ignores this file. Only the local proxy: everything else stays HTTPS-only. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>
