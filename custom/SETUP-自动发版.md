@@ -93,6 +93,11 @@ Actions → 「同步上游并发布 OPPO 定制包」→ Run workflow（tag 留
 正文里的反斜杠要写成 `\\`），`keep_upstream` 勾着就在末尾附「以下是上游原文」。
 只想改描述、不重编包：`tag` 填已发布过的版本，CI 检测到包已完整，只 `gh release edit` 就退出。
 
+`notes` 留空时的默认模板包含：包名 / 签名方式 / 只编 standard；**基于 Aerial（MIT，© pengchujin）修改**
+并链到仓库的 LICENSE；**构建源码指向 `src/<tag>` 分支**（并提醒 `main` 是上游原样、直接编出来是原版）；
+安装提示；末尾再附上游原文。前两条是给只看 Release 页的读者看的——Release 页那个自动生成的
+`Source code (zip)` 是按 tag 打包的 `main`，不是这个 APK 的源码，不写明会让人以为改过的代码在里面。
+
 ---
 
 ## 4. CI 怎么跑
