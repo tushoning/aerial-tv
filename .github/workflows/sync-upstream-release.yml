@@ -108,6 +108,15 @@ jobs:
               echo "包名 \`$APK_PACKAGE\`，带 \`MODERN_HOME\`，"
               echo "本仓库密钥签名（v1 + v2），只编 standard flavor。"
               echo ""
+              # MIT 只要求「所有副本都带版权声明与许可声明」，仓库根有 LICENSE 就已合规；
+              # 这里再写一句是为了让只拿到 APK 的人也能知道出处。
+              echo "基于 [Aerial](https://github.com/$UPSTREAM)（MIT，© pengchujin）修改，许可证全文见 [LICENSE](https://github.com/$MINE/blob/main/LICENSE)。"
+              echo ""
+              # Release 页那个 GitHub 自动打包的 Source code 是按 tag 打的，而 tag 指向 main，
+              # main 里是上游原样源码 —— 补丁是 CI 构建时才打的，打完才推到 src/<tag>。
+              # 不写明的话，别人下「源码」编出来是原版 Aerial，比没有源码更容易误导。
+              echo "构建源码：[\`src/$tag\`](https://github.com/$MINE/tree/src/$tag) 分支（已打好补丁）。注意 \`main\` 是上游原样 + 补丁脚本，直接编出来是原版。"
+              echo ""
               echo "安装：与源仓库签名不同所以相互切换需要卸载后安装。"
               echo ""
               echo "---"
