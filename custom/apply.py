@@ -1732,7 +1732,6 @@ def patch_dock_title(root):
         "        visible = !inGrid && overlay == Overlay.None && !pillFocused,",
         "        topY = metrics.topRowY - 40.dp,",
         "        startPad = metrics.margin,",
-        "        dim = 1f - (scroll.value / collapsePx * 1.6f).coerceIn(0f, 1f),",
         "        reduced = reduced,",
         "    )",
         "}",
@@ -1788,14 +1787,45 @@ private fun DockTitleAboveRow(
     visible: Boolean,
     topY: Dp,
     startPad: Dp,
-    dim: Float,
     reduced: Boolean,
 ) {
     val slots = remember { mutableStateListOf<TitleSlot>() }
     var lastIndex by remember { mutableStateOf(index) }
     val isReduced by rememberUpdatedState(reduced)
 
-    LaunchedEffect(text, index) {
+    // Built once: a fresh TextStyle on every recomposition is a new key for the text layout cache,
+    // and each slot would hold its own copy of the same object.
+    val style = remember {
+        TextStyle(
+            color = Color.White,
+            // Aerial's own face, as the clock and every other label: a variable Inter
+            // whose weights are declared per instance, so 300 really is 300. Left at
+            // the default family it asked the system for Roboto Light, which is
+            // heavier than CleanYourTV's Outfit Light, and drew Chinese names at 400
+            // because the fallback for those has no light face at all.
+            fontFamily = InterDisplay,
+            fontSize = 48.sp,
+            fontWeight = FontWeight.Light,
+            letterSpacing = (-0.02).em,
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
+            // A tight edge rather than a wide halo: the 10 px blur spread a dark
+            // smudge around every stroke and read as extra weight, which is what
+            // made this look bolder than CleanYourTV's (it has no shadow at all).
+            // White on a bright aerial still needs some edge to stay legible.
+            shadow = Shadow(Color.Black.copy(alpha = 0.30f), Offset(0f, 1f), 3f),
+        )
+    }
+
+    // [visible] is a key too. While the drawer is open the band is not drawn, and a name arriving
+    // then only queued an animation that started the moment the drawer closed — a burst of layout
+    // and fading exactly when the closing transition was already busy. Hidden, it is emptied; back,
+    // it is rebuilt in one go.
+    LaunchedEffect(text, index, visible) {
+        if (!visible) {
+            slots.clear()
+            lastIndex = index
+            return@LaunchedEffect
+        }
         val current = slots.lastOrNull()
         if (current != null && current.text == text && !current.leaving) {
             lastIndex = index
@@ -1811,15 +1841,19 @@ private fun DockTitleAboveRow(
             fresh.slide.snapTo(0f)
         }
         slots.add(fresh)
+        // Bounded: a burst of keys must not leave a pile of names to lay out and draw at once.
+        while (slots.size > 2) slots.removeAt(0)
     }
 
+    // No alpha of its own any more: an alpha that follows the scroll makes the system composite
+    // this band off-screen on every frame of a scroll, which cost more than the band is worth.
+    // Leaving the row already hides it (see [visible]), and that fade is a one-off.
     Box(
         Modifier
             .fillMaxWidth()
             .offset(y = topY - DockTitleHeight)
             .padding(start = startPad)
-            .height(DockTitleHeight)
-            .graphicsLayer { this.alpha = dim },
+            .height(DockTitleHeight),
         contentAlignment = Alignment.BottomStart,
     ) {
         AnimatedVisibility(
@@ -1853,24 +1887,7 @@ private fun DockTitleAboveRow(
                         }
                         BasicText(
                             text = slot.text,
-                            style = TextStyle(
-                                color = Color.White,
-                                // Aerial's own face, as the clock and every other label: a variable Inter
-                                // whose weights are declared per instance, so 300 really is 300. Left at
-                                // the default family it asked the system for Roboto Light, which is
-                                // heavier than CleanYourTV's Outfit Light, and drew Chinese names at 400
-                                // because the fallback for those has no light face at all.
-                                fontFamily = InterDisplay,
-                                fontSize = 48.sp,
-                                fontWeight = FontWeight.Light,
-                                letterSpacing = (-0.02).em,
-                                platformStyle = PlatformTextStyle(includeFontPadding = false),
-                                // A tight edge rather than a wide halo: the 10 px blur spread a dark
-                                // smudge around every stroke and read as extra weight, which is what
-                                // made this look bolder than CleanYourTV's (it has no shadow at all).
-                                // White on a bright aerial still needs some edge to stay legible.
-                                shadow = Shadow(Color.Black.copy(alpha = 0.30f), Offset(0f, 1f), 3f),
-                            ),
+                            style = style,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.graphicsLayer {
@@ -1916,6 +1933,35 @@ private fun DockTitleAboveRow(
         "import kotlinx.coroutines.launch",
     ):
         ensure_import(root, home, imp, "第一排上方大字：import %s" % imp.rsplit(".", 1)[-1])
+
+
+def patch_plate_names_switch(root):
+    """`--es plate_names off|selected|all|above`：从 adb 改「第一排 APP 名称」。
+
+    别的布局项（large_clock / one_row_home / home_plate…）都有 adb 入口，这个四态的是枚举而不是
+    开关，所以单独开一条。用它能在不碰遥控的情况下 A/B 这块大字的开销，也省得为了看一眼效果
+    爬三级菜单。
+    """
+    rel = j("guard/ConfigReceiver.kt")
+    ensure_import(
+        root, rel,
+        "import %s.settings.PlateNames" % PKG,
+        "ConfigReceiver 补 PlateNames import",
+    )
+    insert_before_line(
+        root, rel,
+        r're:        if \(intent\.hasExtra\("preview_apps"\)\).*',
+        [
+            "        // ... --es plate_names selected|all|off|above  (the first row's names, as in",
+            "        // Personalize; an enum, hence a string where the layout switches above take --ez)",
+            '        intent.getStringExtra("plate_names")?.let { name ->',
+            "            AerialSettings.init(context)",
+            "            AerialSettings.choosePlateNames(PlateNames.of(name))",
+            "        }",
+        ],
+        "第一排名称加 adb 入口",
+        marker='getStringExtra("plate_names")',
+    )
 
 
 def patch_power_menu(root):
@@ -2701,6 +2747,7 @@ def main():
     patch_screensaver(root)
     patch_saver_shade(root, args.version)
     patch_names(root)
+    patch_plate_names_switch(root)
     patch_dock_title(root)
     patch_power_menu(root)
     patch_strings(root)
