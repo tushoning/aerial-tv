@@ -2023,15 +2023,20 @@ def patch_power_menu(root):
 
     # 过滤只因为菜单才开着的时候，音量键不该被接管：这台电视平时从不开过滤，
     # takeVolumeKey() 那条路根本没被走过，没必要为了 12 秒的菜单把它拉进来看。
-    patch(
+    #
+    # 不碰上游那个条件：1.77 把它从一个单行 `return if (…)` 展开成多行 if/else，还加了一条
+    # `isDefaultHome() && defaultHomeNeedsHomeFilter`。改成在**它前面**插一句提前返回，就只认
+    # 「`if (event.keyCode in VOLUME_KEYS)`」这个开头 —— 单行、多行、条件怎么加都跟得上。
+    insert_before_line(
         root, guard,
-        "        if (event.keyCode in VOLUME_KEYS) return if (filteringForCecOnly) false else takeVolumeKey(event)\n",
-        "        // Only the power menu wanted keys: volume goes straight to the system, the way it\n"
-        "        // does when the guard filters nothing at all.\n"
-        "        if (event.keyCode in VOLUME_KEYS) {\n"
-        "            return if (filteringForCecOnly || filteringForMenu) false else takeVolumeKey(event)\n"
-        "        }\n",
+        r"re:if \(event\.keyCode in VOLUME_KEYS\).*",
+        [
+            "// The power menu is up: volume goes straight to the system, the way it does when",
+            "// the guard filters nothing at all.",
+            "if (filteringForMenu) return false",
+        ],
         "菜单期间音量键放行",
+        marker="if (filteringForMenu) return false",
     )
 
     # 插在 cecInputObserver **之后**（它上面有一句讲 CecHome 的注释，插在前面会让注释悬空），
