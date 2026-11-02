@@ -2249,99 +2249,30 @@ def patch_updates(root, repo):
     )
 
 
-def patch_update_row(root):
-    """控制中心那行更新提示改成常驻：没有新版本时也能点一下去查。
+def patch_menu_row_colors(root):
+    """菜单行的文字取色跟着聚焦底板一起过渡，而不是硬切。
 
-    上游只在「有东西可装」时才显示这一行，于是刚更新完的那一版反而没有入口能再查一次。
-    这里让它一直在，没新版本就叫「检测更新」；点了查不到结果就灰着显示「暂无新版本」5 秒，
-    然后变回可点的「检测更新」。
+    底板是 smoothBackground 做的 140ms 淡入，文字原本在同一时刻瞬间换色，看着像先跳了一下。
+    这里把取色也放进 animateColorAsState，跟底板同一时长同一条曲线。
     """
-    # Updates 加一个「等结果」的检查。原来的 checkIfStale 发起就返回，界面问不到结果，
-    # 也就无从知道该显示「暂无新版本」还是「有新版本」。
-    # 1.72 删掉了 lastAttempt（重试逻辑搬进了 UpdateCheck），这句要按版本给。
-    updates = j("update/Updates.kt")
-    text = read(root, updates) or ""
-    body = [
-        "    /**",
-        "     * Asks once, now, and waits for the answer. Control Center's Check for Updates row has to say",
-        "     * what came of the check, which [checkIfStale] cannot tell it: that one launches and returns.",
-        "     * Null means either that no source answered or that this build is already the latest.",
-        "     */",
-        "    suspend fun checkNow(): String? {",
-        "        if (!started) return null",
-    ]
-    if "private var lastAttempt" in text:
-        body.append("        lastAttempt = System.currentTimeMillis()")
-    body += [
-        '        val latest = withContext(Dispatchers.IO) { fetchLatest() } ?: return null',
-        '        prefs.edit { putString("latest", latest); putLong("checked_at", System.currentTimeMillis()) }',
-        "        available = latest.takeIf { newer(it, current) }",
-        "        return available",
-        "    }",
-        "",
-    ]
-    anchor_after = (
-        '    /** Whether version [a] comes after [b], comparing dotted numbers ("1.10" after "1.9"). */'
-    )
-    patch(
-        root, updates,
-        anchor_after,
-        "\n".join(body) + "\n" + anchor_after,
-        "Updates 增加可等待的检查",
-    )
-
-    # 聚焦底板是浅色surface。Apple 的 label 每套外观各有一份值，上游只搬了深色那套，
-    # 于是「白 60%」压在白板上等于没有字。这里补上浅色外观的 secondaryLabel。
-    insert_after_line(
-        root, j("ui/theme/Theme.kt"),
-        "val OnFocus = Color(0xFF1D1D1F)",
-        [
-            "",
-            "/**",
-            " * The labels above, resolved for the plate. Apple gives every label a value per appearance,",
-            " * and the focused plate is the light one: `secondaryLabel` there is rgb(60,60,67) at 60%, not",
-            " * the white at 60% used on glass. Drawing the dark value on the plate puts white on white.",
-            " */",
-            "val OnFocusSecondary = Color(0x993C3C43)",
-        ],
-        "Palette 补上浅色外观的次要文字色",
-        marker="OnFocusSecondary",
-    )
-
-    # 菜单行要能变灰：灰色自成一档，聚焦时不跟着变白，否则看起来仍然可以点。
     overlay = j("ui/home/Overlays.kt")
-    insert_after_line(
-        root, overlay,
-        "destructive: Boolean = false,",
-        [
-            "/** Dimmed: the row is showing an answer rather than offering itself (Control Center's check). */",
-            "muted: Boolean = false,",
-        ],
-        "MenuRow 支持变灰",
-        marker="muted: Boolean = false,",
-    )
     # 这个 when 整个换掉，中间几档一概不看（连随后的 `}` 一起吃掉）。
     patch_span(
         root, overlay,
         r"^[ \t]*val fg = when \{",
         r"^[ \t]*else -> Palette\.Label$",
-        """        // The colour is resolved against the surface the row is drawn on, not against the dark
-        // appearance the rest of Home uses: on the near-white plate a white-at-60% label reads as
-        // nothing at all. Focus fades the plate in over 140 ms, so the text fades with it rather
-        // than staying white on a background that is turning light underneath it.
+        """        // The plate under the row fades in over 140 ms (smoothBackground); the label used to swap
+        // colour in a single frame, which read as a flicker just before the plate arrived. Same
+        // duration, same curve, so the two move together.
         val fg by animateColorAsState(
             when {
-                // An answer, not an offer. Secondary rather than tertiary: tertiary is the
-                // placeholder shade and this line is the whole point of the press, so it is read
-                // at secondaryLabel's weight on either surface.
-                muted -> if (state.focused) Palette.OnFocusSecondary else Palette.SecondaryLabel
                 state.focused -> if (destructive) Color(0xFFD70015) else Palette.OnFocus
                 destructive -> Palette.Red
                 else -> Palette.Label
             },
             tween(140, easing = Motion.EaseOut), label = "row-fg",
         )""",
-        "MenuRow 变灰的取色",
+        "MenuRow 取色跟底板过渡",
         absorb=r"^[ \t]*\}$",
         marker='label = "row-fg"',
     )
@@ -2351,7 +2282,7 @@ def patch_update_row(root):
         r"^[ \t]*if \(trailing != null\) \{",
         r"^[ \t]*\}$",
         """            if (trailing != null) {
-                // Same pairing as the label: dark and muted on the plate, light and muted on glass.
+                // Same pairing as the label: dark on the plate, light on glass.
                 val trailingFg by animateColorAsState(
                     if (state.focused) Palette.OnFocus.copy(alpha = 0.6f) else Palette.SecondaryLabel,
                     tween(140, easing = Motion.EaseOut), label = "row-trailing",
@@ -2364,103 +2295,6 @@ def patch_update_row(root):
             }""",
         "MenuRow 右侧文字与底板同步过渡",
         marker='label = "row-trailing"',
-    )
-
-    center = j("ui/control/ControlCenter.kt")
-    # 这一块整个换成一行，中间那个 MenuRow 怎么写都不看。
-    patch_span(
-        root, center,
-        r"^[ \t]*Updates\.available\?\.let \{ latest ->",
-        r"^[ \t]*\}$",
-        "        UpdateRow(vm)",
-        "更新行改为常驻",
-        marker="UpdateRow(vm)",
-    )
-    patch(
-        root, center,
-        '''/**
- * How to move to the new version: "Download and Install" fetches the APK and opens the system''',
-        '''/**
- * The row for a new version, always in the menu. Upstream only showed it when there was something
- * to install, so a build that had just been updated offered no way to ask again. With a new version
- * it names it and opens [CcPage.Update]; without one it offers a check, and a check that comes back
- * empty says "no new version" — dimmed and inert — for five seconds, then offers itself again.
- *
- * The check runs from [LaunchedEffect] rather than from the click so the row can say "checking"
- * while it runs, and so a second press cannot start a second one.
- */
-@Composable
-private fun UpdateRow(vm: HomeViewModel) {
-    val latest = Updates.available
-    var checking by remember { mutableStateOf(false) }
-    var nothing by remember { mutableStateOf(false) }
-    LaunchedEffect(checking) {
-        if (!checking) return@LaunchedEffect
-        val found = Updates.checkNow()
-        checking = false
-        // A version found here shows through Updates.available, which this row reads every
-        // composition: it turns into the "new version" row by itself.
-        if (found == null) nothing = true
-    }
-    // An answer, not a state: after a moment the row can be asked again.
-    LaunchedEffect(nothing) {
-        if (!nothing) return@LaunchedEffect
-        delay(5_000)
-        nothing = false
-    }
-    // One call site, whichever of the three things the row has to say. Written as an if/else with
-    // a MenuRow in each branch, the two branches are two composition groups: the moment a check
-    // turns up a version the branch flips, the row that holds the focus is disposed and a fresh
-    // one composed, so the focus goes with it and lands on the panel's first button. Varying only
-    // the arguments keeps the node, and the focus, where the viewer left it.
-    val asking = latest == null && !checking && !nothing
-    MenuRow(
-        Glyph.Info,
-        when {
-            latest != null -> stringResource(R.string.cc_update_available, latest)
-            checking -> stringResource(R.string.cc_update_checking)
-            nothing -> stringResource(R.string.cc_update_none)
-            else -> stringResource(R.string.cc_update_check)
-        },
-        onClick = {
-            if (latest != null) {
-                vm.overlay = Overlay.ControlCenter(CcPage.Update)
-            } else if (asking) {
-                checking = true
-            }
-        },
-        // Dimmed only while it has nothing to offer: a check in flight, or the answer just given.
-        muted = latest == null && !asking,
-    )
-}
-
-/**
- * How to move to the new version: "Download and Install" fetches the APK and opens the system''',
-        "新增常驻更新行",
-    )
-
-    # 三条新文案挂在 cc_update_available 后面，按 name 认位置。
-    insert_strings(
-        root, STRINGS_EN, "cc_update_available",
-        [
-            ("cc_update_check", "Check for Updates"),
-            ("cc_update_checking", "Checking…"),
-            ("cc_update_none", "No New Version"),
-        ],
-        "英文文案：检测更新",
-        marker='name="cc_update_check"',
-        where="after",
-    )
-    insert_strings(
-        root, STRINGS_ZH, "cc_update_available",
-        [
-            ("cc_update_check", "检测更新"),
-            ("cc_update_checking", "正在检测…"),
-            ("cc_update_none", "暂无新版本"),
-        ],
-        "中文文案：检测更新",
-        marker='name="cc_update_check"',
-        where="after",
     )
 
 
@@ -2596,7 +2430,12 @@ def verify(root, repo, dropped):
         if "gh-proxy.com/https://github.com/%s/releases/latest/download/version.txt" % repo not in updates:
             fail("版本检查没有第二级加速源：镜像挂了就会一直显示「没有新版本」")
         if "aerial.qust.me" in updates:
-            fail("Update 里还留着上游官网地址：版本会先于本仓库的包被播报，点下载就是 404")
+            # 1.78 起多了 NOTES_URL（更新说明用的 notes.json）：那是纯文本，不是版本来源，
+            # 上游站点生成、和我们这个包同版本号，留着它才有「这个版本改了什么」可看。
+            # 真正会让版本播报抢先、点下载 404 的只有 VERSION_URL，所以只卡那一行。
+            version_line = re.search(r'(?m)^[^\n]*\bVERSION_URL\b[^\n]*$', updates)
+            if version_line and "aerial.qust.me" in version_line.group(0):
+                fail("Update 的版本检查还指着上游官网：版本会先于本仓库的包被播报，点下载就是 404")
 
     if PROBLEMS:
         print("\n[apply.py 失败] %d 处没改成：\n" % len(PROBLEMS), file=sys.stderr)
@@ -2752,7 +2591,7 @@ def main():
     patch_power_menu(root)
     patch_strings(root)
     patch_updates(root, repo)
-    patch_update_row(root)
+    patch_menu_row_colors(root)
 
     print("\n[5/5] 终检")
     verify(root, repo, dropped)
