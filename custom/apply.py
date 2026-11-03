@@ -1419,20 +1419,42 @@ def patch_names(root):
         "object AerialSettings {",
         "新增 PlateNames 枚举",
     )
-    patch(
+    # 1.79 起上游把「全部名称」拆成两半：chosenAllNames（用户选的）与 showAllNames
+    # （只读，叠加长辈模式）。我们只是要在这同一个对象上挂自己的四态，两种形态各备一组原文。
+    patch_any(
         root, settings,
-        "    var showAllNames by mutableStateOf(false); private set",
-        "    var showAllNames by mutableStateOf(false); private set\n"
-        "\n"
-        "    /** The glass plate's own names, setting the top row apart from the grid below it. */\n"
-        "    var plateNames by mutableStateOf(PlateNames.Selected); private set",
+        [
+            (
+                "    private var chosenAllNames by mutableStateOf(false)",
+                "    private var chosenAllNames by mutableStateOf(false)\n"
+                "\n"
+                "    /** The glass plate's own names, setting the top row apart from the grid below it. */\n"
+                "    var plateNames by mutableStateOf(PlateNames.Selected); private set",
+            ),
+            (
+                "    var showAllNames by mutableStateOf(false); private set",
+                "    var showAllNames by mutableStateOf(false); private set\n"
+                "\n"
+                "    /** The glass plate's own names, setting the top row apart from the grid below it. */\n"
+                "    var plateNames by mutableStateOf(PlateNames.Selected); private set",
+            ),
+        ],
         "新增 plateNames 状态",
     )
-    patch(
+    patch_any(
         root, settings,
-        '        showAllNames = prefs.getBoolean("show_all_names", false)',
-        '        showAllNames = prefs.getBoolean("show_all_names", false)\n'
-        '        plateNames = PlateNames.of(prefs.getString("plate_names", null))',
+        [
+            (
+                '        chosenAllNames = prefs.getBoolean("show_all_names", false)',
+                '        chosenAllNames = prefs.getBoolean("show_all_names", false)\n'
+                '        plateNames = PlateNames.of(prefs.getString("plate_names", null))',
+            ),
+            (
+                '        showAllNames = prefs.getBoolean("show_all_names", false)',
+                '        showAllNames = prefs.getBoolean("show_all_names", false)\n'
+                '        plateNames = PlateNames.of(prefs.getString("plate_names", null))',
+            ),
+        ],
         "读 plateNames",
     )
     # 新方法加在 chooseShowAllNames **之后**：只认它的签名，函数体怎么变都不影响
@@ -1950,7 +1972,11 @@ def patch_plate_names_switch(root):
     )
     insert_before_line(
         root, rel,
-        r're:        if \(intent\.hasExtra\("preview_apps"\)\).*',
+        [
+            # 1.81 及以前紧挨着 preview_apps；1.62 还没有那个参数，退到 follow keep_adb。
+            r're:        if \(intent\.hasExtra\("preview_apps"\)\).*',
+            r're:        if \(intent\.hasExtra\("keep_adb"\)\).*',
+        ],
         [
             "        // ... --es plate_names selected|all|off|above  (the first row's names, as in",
             "        // Personalize; an enum, hence a string where the layout switches above take --ez)",
