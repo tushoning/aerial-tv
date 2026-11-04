@@ -1,0 +1,19 @@
+/img/*
+  Cache-Control: public, max-age=604800
+/download/*
+  Cache-Control: no-cache
+/agent.md
+  Content-Type: text/plain; charset=utf-8
+/en/agent.md
+  Content-Type: text/plain; charset=utf-8
+/adapt.md
+  Content-Type: text/plain; charset=utf-8
+/en/adapt.md
+  Content-Type: text/plain; charset=utf-8
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+/icons/index.json
+  Cache-Control: no-cache
+/icons/p/*
+  Cache-Control: public, max-age=31536000, immutable
