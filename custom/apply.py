@@ -38,10 +38,6 @@ STRINGS_ZH = "app/src/main/res/values-zh/strings.xml"
 # 收集所有失败，最后一起报，一次就能把上游的改动全看明白。
 PROBLEMS = []
 
-# 屏保压暗这次是不是真加了（1.68 之前上游自己压，就不加）。终检只核对加过的那一种。
-SAVER_SHADE_ADDED = False
-
-
 def j(rel):
     """app/src/main/java/<新包名>/ 下的文件。"""
     return "app/src/main/java/%s/%s" % (PKG_PATH, rel)
@@ -995,7 +991,11 @@ def patch_brightness(root):
     rel = j("system/Brightness.kt")
     insert_in_body(
         root, rel,
-        r"^[ \t]*fun level\(context: Context\)[ \t]*:[ \t]*Float\?[ \t]*\{\n",
+        # 1.81 及之前是一层实现；1.84 为支持创维背光拆成「一行转发 + private 实现」，
+        # 真正的实现那行才带 {。两代都要认，所以 private 可选、第二个参数可选、
+        # 参数名也放宽（上游把 probeSkyworth 改名也不用动这里）。
+        r"^[ \t]*(?:private )?fun level\(context: Context"
+        r"(?:, [A-Za-z_][A-Za-z0-9_]*: Boolean)?\)[ \t]*:[ \t]*Float\?[ \t]*\{\n",
         [
             "// OPPO ColorOS TV：背光在固件里，Settings 写得进去但面板不动。",
             "if (OppoBacklight.usable(context)) return OppoBacklight.level(context) / 100f",
@@ -1337,63 +1337,6 @@ def patch_screensaver(root):
         '    <string name="ss_minutes">%d分</string>',
         "中文文案：档位写成分",
     )
-
-
-def patch_saver_shade(root, version):
-    """把屏保画面的「压暗」补回来。
-
-    1.68 起上游不再给影片压暗 —— release notes 原话是「航拍壁纸、我的视频壁纸和航拍屏保不再压暗，
-    画面更亮」；1.69 也一样：HomeChrome 里那层 Images.SHADE 现在只在 shadeMoving（输入源的画面）
-    时才画，AerialSaver 自己也不画。这台电视的屏保就是航拍影片，少了这层，夜里看着发白。
-
-    只补屏保这一处（Home 保持上游新的亮法）：在影片之上、黑色遮罩之下画一层 Images.homeShade，
-    也就是 1.67 屏保上原本那一层（渐变参数一个不改），所以观感就是「原来那种」。
-
-    三道判断：
-      1) 1.68 之前的版本上游本来就压暗，跳过（不然屏保会被压两遍，反而偏黑）；
-      2) 上游若自己又开始给屏保压暗（Screensaver.kt 里出现 Images.homeShade 的**代码**引用，
-         注释里提到不算），跳过；
-      3) 这段之前已经加过，跳过。
-    """
-    saver = j("ui/home/Screensaver.kt")
-    try:
-        floor = tuple(int(x) for x in version.split(".")[:2])
-    except ValueError:
-        floor = (0, 0)
-    if floor < (1, 68):
-        print("  ok  %-44s %s" % (short(saver), "屏保压暗（1.68 之前上游本来就压，跳过）"))
-        return
-    text = read(root, saver)
-    if text is None:
-        return
-    if "OWNER: the film's shade" in text:
-        print("  ok  %-44s %s" % (short(saver), "屏保压暗（已加过，跳过）"))
-        return
-    if re.search(r"(?m)^(?![ \t]*(?://|\*|/\*))[^\n]*Images\.homeShade", text):
-        print("  ok  %-44s %s" % (short(saver), "屏保压暗（上游自己做了，跳过）"))
-        return
-
-    ensure_import(root, saver, "import %s.wallpaper.Images" % PKG, "屏保压暗 引用 Images")
-
-    patch(
-        root, saver,
-        "    Box(Modifier.fillMaxSize().graphicsLayer { alpha = veil }.background(Color.Black))\n",
-        "    // OWNER: the film's shade, as up to 1.67. Upstream stopped shading films in 1.68 and the\n"
-        "    // aerials read washed out here, mostly at night. Only the screensaver gets it back: Home\n"
-        "    // keeps upstream's brighter look. The same layer and the same values as 1.67's screensaver.\n"
-        "    val saverShade = remember { Images.homeShade.asImageBitmap() }\n"
-        "    Canvas(Modifier.fillMaxSize()) {\n"
-        "        drawImage(\n"
-        "            saverShade,\n"
-        "            dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),\n"
-        "            filterQuality = FilterQuality.Low,\n"
-        "        )\n"
-        "    }\n"
-        "    Box(Modifier.fillMaxSize().graphicsLayer { alpha = veil }.background(Color.Black))\n",
-        "屏保画面压暗（补回 1.67）",
-    )
-    global SAVER_SHADE_ADDED
-    SAVER_SHADE_ADDED = True
 
 
 def patch_names(root):
@@ -2440,13 +2383,6 @@ def verify(root, repo, dropped):
             if needle not in text:
                 fail("%s 里缺 %s：这一步没落地" % (rel, needle))
 
-    # 屏保压暗只核对「这次真加了」的那一版（1.68 起）；更早的版本上游自己压，不加也不核对。
-    if SAVER_SHADE_ADDED:
-        text = read(root, j("ui/home/Screensaver.kt")) or ""
-        for needle in ("Images.homeShade", "val saverShade"):
-            if needle not in text:
-                fail("%s 里缺 %s：屏保压暗没落地" % (j("ui/home/Screensaver.kt"), needle))
-
     if repo:
         updates = read(root, j("update/Updates.kt")) or ""
         if "github.com/%s/releases/download" % repo not in updates:
@@ -2610,7 +2546,6 @@ def main():
     patch_manifest(root)
     patch_brightness(root)
     patch_screensaver(root)
-    patch_saver_shade(root, args.version)
     patch_names(root)
     patch_plate_names_switch(root)
     patch_dock_title(root)
