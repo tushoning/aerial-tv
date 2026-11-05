@@ -991,7 +991,7 @@ def patch_brightness(root):
     rel = j("system/Brightness.kt")
     insert_in_body(
         root, rel,
-        # 1.81 及之前是一层实现；1.84 为支持创维背光拆成「一行转发 + private 实现」，
+        # 1.81 及之前是一层实现；1.84 起为支持创维背光拆成「一行转发 + private 实现」，
         # 真正的实现那行才带 {。两代都要认，所以 private 可选、第二个参数可选、
         # 参数名也放宽（上游把 probeSkyworth 改名也不用动这里）。
         r"^[ \t]*(?:private )?fun level\(context: Context"
@@ -1415,54 +1415,165 @@ def patch_names(root):
         marker="fun choosePlateNames(",
     )
 
-    # 图标内的名字改用网格那套默认样式（Type.Headline + 上游自己的 Shadow），不再烘焙位图，
-    # 也就不需要文本测量、画布、描边那一整套 import 了。
-    ensure_import(root, tile, "import %s.settings.PlateNames" % PKG, "导入 PlateNames")
+    # kotlin.math.PI / cos 不补：上游 1.57 起 AppTile 自己引了（SineEasing 用），再补一遍就是两份。
+    # sin 上游还没有，仍然补。逐条 ensure_import：上游在 import 段里加什么、删什么都顶不开这一块，
+    # 已经有的也不重复补。终检会核对 PI / cos / sin 三行都在，而不是等 Kotlin 编译才炸。
+    for imp in (
+        "import %s.settings.PlateNames" % PKG,
+        "import androidx.compose.ui.geometry.Size",
+        "import androidx.compose.ui.graphics.Canvas as GraphicsCanvas",
+        "import androidx.compose.ui.graphics.drawscope.CanvasDrawScope",
+        "import androidx.compose.ui.platform.LocalDensity",
+        "import androidx.compose.ui.platform.LocalLayoutDirection",
+        "import androidx.compose.ui.text.drawText",
+        "import androidx.compose.ui.text.font.FontWeight",
+        "import androidx.compose.ui.text.rememberTextMeasurer",
+        "import androidx.compose.ui.unit.Constraints",
+        "import androidx.compose.ui.unit.LayoutDirection",
+        "import kotlin.math.sin",
+    ):
+        ensure_import(root, tile, imp, "导入 %s" % imp.rsplit(".", 1)[-1])
     patch(
         root, tile,
         "private val RingWidth = 3.dp",
         "private val RingWidth = 3.dp\n"
         "\n"
-        "// The plate's tile keeps the name inside it: it sits this far off the bottom edge.\n"
+        "// A name inside a tile on the glass plate: a band along its bottom edge.\n"
         "private val NameInTileBand = 24.dp\n"
-        "private val NameInTileBottom = 6.dp",
+        "private val NameInTileBottom = 6.dp\n"
+        "\n"
+        "// The plate's names carry a hard outline and a short drop shadow instead of a blurred one:\n"
+        "// both stay inside the band, so a fading layer never crops them.\n"
+        "private val NameOutline = 1.1.dp\n"
+        "private val NameDrop = 1.0.dp",
         "图标内名称的尺寸常量",
     )
-    # 不另画一份名字：直接把上游那段名称 BasicText 的位置从「图标下方」挪进「图标内部」。
-    # 样式（Type.Headline + 那个 Shadow）、透明度、焦点动画全部沿用上游原代码。
-    # 两条 modifier 行各认各的，上游改别的行不影响。
-    move_into_tile = [
-        (
-            "                .align(Alignment.TopCenter)\n"
-            "                .offset(y = height + 10.dp)\n",
-            "                .align(Alignment.BottomCenter)\n"
-            "                .offset(y = -NameInTileBottom)\n",
-            "名称挪进图标内（位置）",
-            "align(Alignment.BottomCenter)",
-        ),
-        (
-            "                .requiredSize(width + 36.dp, 24.dp)\n",
-            "                .requiredSize(width - 12.dp, NameInTileBand)\n",
-            "名称挪进图标内（尺寸）",
-            "requiredSize(width - 12.dp, NameInTileBand)",
-        ),
-    ]
-    tile_text = read(root, tile) or ""
-    for old_line, new_line, what, marker in move_into_tile:
-        if marker in tile_text:
-            print("  ok  %-44s %s（已改过，跳过）" % (short(tile), what))
-            continue
-        if tile_text.count(old_line) != 1:
-            fail(
-                "%s\n    要改的地方：%s\n"
-                "    问题：锚点命中 %d 次（应当 1 次）。上游可能改了名称的偏移或尺寸写法，"
-                "照着下面这段更新：\n%s"
-                % (tile, what, tile_text.count(old_line), fence(old_line))
-            )
-            continue
-        tile_text = tile_text.replace(old_line, new_line)
-        write(root, tile, tile_text)
-        print("  ok  %-44s %s" % (short(tile), what))
+    # 参数这一层按「整行」加：上游在它上面写什么注释都不影响。
+    insert_after_line(
+        root, tile,
+        "showName: Boolean = true,",
+        [
+            "/** On the glass plate: whose name shows inside the tile. Null off the plate. */",
+            "plateName: PlateNames? = null,",
+        ],
+        "AppTile 新增 plateName 参数",
+        marker="plateName: PlateNames? = null,",
+    )
+    # 名字画在图标里这一段，插在「图标下方那个名字」之前 —— 只认它那一行。
+    # 原来抄的是「translationY … ) } }」六行尾巴，上游动一下名字的偏移或缩进就失配；
+    # 而这两块并不重叠（一个在图标里，一个在图标下方），先后顺序对画面没有影响。
+    insert_before_line(
+        root, tile,
+        [
+            # 1.69 起这行多了 DiagLayers 判据，1.67 及以前没有 —— 两代都备着。
+            'if (showName && DiagLayers.shows("names")) BasicText(',
+            "if (showName) BasicText(",
+        ],
+        [
+            "// On the glass plate the name sits inside the tile, bottom centre: the grid's own",
+            "// type at its own size, one step bolder, outlined and shadowed so the artwork",
+            "// underneath cannot swallow it.",
+            "//",
+            "// `lift` is read only inside graphicsLayer below, never here: that is the draw phase,",
+            "// so the focus animation does not recompose the tile on every one of its frames. Read",
+            "// in this condition it would (upstream keeps it out of composition for the same reason).",
+            "if (plateName != null && plateName != PlateNames.Off) {",
+            "    Box(",
+            "        modifier = Modifier",
+            "            .align(Alignment.BottomCenter)",
+            "            .offset(y = -NameInTileBottom)",
+            "            .requiredSize(width - 12.dp, NameInTileBand)",
+            "            .graphicsLayer {",
+            "                alpha = if (plateName == PlateNames.All) 0.7f + 0.3f * lift else lift",
+            "                // The tile grows about its centre, so its bottom edge travels down by half.",
+            "                translationY = height.toPx() * (scale - 1f) / 2f",
+            "            },",
+            "    ) {",
+            "        PlateTileName(app.label, width - 12.dp)",
+            "    }",
+            "}",
+        ],
+        "图标内画名称",
+        marker="PlateTileName(app.label, width - 12.dp)",
+    )
+    # 插在 focusedPx **之后**，而不是它的签名前面：那样会把它自己的 KDoc 和函数拆开，
+    # 注释挂到我们新加的函数头上。锚点用那四行函数体（纯代码，不带注释）。
+        # 新函数插在 focusedPx **之后**：只认它的签名，函数体怎么算一概不看
+    # （原来的锚点把 focusedPx 的三行函数体抄了进去，算法一改就失配）。
+    insert_after_block(
+        root, tile,
+        r"^[ \t]*private fun focusedPx\(",
+        [
+            '/**',
+            " * The name inside a plate's tile: [Type.Headline] at its own size, one step bolder, with a",
+            ' * hard outline and a short drop shadow.',
+            ' *',
+            ' * Not a blurred [Shadow]. While a tile is still growing the name is drawn through a fading',
+            ' * layer, and a blur reaches past this band, so the layer crops it and leaves a rectangle of',
+            ' * half-transparent grey over the artwork - a seam that shows on light tiles mid-animation.',
+            ' *',
+            ' * Baked into one picture, not drawn ten times a frame: the outline is the same text at eight',
+            ' * offsets, and separate text passes can land a frame apart while the tile is growing, which',
+            ' * reads as the name sliding off its own shadow. One picture cannot come apart.',
+            ' */',
+            '@Composable',
+            'private fun PlateTileName(text: String, maxWidth: Dp) {',
+            '    val measurer = rememberTextMeasurer()',
+            '    val density = LocalDensity.current',
+            '    val direction = LocalLayoutDirection.current',
+            '    val style = remember {',
+            '        Type.Headline.copy(fontWeight = FontWeight.W700, textAlign = TextAlign.Center)',
+            '    }',
+            '    val widthPx = with(density) { maxWidth.roundToPx() }',
+            '    val bandPx = with(density) { NameInTileBand.roundToPx() }',
+            '    val name = remember(text, widthPx, bandPx, style, density, direction) {',
+            '        val layout = measurer.measure(',
+            '            text = text,',
+            '            style = style,',
+            '            maxLines = 1,',
+            '            overflow = TextOverflow.Ellipsis,',
+            '            constraints = Constraints(maxWidth = widthPx),',
+            '        )',
+            '        val image = ImageBitmap(widthPx.coerceAtLeast(1), bandPx.coerceAtLeast(1))',
+            '        CanvasDrawScope().draw(',
+            '            density,',
+            '            direction,',
+            '            GraphicsCanvas(image),',
+            '            Size(widthPx.toFloat(), bandPx.toFloat()),',
+            '        ) {',
+            '            val at = Offset(',
+            '                (widthPx - layout.size.width) / 2f,',
+            '                (bandPx - layout.size.height) / 2f,',
+            '            )',
+            '            // The drop shadow: one more copy, a little lower.',
+            '            drawText(',
+            '                layout,',
+            '                color = Color.Black,',
+            '                alpha = 0.35f,',
+            '                topLeft = at + Offset(0f, NameDrop.toPx()),',
+            '            )',
+            '            // The outline: the same glyphs all round the fill.',
+            '            val r = NameOutline.toPx()',
+            '            for (i in 0 until 8) {',
+            '                val a = i * PI / 4',
+            '                drawText(',
+            '                    layout,',
+            '                    color = Color.Black,',
+            '                    alpha = 0.8f,',
+            '                    topLeft = at + Offset(cos(a).toFloat() * r, sin(a).toFloat() * r),',
+            '                )',
+            '            }',
+            '            drawText(layout, topLeft = at)',
+            '        }',
+            '        image',
+            '    }',
+            '    Canvas(Modifier.fillMaxSize()) {',
+            '        drawImage(name)',
+            '    }',
+            '}',
+        ],
+        '图标内名称：烘焙成一张位图',
+        marker="private fun PlateTileName(",)
 
     # 桌面上把两套设置分开：第一排的名称画在图标里，底板不再为它变高。
     # 只认行首的变量名（上游那行后面接什么都不看），上面那句陈旧注释留着也不影响编译。
@@ -1474,55 +1585,65 @@ def patch_names(root):
         "底板不再为名称增高",
         marker="val plateNames = false",
     )
-    # 两套开关分开：第一排看 AerialSettings.plateNames（四态），第二排及以下看上游 showAllNames。
-    # 「哪一格在第一排」沿用上游自己写在 nameOnPlate 里的表达式，上游加条件自动跟上。
-    # nameOnPlate 那个参数整行换成注释（走默认 false），否则抽屉里的名字会被焦点环多顶一截。
+    # 一旦焦点下到网格（抽屉），第一排就只是网格里的普通一行：名字回到图标下方，和第二排及以下
+    # 完全同一套规则（显示全部还是仅焦点，由 showAllNames 决定）。
+    # 做法是算一个 onPlateRow，下面三个参数都只看它 —— 一个判断，不会出现改了一处漏了另一处。
+    #
+    # 「一排有几个」上游换过写法：1.65 起每行 4/5/6 可选，常量 COLUMNS 换成了变量 columns
+    # （GridMetrics 也多了一个 columns 参数）。这里跟着上游用哪个就用哪个，两个版本都能编译；
+    # 锚点里的标识符也因此不能写死。
+    # 这一组是唯一被上游顶开过三次的：1.57 的 import 段、1.65 的 COLUMNS→columns、1.67 的
+    # `columns * metrics.shelfRows`。共同点都是**照抄了上游的表达式**。所以改成：
+    #   1) 按参数名找行（`showName =` / `nameOnPlate =`），不看右边写成什么样；
+    #   2) 「这一格在托盘上」的判据**原样借用上游自己写在 nameOnPlate 里的表达式**，
+    #      上游加多少项（shelfRows、twoRow、将来的新条件）都自动跟得上。
     home_text = read(root, home) or ""
     arg = re.compile(r"(?m)^([ \t]*)nameOnPlate = (.+?),\r?$")
     found = arg.search(home_text)
     if found is None:
         fail(
-            "%s\n    要改的地方：第一排/第二排名称分开\n"
-            "    问题：找不到 `nameOnPlate = …,` 这一行（上游可能改了参数名或挪了位置）。"
+            "%s\n    要改的地方：定义「台面第一排」判据\n"
+            "    问题：找不到 `nameOnPlate = …,` 这一行（上游可能改了参数名或挪了位置）。\n"
+            "    这一组补丁靠它推出「哪一格在玻璃托盘上」，没有它就做不出抽屉里的差异。"
             % home
         )
         return
     indent, plate_cond = found.group(1), found.group(2).strip()
 
-    # onPlateRow：这一格是不是「第一排且在台面上」
     if "val onPlateRow" not in home_text:
+        # 插在 AppTile( 那一行前面，缩进跟着它走
         m = re.search(r"(?m)^([ \t]*)AppTile\($", home_text)
         if m is None:
-            fail("%s\n    要改的地方：第一排判据\n    问题：找不到独立的 `AppTile(` 行" % home)
+            fail("%s\n    要改的地方：定义「台面第一排」判据\n    问题：找不到独立的 `AppTile(` 行" % home)
             return
-        insert_at, lip = m.start(), m.group(1)
-        block = "%s// Which tile is on the top row of the plate (and Home is not scrolled into the grid).\n" % lip
-        block += "%sval onPlateRow = !inGrid && %s\n" % (lip, plate_cond)
-        home_text = home_text[:insert_at] + block + home_text[insert_at:]
-        print("  ok  %-44s %s" % (short(home), "定义第一排判据"))
+        at = m.start()
+        lip = m.group(1)
+        line = "%s// On the shelf the top row is the plate's row; down in the grid it is just a row.\n" % lip
+        line += "%sval onPlateRow = !inGrid && %s\n" % (lip, plate_cond)
+        home_text = home_text[:at] + line + home_text[at:]
+        print("  ok  %-44s %s" % (short(home), "定义「台面第一排」判据"))
 
+    # 名字改画在图标里：showName 由 onPlateRow 决定；nameOnPlate 整行删掉（走默认值 false），
+    # 否则抽屉里的名字会被焦点环额外顶下去一截。
     show = re.compile(r"(?m)^[ \t]*showName = .+?,\r?$")
     if len(show.findall(home_text)) != 1:
         fail(
-            "%s\n    要改的地方：第一排/第二排名称分开\n"
+            "%s\n    要改的地方：第一排改用 plateName\n"
             "    问题：`showName = …,` 命中了 %d 次（应当 1 次）"
             % (home, len(show.findall(home_text)))
         )
         return
-    home_text = show.sub(
-        "%sshowName = if (onPlateRow) AerialSettings.plateNames != PlateNames.Off\n"
-        "%s    else (plate == null || index >= columns * metrics.shelfRows || plateNames)," % (indent, indent),
-        home_text,
-        count=1,
-    )
+    home_text = show.sub("%sshowName = !onPlateRow," % indent, home_text, count=1)
     home_text = arg.sub(
-        "%s// (custom) the name itself is drawn inside the tile; nothing extra to pass here.\n"
-        "%s// nameOnPlate stays at its default of false on purpose." % (indent, indent),
+        "%s// The plate's row draws its names inside the tiles; every other row, including that\n"
+        "%s// same row while the grid is open, keeps the original name below the tile. nameOnPlate\n"
+        "%s// stays at its default of false on purpose.\n"
+        "%splateName = if (onPlateRow && AerialSettings.plateNames != PlateNames.Above) AerialSettings.plateNames else null," % (indent, indent, indent, indent),
         home_text,
         count=1,
     )
     write(root, home, home_text)
-    print("  ok  %-44s %s" % (short(home), "第一排与第二排名称开关分开"))
+    print("  ok  %-44s %s" % (short(home), "第一排改用 plateName"))
 
     patch(
         root, sheet,
@@ -2230,14 +2351,15 @@ def verify(root, repo, dropped):
             j("ui/wallpaper/WallpaperSheet.kt"),
             ("AerialSettings.syncScreensaverFromSystem(context)", "AerialSettings.screensaverChoicesNow.map"),
         ),
-        # 图标内的名字就是上游那一段，只换了它的落点；两行都在才说明挪成功。
+        # 名字画在图标里要靠 PI / cos / sin：上游自己引的（PI、cos）和本脚本补的（sin）
+        # 必须都在，否则是 Kotlin 编译期才报错，比这里报得晚也更难懂。
         (
             j("ui/home/AppTile.kt"),
-            ("align(Alignment.BottomCenter)", "requiredSize(width - 12.dp, NameInTileBand)"),
+            ("PlateTileName(", "plateName: PlateNames?", "import kotlin.math.PI",
+             "import kotlin.math.cos", "import kotlin.math.sin"),
         ),
         # 认前缀、不认 COLUMNS/columns：1.65 起每行个数是变量 columns，之前是常量 COLUMNS。
-        (j("ui/home/HomeScreen.kt"), ("AerialSettings.plateNames", "val onPlateRow = !inGrid && ",
-                                         "showName = if (onPlateRow) AerialSettings.plateNames != PlateNames.Off")),
+        (j("ui/home/HomeScreen.kt"), ("AerialSettings.plateNames", "val onPlateRow = !inGrid && ", "showName = !onPlateRow,")),
         # 电源菜单那组：菜单一显示就上膛，随后的 QUICK 待机被改写成真关机。
         (
             j("guard/HomeGuardService.kt"),
