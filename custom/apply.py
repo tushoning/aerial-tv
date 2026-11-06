@@ -1969,24 +1969,26 @@ def patch_power_menu(root):
     # 判据用**按键**，不用窗口焦点：实测两条路的焦点都在 QUICK 之后约 30ms 才回来，分不开。
     # 菜单里按方向键 / OK 会产生按键事件（本服务开了按键过滤），按电源不会（它在
     # PhoneWindowManager 就被吃掉了）。所以这里出现按键 = 用户自己选的「息屏」，保持息屏。
-    patch(
+    # 认函数签名，插到 onKeyEvent 的**最前面**：上游在函数体里加多少行都不影响。
+    # 原锚点抄了函数体前两行，1.86 在开头插了 `keySeen = true`，就失配了。
+    insert_in_body(
         root, guard,
-        "    override fun onKeyEvent(event: KeyEvent): Boolean {\n"
-        "        if (!GuardSetup.isUserUnlocked(this)) return false\n",
-        "    override fun onKeyEvent(event: KeyEvent): Boolean {\n"
-        "        if (!GuardSetup.isUserUnlocked(this)) return false\n"
-        "        if (event.action == KeyEvent.ACTION_DOWN && event.keyCode !in VOLUME_KEYS && OppoPower.armed()) {\n"
-        "            Log.i(TAG, \"key \" + event.keyCode + \" while the power menu was up; leaving the screen-off alone\")\n"
-        "            OppoPower.cancel()\n"
-        "            // Volume is skipped on purpose: it neither dismisses the menu nor picks a row, so\n"
-        "            // pressing it must not cancel the rewrite (else volume, then power = screen off).\n"
-        "            // Never touch the filter from inside this callback: reconfiguring it while the key\n"
-        "            // is being dispatched swallows that very event, and the menu then ignores the first\n"
-        "            // press. Hand it to the looper instead, so this event finishes its round trip.\n"
-        "            handler.removeCallbacks(powerMenuGone)\n"
-        "            handler.postDelayed(powerMenuGone, 300)\n"
-        "        }\n",
+        r"^[ \t]*override fun onKeyEvent\(event: KeyEvent\)[ \t]*:[ \t]*Boolean[ \t]*\{\n",
+        [
+            "if (event.action == KeyEvent.ACTION_DOWN && event.keyCode !in VOLUME_KEYS && OppoPower.armed()) {",
+            "    Log.i(TAG, \"key \" + event.keyCode + \" while the power menu was up; leaving the screen-off alone\")",
+            "    OppoPower.cancel()",
+            "    // Volume is skipped on purpose: it neither dismisses the menu nor picks a row, so",
+            "    // pressing it must not cancel the rewrite (else volume, then power = screen off).",
+            "    // Never touch the filter from inside this callback: reconfiguring it while the key",
+            "    // is being dispatched swallows that very event, and the menu then ignores the first",
+            "    // press. Hand it to the looper instead, so this event finishes its round trip.",
+            "    handler.removeCallbacks(powerMenuGone)",
+            "    handler.postDelayed(powerMenuGone, 300)",
+            "}",
+        ],
         "菜单里按键就取消改写",
+        "OppoPower.cancel()",
     )
 
     # 按键过滤默认是关的：上游只在「需要拦 Home」或「CEC」时才开，而 Aerial 就是默认桌面，
