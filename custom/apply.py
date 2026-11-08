@@ -1157,6 +1157,23 @@ def patch_screensaver(root):
             "        .onFailure { Log.w(TAG, \"could not set the screensaver delay\", it) }",
             "        .isSuccess",
             "}",
+            "",
+            "/**",
+            " * Puts Aerial back as the TV's default screensaver. The firmware's own page (and OPPO's",
+            " * updates) reset this key to the stock pictorial one; while it is away, anything but",
+            " * Aerial's own window stops reaching Aerial's screensaver at all. Only writes when the",
+            " * key actually differs, so a TV that keeps it does not see a write on every start.",
+            " */",
+            "fun ensureAerialIsDefault(context: Context): Boolean {",
+            "    val mine = context.packageName + \"/\" + AerialDream::class.java.name",
+            "    val now = runCatching { Settings.Secure.getString(context.contentResolver, DEFAULT_COMPONENT) }",
+            "        .getOrNull()",
+            "    if (now == mine) return true",
+            "    Log.i(TAG, \"default screensaver was \" + now + \"; putting Aerial back\")",
+            "    return runCatching {",
+            "        Settings.Secure.putString(context.contentResolver, DEFAULT_COMPONENT, mine)",
+            "    }.onFailure { Log.w(TAG, \"could not set the default screensaver\", it) }.isSuccess",
+            "}",
         ],
         "屏保延时：读写系统设置",
         "fun setDelayMinutes(context: Context",
@@ -1287,6 +1304,8 @@ def patch_screensaver(root):
         [
             "// 屏保延时跟着系统走：注册一次观察，之后系统那边一改就同步（不只是打开设置页那一次）。",
             "watchScreensaverDelay()",
+            "// 系统的默认屏保被改回自带画报时，别的 App 上就再也进不了 Aerial 屏保：每次启动校正一次。",
+            "SystemScreensaver.ensureAerialIsDefault(app)",
         ],
         "init 里挂上系统屏保观察",
         # 标记不能用函数名：上面那段定义里就含 watchScreensaverDelay() 这个串，会被判成「已存在」。
@@ -2340,7 +2359,9 @@ def verify(root, repo, dropped):
         # 屏保时间那一组：读写系统设置、档位加 1 分钟、设置页打开时刷新。
         (
             j("system/SystemScreensaver.kt"),
-            ("fun delayMinutes(context: Context)", "Settings.System.putLong("),
+            ("fun delayMinutes(context: Context)", "Settings.System.putLong(",
+             "fun ensureAerialIsDefault(context: Context)",
+             'Settings.Secure.putString(context.contentResolver, DEFAULT_COMPONENT, mine)'),
         ),
         (
             j("settings/AerialSettings.kt"),
