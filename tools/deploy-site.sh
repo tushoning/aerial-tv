@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Deploy the website (site/) to Cloudflare, with copies of the latest release's APKs and of the
+# install scripts, so people in China download them from aerial.qust.me rather than GitHub.
+#
+#   tools/deploy-site.sh
+#
+# Needs gh (signed in) and npx. The scripts are copied from this checkout: deploy from main.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+REPO=pengchujin/aerial-tv
+
+git diff --quiet HEAD -- tools || echo "warning: tools/ has uncommitted changes; they will be published" >&2
+
+rm -rf site/download site/tools site/install.sh
+mkdir -p site/download site/tools
+gh release download --repo "$REPO" --pattern 'aerial-*.apk' --dir site/download
+gh release view --repo "$REPO" --json tagName -q .tagName > site/download/version.txt
+# What changed, for the TV's update page (Updates.notes): the releases an owner may be coming from.
+gh api "repos/$REPO/releases?per_page=12" | python3 tools/release-notes.py > site/download/notes.json
+# Star count for the site's GitHub links, used when visitors cannot reach the GitHub API (app.js).
+gh api "repos/$REPO" --jq '{stars: .stargazers_count}' > site/download/stars.json
+cp tools/get.sh site/install.sh
+cp tools/install.sh tools/restore.sh tools/tcast-push.py tools/report.sh tools/selftest.sh site/tools/
+echo "Publishing $(cat site/download/version.txt): $(ls site/download | tr '\n' ' ')"
+
+# The tile pictures TVs download (IconLibrary), from the sources in tools/icon-sources.json.
+# Most are not ours to put in the public repo, so they come from local/ (handed over privately,
+# like the signing key); icon-library.py stops when one is missing, since deploying without it
+# would take its pictures off the site.
+python3 tools/icon-library.py tools/icon-sources.json site/icons
+
+npx wrangler@4 deploy
