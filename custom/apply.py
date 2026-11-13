@@ -1967,22 +1967,30 @@ def patch_power_menu(root):
     ensure_import(root, guard, "import %s.system.OppoPower" % PKG, "HomeGuardService 引用 OppoPower")
 
     # 电源菜单是个 Dialog，而 lastWindow 只记 Activity（上游注释写明了），所以自己记一笔。
-    patch(
+    #
+    # 认 onAccessibilityEvent 的函数签名，插到函数体**开头**：上游在里面加行、改取值写法都
+    # 不影响。（原来抄了取 pkg/cls 的两行原文，上游一改就失配。）
+    # 插在最前面时 pkg/cls 还没定义，所以这里自己取一次 cls，并且只认 window 状态变化事件，
+    # 与上游那行 `if (event.eventType != TYPE_WINDOW_STATE_CHANGED) return` 语义一致。
+    insert_in_body(
         root, guard,
-        "        val pkg = event.packageName?.toString() ?: return\n"
-        "        val cls = event.className?.toString() ?: return\n",
-        "        val pkg = event.packageName?.toString() ?: return\n"
-        "        val cls = event.className?.toString() ?: return\n"
-        "        // The power menu is a dialog, not an activity, so lastWindow below ignores it. Its\n"
-        "        // appearance arms the rewrite instead.\n"
-        "        if (cls.contains(\"ActionsDialog\") || cls.contains(\"GlobalActions\")) {\n"
-        "            Log.i(TAG, \"power menu shown; arming the shutdown rewrite\")\n"
-        "            OppoPower.arm()\n"
-        "            updateKeyFilter()\n"
-        "            handler.removeCallbacks(powerMenuGone)\n"
-        "            handler.postDelayed(powerMenuGone, OppoPower.WATCH_MS)\n"
-        "        }\n",
+        r"^[ \t]*override fun onAccessibilityEvent\(event: AccessibilityEvent\)[ \t]*\{\n",
+        [
+            "// The power menu is a dialog, not an activity, so lastWindow below ignores it. Its",
+            "// appearance arms the rewrite instead.",
+            "if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {",
+            "    val menuCls = event.className?.toString()",
+            "    if (menuCls != null && (menuCls.contains(\"ActionsDialog\") || menuCls.contains(\"GlobalActions\"))) {",
+            "        Log.i(TAG, \"power menu shown; arming the shutdown rewrite\")",
+            "        OppoPower.arm()",
+            "        updateKeyFilter()",
+            "        handler.removeCallbacks(powerMenuGone)",
+            "        handler.postDelayed(powerMenuGone, OppoPower.WATCH_MS)",
+            "    }",
+            "}",
+        ],
         "电源菜单出现时上膛",
+        "power menu shown; arming the shutdown rewrite",
     )
 
     # 判据用**按键**，不用窗口焦点：实测两条路的焦点都在 QUICK 之后约 30ms 才回来，分不开。
