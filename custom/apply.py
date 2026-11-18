@@ -1165,6 +1165,10 @@ def patch_screensaver(root):
             " * key actually differs, so a TV that keeps it does not see a write on every start.",
             " */",
             "fun ensureAerialIsDefault(context: Context): Boolean {",
+            "    // Only while the owner has chosen the TV's own screensaver (\"System\"). Any other mode",
+            "    // leaves the key alone: upstream 2.1 hands the firmware's screensaver back for \"System\",",
+            "    // and pinning Aerial there would undo that.",
+            "    if (Wallpapers.screensaver != ScreensaverMode.System) return true",
             "    val mine = context.packageName + \"/\" + AerialDream::class.java.name",
             "    val now = runCatching { Settings.Secure.getString(context.contentResolver, DEFAULT_COMPONENT) }",
             "        .getOrNull()",
@@ -1234,6 +1238,17 @@ def patch_screensaver(root):
         root, settings,
         "import kotlinx.coroutines.withContext",
         "AerialSettings 引 withContext",
+    )
+    # ensureAerialIsDefault 要看用户选的屏保模式，所以引这两个。
+    ensure_import(
+        root, j("system/SystemScreensaver.kt"),
+        "import %s.wallpaper.ScreensaverMode" % PKG,
+        "SystemScreensaver 引 ScreensaverMode",
+    )
+    ensure_import(
+        root, j("system/SystemScreensaver.kt"),
+        "import %s.wallpaper.Wallpapers" % PKG,
+        "SystemScreensaver 引 Wallpapers",
     )
 
     # 4) 真正该同步的地方：盯住系统那个键，而不是等打开设置页。
@@ -2369,7 +2384,8 @@ def verify(root, repo, dropped):
             j("system/SystemScreensaver.kt"),
             ("fun delayMinutes(context: Context)", "Settings.System.putLong(",
              "fun ensureAerialIsDefault(context: Context)",
-             'Settings.Secure.putString(context.contentResolver, DEFAULT_COMPONENT, mine)'),
+             'Settings.Secure.putString(context.contentResolver, DEFAULT_COMPONENT, mine)',
+             "if (Wallpapers.screensaver != ScreensaverMode.System) return true"),
         ),
         (
             j("settings/AerialSettings.kt"),
