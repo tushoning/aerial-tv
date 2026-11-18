@@ -17,7 +17,7 @@ name: 同步上游并发布 OPPO 定制包
 
 on:
   schedule:
-    - cron: "23 * * * *"
+    - cron: "23 1,7,13,19 * * *"
   workflow_dispatch:
     inputs:
       tag:
